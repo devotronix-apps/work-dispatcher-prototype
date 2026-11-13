@@ -1,0 +1,577 @@
+/* Work Dispatcher prototype — core: DOM helper, icons, iOS components, navigation, fake network, app shell.
+   Everything hangs off the global `WD`. Screen modules live in js/screens/*.js and register on WD.screens. */
+(function () {
+'use strict';
+const WD = window.WD = { screens: {}, data: {} };
+const $ = (s, r) => (r || document).querySelector(s);
+
+/* ================= DOM helper ================= */
+function add(el, kid) {
+  if (kid == null || kid === false || kid === true) return;
+  if (Array.isArray(kid)) kid.forEach(k => add(el, k));
+  else if (kid instanceof Node) el.appendChild(kid);
+  else el.appendChild(document.createTextNode(String(kid)));
+}
+/** h('div.a.b', {class, style, html, onclick, ...attrs}, ...children) → Element. Props are optional. */
+function h(tag, props, ...kids) {
+  const parts = tag.split('.'), el = document.createElement(parts[0] || 'div'), cls = parts.slice(1);
+  if (props == null || typeof props !== 'object' || props instanceof Node || Array.isArray(props)) { kids.unshift(props); props = null; }
+  if (props) for (const [k, v] of Object.entries(props)) {
+    if (v == null || v === false) continue;
+    if (k === 'class') cls.push(v);
+    else if (k === 'style') { if (typeof v === 'string') el.style.cssText = v; else for (const [p, val] of Object.entries(v)) { if (val == null) continue; p.startsWith('--') ? el.style.setProperty(p, val) : (el.style[p] = val); } }
+    else if (k === 'html') el.innerHTML = v;
+    else if (k.startsWith('on') && typeof v === 'function') el.addEventListener(k.slice(2).toLowerCase(), v);
+    else if (k === 'value' || k === 'checked' || k === 'disabled' || k === 'selected') el[k] = v;
+    else el.setAttribute(k, v === true ? '' : v);
+  }
+  if (cls.length) el.className = cls.join(' ');
+  add(el, kids);
+  return el;
+}
+WD.h = h;
+WD.css = text => document.head.appendChild(h('style', text));
+
+/* ================= Events ================= */
+const listeners = {};
+WD.on = (evt, fn) => { (listeners[evt] = listeners[evt] || []).push(fn); return () => { listeners[evt] = listeners[evt].filter(f => f !== fn); }; };
+WD.emit = (evt, data) => (listeners[evt] || []).slice().forEach(fn => { try { fn(data); } catch (e) { console.error(e); } });
+let changeQueued = false;
+/** Call after mutating WD.state / WD.data. Visible pages re-render on the next frame. */
+WD.changed = () => { if (changeQueued) return; changeQueued = true; requestAnimationFrame(() => { changeQueued = false; WD.emit('change'); }); };
+
+/* ================= Time, dates, formatting ================= */
+const loadedAt = Date.now(), pad = n => String(n).padStart(2, '0');
+const simStart = (() => { const d = new Date(); d.setHours(10, 24, 0, 0); return d.getTime(); })();
+/** The prototype's clock: today's real date, starting at 10:24 AM when the page loads and running in real time. */
+WD.now = () => new Date(simStart + (Date.now() - loadedAt));
+WD.nowMins = () => { const d = WD.now(); return d.getHours() * 60 + d.getMinutes(); };
+WD.delay = (min = 500, max) => new Promise(r => setTimeout(r, max == null ? min : min + Math.random() * (max - min)));
+const D = WD.date = {
+  key: d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()),
+  parse: k => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d, 12); },
+  today: () => D.key(WD.now()),
+  add: (k, n) => { const d = D.parse(k); d.setDate(d.getDate() + n); return D.key(d); },
+  diff: (a, b) => Math.round((D.parse(a) - D.parse(b)) / 864e5),
+};
+const WK = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], WKL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const MO = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'], MOL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const F = WD.fmt = {
+  /** style: 'short' "Fri, Nov 13" · 'long' "Friday, November 13" · 'weekday' "Fri" · 'md' "Nov 13" · 'rel' "Today"/"Tomorrow"/short */
+  day(k, style = 'short') {
+    const d = D.parse(k);
+    if (style === 'weekday') return WK[d.getDay()];
+    if (style === 'md') return MO[d.getMonth()] + ' ' + d.getDate();
+    if (style === 'long') return WKL[d.getDay()] + ', ' + MOL[d.getMonth()] + ' ' + d.getDate();
+    if (style === 'month') return MOL[d.getMonth()] + ' ' + d.getFullYear();
+    if (style === 'rel') { const n = D.diff(k, D.today()); if (n === 0) return 'Today'; if (n === 1) return 'Tomorrow'; if (n === -1) return 'Yesterday'; }
+    return WK[d.getDay()] + ', ' + MO[d.getMonth()] + ' ' + d.getDate();
+  },
+  /** minutes since midnight → "9:30 AM" (short: "9:30") */
+  time(m, short) { m = Math.round(m); const hh = Math.floor(m / 60) % 24, mm = m % 60, h12 = hh % 12 || 12; return h12 + ':' + pad(mm) + (short ? '' : (hh < 12 ? ' AM' : ' PM')); },
+  hhmm: m => pad(Math.floor(m / 60)) + ':' + pad(m % 60),
+  fromHHMM: s => { if (!s) return null; const [a, b] = s.split(':').map(Number); return a * 60 + b; },
+  range: (start, dur) => F.time(start) + ' – ' + F.time(start + dur),
+  dur(m) { m = Math.round(m); return m < 60 ? m + ' min' : Math.floor(m / 60) + ' hr' + (m % 60 ? ' ' + (m % 60) + ' min' : ''); },
+  clock: d => F.time(d.getHours() * 60 + d.getMinutes()),
+  /** Date|ms → "Just now", "12 min ago", "3 hr ago", "Yesterday", "Nov 3" */
+  rel(d) {
+    const t = +d, s = (+WD.now() - t) / 1000;
+    if (s < 60) return 'Just now'; if (s < 3600) return Math.floor(s / 60) + ' min ago'; if (s < 86400 && D.key(new Date(t)) === D.today()) return Math.floor(s / 3600) + ' hr ago';
+    const n = D.diff(D.today(), D.key(new Date(t))); if (n === 1) return 'Yesterday'; if (n < 7) return n + ' days ago';
+    const x = new Date(t); return MO[x.getMonth()] + ' ' + x.getDate();
+  },
+  money: (n, cents) => '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: cents ? 2 : 0, maximumFractionDigits: cents ? 2 : 0 }),
+  phone(p) { const d = String(p || '').replace(/\D/g, '').slice(-10); return d.length === 10 ? '(' + d.slice(0, 3) + ') ' + d.slice(3, 6) + '-' + d.slice(6) : p; },
+  initials: n => String(n || '?').split(/\s+/).filter(w => /[A-Za-z]/.test(w[0])).slice(0, 2).map(w => w[0].toUpperCase()).join(''),
+};
+
+/* ================= Icons (SF Symbols-style, 24×24, stroked) ================= */
+const I = WD.icons = {
+  'chevron.right': '<path d="M9 5l7 7-7 7"/>', 'chevron.left': '<path d="M15 5l-7 7 7 7"/>', 'chevron.down': '<path d="M5 9l7 7 7-7"/>', 'chevron.up': '<path d="M5 15l7-7 7 7"/>',
+  'chevron.up.chevron.down': '<path d="M8 9.5l4-4 4 4M8 14.5l4 4 4-4"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>', minus: '<path d="M5 12h14"/>', xmark: '<path d="M6 6l12 12M18 6L6 18"/>', checkmark: '<path d="M5 12.5l4.5 4.5L19 7"/>',
+  'plus.circle.fill': '<circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M12 7.5v9M7.5 12h9" stroke="#fff"/>',
+  'checkmark.circle': '<circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.8 2.8L16 9.5"/>',
+  'checkmark.circle.fill': '<circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.5 12.5l3 3L16.5 9" stroke="#fff"/>',
+  'xmark.circle.fill': '<circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M8.5 8.5l7 7M15.5 8.5l-7 7" stroke="#fff"/>',
+  'minus.circle.fill': '<circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.5 12h9" stroke="#fff"/>',
+  circle: '<circle cx="12" cy="12" r="9"/>', 'circle.fill': '<circle cx="12" cy="12" r="9" fill="currentColor" stroke="none"/>',
+  magnifyingglass: '<circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/>',
+  map: '<path d="M9 4L3 6.5v13L9 17l6 2.5 6-2.5v-13L15 6.5 9 4zM9 4v13M15 6.5v13"/>',
+  gearshape: '<circle cx="12" cy="12" r="3"/><path d="M12 2.8l1.3 2.6 2.8-.9.9 2.8 2.9.4-.5 2.9 2.3 1.4-2.3 1.4.5 2.9-2.9.4-.9 2.8-2.8-.9L12 21.2l-1.3-2.6-2.8.9-.9-2.8-2.9-.4.5-2.9L2.3 12l2.3-1.4-.5-2.9 2.9-.4.9-2.8 2.8.9L12 2.8z"/>',
+  calendar: '<rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
+  person: '<circle cx="12" cy="8" r="4"/><path d="M4 20.5c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/>',
+  'person.2': '<circle cx="9" cy="8.5" r="3.5"/><path d="M2.5 20c0-3.6 2.9-5.8 6.5-5.8s6.5 2.2 6.5 5.8M15.5 5.3a3.5 3.5 0 0 1 0 6.4M18 14.6c2.1.8 3.5 2.6 3.5 5.4"/>',
+  'person.crop.circle': '<circle cx="12" cy="12" r="9.5"/><circle cx="12" cy="10" r="3.2"/><path d="M5.8 18.6c1.2-2.4 3.5-3.6 6.2-3.6s5 1.2 6.2 3.6"/>',
+  'person.badge.plus': '<circle cx="10" cy="8" r="4"/><path d="M2.5 20.5c0-4 3.3-6.5 7.5-6.5 1.3 0 2.5.2 3.6.7M18.5 14v7M15 17.5h7"/>',
+  phone: '<path d="M6.5 3.5h3l1.5 4-2 1.5a12 12 0 0 0 6 6l1.5-2 4 1.5v3c0 1.1-.9 2-2 2C10.5 19.5 4.5 13.5 4.5 5.5c0-1.1.9-2 2-2z"/>',
+  'phone.fill': '<path fill="currentColor" stroke="none" d="M6.5 3h3.2l1.7 4.6-2.1 1.6a11 11 0 0 0 5.5 5.5l1.6-2.1L21 14.3v3.2c0 1.4-1.1 2.5-2.5 2.5C10.5 20 4 13.500 4 5.5 4 4.100 5.100 3 6.500 3z"/>',
+  message: '<path d="M4 6.5a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3h-5l-5 4v-4a3 3 0 0 1-3-3v-7z"/>',
+  envelope: '<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3.5 7.500l8.500 6 8.500-6"/>',
+  voicemail: '<circle cx="7" cy="12" r="4"/><circle cx="17" cy="12" r="4"/><path d="M7 16h10"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.500 2"/>',
+  timer: '<circle cx="12" cy="13.500" r="7.500"/><path d="M12 9.500v4M9.500 3h5M12 3v3M18.500 7l1.500-1.500"/>',
+  repeat: '<path d="M17 3l3 3-3 3M4 11V9a3 3 0 0 1 3-3h13M7 21l-3-3 3-3M20 13v2a3 3 0 0 1-3 3H4"/>',
+  sync: '<path d="M20 12a8 8 0 0 0-14-5.300L4 9M4 4v5h5M4 12a8 8 0 0 0 14 5.300L20 15M20 20v-5h-5"/>',
+  'arrow.clockwise': '<path d="M20 12a8 8 0 1 1-2.600-5.900M20 4v5h-5"/>',
+  'arrow.up.right': '<path d="M7 17L17 7M9 7h8v8"/>', 'arrow.right': '<path d="M5 12h14M13 6l6 6-6 6"/>', 'arrow.down': '<path d="M12 5v14M6 13l6 6 6-6"/>', 'arrow.up': '<path d="M12 19V5M6 11l6-6 6 6"/>',
+  'arrow.left.arrow.right': '<path d="M8 4L4 8l4 4M4 8h16M16 12l4 4-4 4M20 16H4"/>',
+  'arrow.triangle.turn.up.right': '<path d="M5 20v-6a4 4 0 0 1 4-4h10M15 6l4 4-4 4"/>',
+  pencil: '<path d="M4 20l1-4.500L16.500 4a2.100 2.100 0 0 1 3 3L8 18.500 4 20zM14.500 6l3 3"/>',
+  'square.and.pencil': '<path d="M11 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-5M18.500 3.500a2.100 2.100 0 0 1 3 3L12 16l-4 1 1-4 9.500-9.500z"/>',
+  trash: '<path d="M4 7h16M9.500 7V4.500h5V7M6.500 7l1 13h9l1-13M10 11v5.500M14 11v5.500"/>',
+  paperclip: '<path d="M20 11.500l-8 8a5 5 0 0 1-7-7l8.500-8.500a3.400 3.400 0 0 1 4.800 4.800L10 17a1.800 1.800 0 0 1-2.500-2.500L15 7"/>',
+  camera: '<path d="M3 8.500a2 2 0 0 1 2-2h2.500l1.500-2h6l1.500 2H19a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8.500z"/><circle cx="12" cy="13" r="3.500"/>',
+  photo: '<rect x="3" y="4.500" width="18" height="15" rx="3"/><circle cx="8.500" cy="9.500" r="1.500"/><path d="M3.500 17l5-4.500 3.500 3 3-2.500 5.500 4.500"/>',
+  doc: '<path d="M7 3h7l4.500 4.500V19a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM14 3v5h4.500"/>',
+  'doc.text': '<path d="M7 3h7l4.500 4.500V19a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM14 3v5h4.500M8.500 12.500h7M8.500 16h7"/>',
+  location: '<path d="M20 4L4 11l7 2 2 7 7-16z"/>', 'location.fill': '<path fill="currentColor" d="M20 4L4 11l7 2 2 7 7-16z"/>',
+  truck: '<path d="M2.500 6h11v10.500h-11zM13.500 9.500h4l3.500 4v3h-7.500z"/><circle cx="7" cy="17.500" r="2" fill="var(--cell,#fff)"/><circle cx="17" cy="17.500" r="2" fill="var(--cell,#fff)"/>',
+  mappin: '<path d="M12 21.500s6.500-6.200 6.500-11.200a6.500 6.500 0 1 0-13 0c0 5 6.500 11.200 6.500 11.200z"/><circle cx="12" cy="10" r="2.300"/>',
+  bell: '<path d="M6 16.500V11a6 6 0 0 1 12 0v5.500l1.500 2h-15l1.500-2zM10 20.500a2.200 2.200 0 0 0 4 0"/>',
+  lock: '<rect x="5" y="10.500" width="14" height="10" rx="2.500"/><path d="M8 10.500V8a4 4 0 0 1 8 0v2.500"/>',
+  key: '<circle cx="8" cy="15.500" r="4"/><path d="M11 12.500L20 3.500M16 7.500l3 3M13.500 10l2 2"/>',
+  shield: '<path d="M12 3l7.500 2.500v6c0 4.500-3 8-7.500 9.500-4.500-1.500-7.500-5-7.500-9.500v-6L12 3z"/>',
+  'hand.raised': '<path d="M8 12V5.500a1.500 1.500 0 0 1 3 0V11M11 10.500v-6a1.500 1.500 0 0 1 3 0v6M14 11V6a1.500 1.500 0 0 1 3 0v8.500c0 4-2.500 6.500-6 6.500-3 0-4.500-1.500-6-4.500l-2-4a1.500 1.500 0 0 1 2.600-1.400L8 14"/>',
+  'list.bullet': '<path d="M9 6.500h11M9 12h11M9 17.500h11"/><circle cx="4.500" cy="6.500" r="1" fill="currentColor"/><circle cx="4.500" cy="12" r="1" fill="currentColor"/><circle cx="4.500" cy="17.500" r="1" fill="currentColor"/>',
+  checklist: '<path d="M3.500 6.500l1.500 1.500 3-3M3.500 12.500L5 14l3-3M3.500 18.500L5 20l3-3M11.500 7h9M11.500 13h9M11.500 19h9"/>',
+  columns: '<rect x="3" y="5" width="18" height="14" rx="2.500"/><path d="M9 5v14M15 5v14"/>',
+  'square.grid': '<rect x="3.500" y="3.500" width="7" height="7" rx="1.500"/><rect x="13.500" y="3.500" width="7" height="7" rx="1.500"/><rect x="3.500" y="13.500" width="7" height="7" rx="1.500"/><rect x="13.500" y="13.500" width="7" height="7" rx="1.500"/>',
+  ellipsis: '<circle cx="5" cy="12" r="1.600" fill="currentColor"/><circle cx="12" cy="12" r="1.600" fill="currentColor"/><circle cx="19" cy="12" r="1.600" fill="currentColor"/>',
+  'ellipsis.circle': '<circle cx="12" cy="12" r="9.500"/><circle cx="7.800" cy="12" r="1" fill="currentColor"/><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="16.200" cy="12" r="1" fill="currentColor"/>',
+  'info.circle': '<circle cx="12" cy="12" r="9.500"/><path d="M12 11v6"/><circle cx="12" cy="7.500" r=".600" fill="currentColor"/>',
+  'questionmark.circle': '<circle cx="12" cy="12" r="9.500"/><path d="M9.500 9.500a2.500 2.500 0 1 1 3.500 2.300c-.700.400-1 1-1 1.700"/><circle cx="12" cy="16.800" r=".600" fill="currentColor"/>',
+  'exclamationmark.triangle': '<path d="M12 3.500l9.500 16.500h-19L12 3.500zM12 10v5"/><circle cx="12" cy="17.300" r=".600" fill="currentColor"/>',
+  'exclamationmark.circle': '<circle cx="12" cy="12" r="9.500"/><path d="M12 7v6.500"/><circle cx="12" cy="16.500" r=".600" fill="currentColor"/>',
+  wifi: '<path d="M2.500 9a14 14 0 0 1 19 0M5.500 12.500a9.500 9.500 0 0 1 13 0M8.500 16a5 5 0 0 1 7 0"/><circle cx="12" cy="19" r="1" fill="currentColor"/>',
+  'wifi.slash': '<path d="M2.500 9a14 14 0 0 1 5-3M11 4.600a14 14 0 0 1 10.500 4.400M5.500 12.500a9.500 9.500 0 0 1 4-2.300M15 10.400a9.500 9.500 0 0 1 3.500 2.100M8.500 16a5 5 0 0 1 7 0M4 3l16 18"/><circle cx="12" cy="19" r="1" fill="currentColor"/>',
+  bolt: '<path d="M13 2.500L5 13.500h6l-1 8 8-11h-6l1-8z"/>', 'bolt.fill': '<path fill="currentColor" d="M13 2.500L5 13.500h6l-1 8 8-11h-6l1-8z"/>',
+  battery: '<rect x="2.500" y="7.500" width="17" height="9" rx="2.500"/><path d="M21.500 10.500v3"/><rect x="4.500" y="9.500" width="9" height="5" rx="1" fill="currentColor" stroke="none"/>',
+  play: '<path d="M7 4.500v15l12-7.500-12-7.500z"/>', 'play.fill': '<path fill="currentColor" d="M7 4.500v15l12-7.500-12-7.500z"/>', 'stop.fill': '<rect x="5.500" y="5.500" width="13" height="13" rx="2.500" fill="currentColor"/>', pause: '<path d="M8 5v14M16 5v14"/>',
+  creditcard: '<rect x="2.500" y="5" width="19" height="14" rx="3"/><path d="M2.500 9.500h19M6 15h4"/>',
+  dollarsign: '<path d="M12 3v18M16.500 7.500c-.800-1.300-2.300-2-4.500-2-2.500 0-4.200 1.200-4.200 3.200 0 4.300 9 2 9 6.400 0 2-1.800 3.400-4.800 3.400-2.400 0-4.200-.900-5-2.500"/>',
+  'dollarsign.circle': '<circle cx="12" cy="12" r="9.500"/><path d="M12 6.500v11M14.800 9.300c-.500-.800-1.400-1.200-2.800-1.200-1.600 0-2.700.800-2.700 2 0 2.700 5.700 1.300 5.700 4 0 1.300-1.200 2.100-3 2.100-1.500 0-2.600-.500-3.100-1.500"/>',
+  building: '<path d="M5 21V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v16M16 10h2a2 2 0 0 1 2 2v9M3 21h18M8.500 7.500h1M12.500 7.500h1M8.500 11.500h1M12.500 11.500h1M8.500 15.500h1M12.500 15.500h1"/>',
+  house: '<path d="M3.500 11L12 3.500l8.500 7.500M5.500 9.500V20h13V9.500M10 20v-6h4v6"/>',
+  tag: '<path d="M3.500 4.500h7.500l9.500 9.500-7 7L4 11.500l-.500-7z"/><circle cx="8" cy="9" r="1.300"/>',
+  star: '<path d="M12 3.500l2.600 5.400 5.900.800-4.300 4.100 1.100 5.900-5.300-2.900-5.300 2.900 1.100-5.900-4.300-4.100 5.900-.800L12 3.500z"/>',
+  'star.fill': '<path fill="currentColor" d="M12 3.500l2.600 5.400 5.900.800-4.300 4.100 1.100 5.900-5.300-2.900-5.300 2.900 1.100-5.900-4.300-4.100 5.900-.800L12 3.500z"/>',
+  flag: '<path d="M5 21V4M5 4.500h12l-2.500 4 2.500 4H5"/>', note: '<path d="M5 4h14v11l-5 5H5V4zM14 20v-5h5M8.500 8.500h7M8.500 12h4"/>',
+  share: '<path d="M12 15V3.500M8 7l4-4 4 4M6 11H5a1.500 1.500 0 0 0-1.500 1.500v7A1.500 1.500 0 0 0 5 21h14a1.500 1.500 0 0 0 1.500-1.500v-7A1.500 1.500 0 0 0 19 11h-1"/>',
+  link: '<path d="M10 14a4.500 4.500 0 0 0 6.400 0l3-3a4.500 4.500 0 0 0-6.400-6.400l-1 1M14 10a4.500 4.500 0 0 0-6.400 0l-3 3a4.500 4.500 0 0 0 6.400 6.400l1-1"/>',
+  cloud: '<path d="M7 18.500a4.500 4.500 0 0 1-.500-9 6 6 0 0 1 11.600 1.500 3.800 3.800 0 0 1-.600 7.500H7z"/>', globe: '<circle cx="12" cy="12" r="9.500"/><path d="M2.500 12h19M12 2.500c3 3 3 16 0 19M12 2.500c-3 3-3 16 0 19"/>',
+  filter: '<path d="M4 7h16M7 12h10M10 17h4"/>', sparkles: '<path d="M11 3.500l1.800 5.200L18 10.500l-5.200 1.800L11 17.500l-1.800-5.200L4 10.500l5.200-1.800L11 3.500zM18.500 15l.800 2.200 2.200.800-2.200.800-.800 2.200-.800-2.200-2.200-.800 2.200-.800.800-2.200z"/>',
+  shippingbox: '<path d="M12 3l8.500 4.500v9L12 21l-8.500-4.500v-9L12 3zM3.500 7.500L12 12l8.500-4.500M12 12v9M7.700 5.300l8.600 4.500"/>',
+  route: '<circle cx="6" cy="18" r="2.500"/><circle cx="18" cy="6" r="2.500"/><path d="M8.500 18H15a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h6.500"/>',
+  'chart.bar': '<path d="M4 20V11M9.300 20V4M14.700 20v-7M20 20V8"/>', gauge: '<path d="M4.500 17a8.500 8.500 0 1 1 15 0M12 13l4-5"/><circle cx="12" cy="13.500" r="1.300" fill="currentColor"/>',
+  tray: '<path d="M3.500 13.500l2.500-8h12l2.500 8v5a1.500 1.500 0 0 1-1.500 1.500H5a1.500 1.500 0 0 1-1.500-1.500v-5zM3.500 13.500h5l1 2.500h5l1-2.500h5"/>',
+  briefcase: '<rect x="3" y="7.500" width="18" height="12.500" rx="2.500"/><path d="M9 7.500V5.500a1.500 1.500 0 0 1 1.500-1.500h3A1.500 1.500 0 0 1 15 5.500v2M3 13h18"/>',
+  moon: '<path d="M20 14.500A8.500 8.500 0 0 1 9.500 4a8.500 8.500 0 1 0 10.500 10.500z"/>', power: '<path d="M12 3v9M6.500 6.500a8 8 0 1 0 11 0"/>',
+  scope: '<circle cx="12" cy="12" r="7.500"/><path d="M12 2.500v5M12 16.500v5M2.500 12h5M16.500 12h5"/>', 'square.stack': '<rect x="5" y="8" width="14" height="12" rx="2.500"/><path d="M7.500 5h9M9.500 2.500h5"/>',
+  signature: '<path d="M3 17c3-6 5-10 6.500-10 2 0-1.500 10 .500 10 1.500 0 2.500-4 4-4 1.200 0 .800 3 2 3 1 0 1.500-1 3-1M3 20.500h18"/>',
+  'rectangle.portrait.and.arrow.right': '<path d="M14 4H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h7M10.500 12H21M17.500 8.500L21 12l-3.500 3.500"/>',
+  apple: '<path fill="currentColor" stroke="none" d="M16.700 12.800c0-2.200 1.800-3.200 1.900-3.300-1-1.500-2.600-1.700-3.200-1.700-1.400-.100-2.600.800-3.300.800-.700 0-1.700-.800-2.800-.800-1.500 0-2.800.800-3.500 2.100-1.500 2.600-.400 6.400 1.100 8.500.700 1 1.500 2.200 2.600 2.100 1.100 0 1.500-.700 2.700-.700 1.300 0 1.600.700 2.700.700 1.100 0 1.900-1 2.600-2.100.800-1.200 1.100-2.300 1.200-2.400-.100 0-2-.800-2-3.200zM14.600 6.300c.600-.700 1-1.700.900-2.700-.800 0-1.900.600-2.500 1.300-.500.600-1 1.600-.900 2.600.900.100 1.900-.500 2.500-1.200z"/>',
+};
+/** WD.icon('truck', 22, 'var(--blue)') → inline SVG element. */
+WD.icon = (name, size = 22, color) => h('span.ic', { style: { width: size + 'px', height: size + 'px', color }, 'data-icon': name,
+  html: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">' + (I[name] || I.circle) + '</svg>' });
+WD.addIcons = map => Object.assign(I, map);
+
+/* ================= State and permissions ================= */
+const ALL = ['analytics.view', 'tracking.view_live', 'crm.view', 'crm.edit', 'billing.view', 'billing.manage', 'jobs.edit', 'users.manage', 'settings.manage'];
+WD.roles = {
+  owner: { title: 'Owner', perms: ALL }, admin: { title: 'Admin', perms: ALL },
+  dispatcher: { title: 'Dispatcher', perms: ['jobs.edit', 'tracking.view_live', 'crm.view', 'crm.edit', 'analytics.view'] },
+  office: { title: 'Office', perms: ['jobs.edit', 'crm.view', 'crm.edit', 'billing.view', 'billing.manage'] },
+  driver: { title: 'Driver', perms: [] },
+};
+WD.permissionList = [
+  ['jobs.edit', 'Edit jobs', 'Create, move, reassign and delete jobs'], ['tracking.view_live', 'Live truck map', 'See where trucks are right now'],
+  ['crm.view', 'View customers', 'Customer records and history'], ['crm.edit', 'Edit customers', 'Change customers, notes and follow-ups'],
+  ['analytics.view', 'Analytics', 'Driver, stop and route reports'], ['billing.view', 'View billing', 'Invoices and payments'],
+  ['billing.manage', 'Manage billing', 'Create invoices and charge cards'], ['users.manage', 'Manage team', 'Invite people and change roles'], ['settings.manage', 'Company settings', 'Integrations and the Google mirror'],
+];
+const S = WD.state = {
+  signedIn: false, role: 'owner', me: null, org: null,
+  offline: false, sim: { conflictNext: false },
+  theme: (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light',
+  pending: [], abandoned: [],
+  board: { day: null, mode: 'routes', routeId: null, dayCount: 3, pushDown: true },
+  shift: null,                                   // set by the Shift screen while clocked in
+  tracking: { consent: false, consentAt: null }, // employee location-tracking consent (Settings + clock-in)
+  googleMirror: { enabled: true, lastSync: Date.now() - 4 * 60000, errors: 2 },
+};
+/** WD.can('jobs.edit') → does the signed-in user hold this permission? Per-user overrides live on user.perms. */
+WD.can = flag => { const u = S.me; if (!u) return false; return (u.perms || WD.roles[u.role].perms).includes(flag); };
+
+/* ================= iOS components ================= */
+const ui = WD.ui = {};
+const screen = () => $('#screen'), overlays = () => $('#overlays');
+WD.scale = () => { const s = screen(); return s.getBoundingClientRect().width / s.offsetWidth || 1; };
+/** Pointer event → {x, y} in `el`'s own unscaled CSS pixels (the phone is scaled to fit the window). */
+ui.localPoint = (evt, el) => { const r = el.getBoundingClientRect(), k = WD.scale(); return { x: (evt.clientX - r.left) / k, y: (evt.clientY - r.top) / k }; };
+
+ui.spinner = (size = 20, color) => {
+  let lines = ''; for (let i = 0; i < 8; i++) lines += '<line x1="12" y1="3" x2="12" y2="7.500" opacity="' + (0.15 + i * 0.12).toFixed(2) + '" transform="rotate(' + i * 45 + ' 12 12)"/>';
+  return h('span.spinner', { style: { width: size + 'px', height: size + 'px', color }, html: '<svg viewBox="0 0 24 24" width="' + size + '" height="' + size + '" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">' + lines + '</svg>' });
+};
+ui.progress = fraction => h('div.progress', h('i', { style: { width: Math.round(Math.max(0, Math.min(1, fraction)) * 100) + '%' } }));
+ui.badge = (text, color, solid) => h('span.badge' + (solid ? '.solid' : ''), { style: { '--c': color } }, text);
+ui.dot = color => h('span.dot', { style: { background: color } });
+const AVATAR = ['#FF9500', '#34C759', '#007AFF', '#AF52DE', '#FF2D55', '#30B0C7', '#5856D6', '#A2845E'];
+ui.avatar = (name, o = {}) => { const size = o.size || 40; let n = 0; for (const c of String(name)) n = (n * 31 + c.charCodeAt(0)) >>> 0;
+  return h('div.avatar', { style: { width: size + 'px', height: size + 'px', fontSize: Math.round(size * 0.4) + 'px', '--c': o.color || AVATAR[n % AVATAR.length] } }, o.icon ? WD.icon(o.icon, size * 0.55) : F.initials(name)); };
+ui.empty = o => h('div.empty', o.icon && WD.icon(o.icon, 52), h('h3', o.title), o.text && h('p', o.text), o.action);
+ui.note = text => h('div.note', text);
+ui.list = (...kids) => h('div.list', kids);
+/** ui.section('Header' | {header, footer, plainHeader}, ...rows). Rows may be nested arrays; null rows are skipped. */
+ui.section = (o, ...rows) => {
+  if (o == null || typeof o !== 'object' || o instanceof Node || Array.isArray(o)) { if (typeof o === 'string') o = { header: o }; else { rows.unshift(o); o = {}; } }
+  const flat = rows.flat(Infinity).filter(r => r != null && r !== false);
+  if (!flat.length && !o.keepEmpty) return null;
+  return h('div.section', o.header && h('div.section-header' + (o.plainHeader ? '.plain' : ''), o.header), flat.length ? h('div.cells', flat) : null, o.footer && h('div.section-footer', o.footer));
+};
+/** A list cell. {title, subtitle, detail, icon, iconColor, iconPlain, leading, trailing, chevron, onTap, tint, destructive, center, disabled, badge} */
+ui.row = o => {
+  const tap = o.onTap && !o.disabled;
+  const el = h('div.row' + (tap ? '.tappable' : '') + (o.icon || o.leading ? '.has-icon' : '') + (o.center ? '.center' : '') + (o.disabled ? '.disabled' : '') + (o.class ? '.' + o.class : ''), { onclick: tap ? e => o.onTap(e, el) : null },
+    o.leading, o.icon && h('div.row-icon' + (o.iconPlain ? '.plain' : ''), { style: o.iconPlain ? { color: o.iconColor || 'var(--tint)' } : { background: o.iconColor || 'var(--gray)' } }, WD.icon(o.icon, o.iconPlain ? 24 : 19)),
+    h('div.row-main', h('div.row-title' + (o.tint ? '.tint' : '') + (o.destructive ? '.destructive' : ''), o.title), o.subtitle && h('div.row-sub', o.subtitle)),
+    o.badge, o.detail != null && h('div.row-detail', o.detail), o.trailing, o.chevron && h('span.row-chevron', WD.icon('chevron.right', 16)));
+  return el;
+};
+/** onChange(newValue, el) may return false (or a Promise of false) to revert the switch. */
+ui.toggle = (value, onChange, disabled) => {
+  const el = h('div.switch' + (value ? '.on' : '') + (disabled ? '.disabled' : ''), { role: 'switch', onclick: async e => { e.stopPropagation(); const next = !el.classList.contains('on'); el.classList.toggle('on', next); const r = onChange && await onChange(next, el); if (r === false) el.classList.toggle('on', !next); } });
+  return el;
+};
+ui.toggleRow = o => ui.row({ ...o, onTap: null, trailing: ui.toggle(o.value, o.onChange, o.disabled), disabled: false });
+/** {label, placeholder, value, onInput(value), type, multiline, autofocus, right} */
+ui.inputRow = o => {
+  const input = h(o.multiline ? 'textarea.field' : 'input.field' + (o.right ? '.right' : ''), { type: o.multiline ? null : (o.type || 'text'), placeholder: o.placeholder || '', value: o.value || '', autocomplete: 'off', autocapitalize: o.caps || 'sentences', spellcheck: 'false', inputmode: o.inputmode, id: o.id, oninput: e => o.onInput && o.onInput(e.target.value, e.target), onkeydown: o.onEnter ? e => { if (e.key === 'Enter') o.onEnter(e.target.value); } : null });
+  if (o.autofocus) setTimeout(() => input.focus(), 450);
+  return h('div.row', o.icon && h('div.row-icon.plain', { style: { color: o.iconColor || 'var(--label2)' } }, WD.icon(o.icon, 22)), o.label && h('div.field-label', o.label), input, o.trailing);
+};
+/** Pop-up picker. {title, options: [{value, label, icon}] | ['a','b'], value, onChange(value), icon, iconColor} */
+ui.pickerRow = o => {
+  const opts = o.options.map(x => typeof x === 'object' ? x : { value: x, label: String(x) }), cur = opts.find(x => x.value === o.value);
+  const val = h('div.picker-value', h('span.t', cur ? cur.label : (o.placeholder || 'Choose')), WD.icon('chevron.up.chevron.down', 15));
+  return ui.row({ title: o.title, subtitle: o.subtitle, icon: o.icon, iconColor: o.iconColor, iconPlain: o.iconPlain, trailing: val, disabled: o.disabled,
+    onTap: () => ui.menu(val, opts.map(x => ({ label: x.label, icon: x.icon, checked: x.value === o.value, onTap: () => o.onChange && o.onChange(x.value) }))) });
+};
+/** Native date / time inputs styled as iOS compact pickers. value 'YYYY-MM-DD' or 'HH:MM'. */
+ui.dateRow = o => ui.row({ title: o.title, icon: o.icon, iconColor: o.iconColor, trailing: h('input.pill-input', { type: 'date', value: o.value, onchange: e => o.onChange && e.target.value && o.onChange(e.target.value) }) });
+ui.timeRow = o => ui.row({ title: o.title, icon: o.icon, iconColor: o.iconColor, trailing: h('input.pill-input', { type: 'time', step: 300, value: o.value || '', onchange: e => o.onChange && o.onChange(e.target.value) }) });
+ui.stepper = (value, min, max, onChange) => h('div.stepper', h('button', { disabled: value <= min, onclick: () => onChange(value - 1) }, '−'), h('button', { disabled: value >= max, onclick: () => onChange(value + 1) }, '+'));
+ui.segmented = (options, value, onChange) => h('div.segmented', options.map(x => typeof x === 'object' ? x : { value: x, label: String(x) }).map(x =>
+  h('button' + (x.value === value ? '.on' : ''), { onclick: e => { [...e.currentTarget.parentNode.children].forEach(b => b.classList.remove('on')); e.currentTarget.classList.add('on'); onChange && onChange(x.value); } }, x.label)));
+/** ui.button('Save', {kind: 'filled'|'tinted'|'gray'|'plain'|'destructive'|'dark', icon, onTap(e, el), block, small, disabled}) */
+ui.button = (label, o = {}) => { const el = h('button.btn.' + (o.kind || 'filled') + (o.block === false ? '' : '.block') + (o.small ? '.small' : ''), { disabled: !!o.disabled, style: o.style, onclick: e => o.onTap && o.onTap(e, el) }, o.icon && WD.icon(o.icon, o.small ? 17 : 20), label); return el; };
+/** {placeholder, value, onInput(value), autofocus, cancel: fn} */
+ui.searchField = o => {
+  const input = h('input', { type: 'text', placeholder: o.placeholder || 'Search', value: o.value || '', autocomplete: 'off', spellcheck: 'false', autocapitalize: 'off', oninput: () => { box.classList.toggle('filled', !!input.value); o.onInput && o.onInput(input.value); } });
+  const box = h('div.search-box' + (o.value ? '.filled' : ''), WD.icon('magnifyingglass', 18), input, h('button.clear', { onclick: () => { input.value = ''; box.classList.remove('filled'); o.onInput && o.onInput(''); input.focus(); } }, WD.icon('xmark.circle.fill', 17)));
+  if (o.autofocus) setTimeout(() => input.focus(), 450);
+  return h('div.search', box, o.cancel && h('button.cancel', { onclick: o.cancel }, 'Cancel'));
+};
+
+/* ---------- Overlays ---------- */
+const openSoon = (...els) => requestAnimationFrame(() => requestAnimationFrame(() => els.forEach(e => e.classList.add('open'))));
+const closeAfter = (ms, ...els) => { els.forEach(e => e.classList.remove('open')); setTimeout(() => els.forEach(e => e.remove()), ms); };
+/** Bottom action sheet / confirmation dialog. Resolves to the tapped button's `value` (default: its label) or null on cancel. */
+ui.actionSheet = o => new Promise(resolve => {
+  const dim = h('div.dim'), el = h('div.actionsheet');
+  const done = v => { closeAfter(380, dim, el); resolve(v); };
+  dim.onclick = () => done(null);
+  add(el, [h('div.as-group', (o.title || o.message) && h('div.as-head', o.title && h('b', o.title), o.message),
+    (o.buttons || []).map(b => h('button.as-btn' + (b.role === 'destructive' ? '.destructive' : ''), { onclick: () => done(b.value === undefined ? b.label : b.value) }, b.label))),
+    h('div.as-group', h('button.as-btn.cancel', { onclick: () => done(null) }, o.cancel || 'Cancel'))]);
+  add(overlays(), [dim, el]); openSoon(dim, el);
+});
+/** Centered alert. buttons: [{label, value, role: 'cancel'|'destructive', bold}] (default one OK). input: {placeholder, value} adds a text field;
+    then it resolves to {value, text}. Otherwise resolves to the button's value (default: its label). */
+ui.alert = o => new Promise(resolve => {
+  if (typeof o === 'string') o = { title: o };
+  const btns = o.buttons || [{ label: 'OK', bold: true }], dim = h('div.dim'), input = o.input && h('input.alert-input', { type: o.input.type || 'text', placeholder: o.input.placeholder || '', value: o.input.value || '' });
+  const el = h('div.alert', h('div.alert-body', h('div.alert-title', o.title), o.message && h('div.alert-msg', o.message), input),
+    h('div.alert-btns' + (btns.length > 2 ? '.stack' : ''), btns.map(b => h('button' + (b.bold ? '.bold' : '') + (b.role === 'destructive' ? '.destructive' : ''), { onclick: () => { closeAfter(240, dim, el); const v = b.value === undefined ? b.label : b.value; resolve(input ? { value: v, text: input.value } : v); } }, b.label))));
+  add(overlays(), [dim, el]); openSoon(dim, el); if (input) setTimeout(() => input.focus(), 300);
+});
+/** iOS pull-down menu anchored to an element. items: {label, subtitle, icon, checked, destructive, disabled, onTap} | 'divider' | {header: 'text'} */
+ui.menu = (anchor, items) => {
+  const dim = h('div.dim.clear'), el = h('div.menu'), close = () => closeAfter(260, dim, el);
+  dim.onclick = close;
+  const anyCheck = items.some(i => i && i.checked !== undefined);
+  items.filter(Boolean).forEach(it => {
+    if (it === 'divider') return add(el, h('div.menu-divider'));
+    if (it.header) return add(el, h('div.menu-head', it.header));
+    add(el, h('button.menu-item' + (it.destructive ? '.destructive' : ''), { disabled: !!it.disabled, onclick: () => { close(); it.onTap && setTimeout(it.onTap, 120); } },
+      anyCheck && h('span.mi-check', it.checked ? WD.icon('checkmark', 16) : null), h('span.mi-label', it.label, it.subtitle && h('span.mi-sub', it.subtitle)), it.icon && WD.icon(it.icon, 20)));
+  });
+  add(overlays(), [dim, el]);
+  const sc = screen(), sr = sc.getBoundingClientRect(), k = WD.scale(), a = anchor.getBoundingClientRect();
+  const ax = (a.left - sr.left) / k, ay = (a.top - sr.top) / k, aw = a.width / k, ah = a.height / k, W = sc.offsetWidth, H = sc.offsetHeight, mw = 250, mh = Math.min(el.offsetHeight, 560);
+  const rightSide = ax + aw / 2 > W / 2, below = ay + ah + 8 + mh < H - 30;
+  el.style.left = Math.max(8, Math.min(W - mw - 8, rightSide ? ax + aw - mw : ax)) + 'px';
+  el.style.top = Math.max(58, below ? ay + ah + 6 : ay - mh - 6) + 'px';
+  el.style.transformOrigin = (rightSide ? '90%' : '10%') + ' ' + (below ? '0%' : '100%');
+  openSoon(el);
+  return { close };
+};
+/** Blocking progress HUD. icon: 'spinner' or any icon name. Returns {set(text, icon), close()}. */
+ui.hud = (text, o = {}) => {
+  const dim = h('div.dim.clear'), iconBox = h('div.hud-icon'), label = h('div'), el = h('div.hud', iconBox, label);
+  const set = (t, icon = 'spinner') => { label.textContent = t; iconBox.replaceChildren(icon === 'spinner' ? ui.spinner(34) : WD.icon(icon, 40)); };
+  set(text, o.icon); add(overlays(), [dim, el]); openSoon(el);
+  return { set, close: () => closeAfter(220, dim, el) };
+};
+/** Small transient capsule at the top of the screen, e.g. ui.toast('Copied', 'checkmark'). */
+ui.toast = (text, icon, ms = 2000) => { const el = h('div.toast', icon && WD.icon(icon, 17), text); add(overlays(), el); openSoon(el); setTimeout(() => closeAfter(420, el), ms); };
+/** Notification banner. {title, text, icon, color, when, onTap, duration} */
+ui.banner = o => {
+  const el = h('div.banner', h('div.b-icon', { style: { background: o.color } }, WD.icon(o.icon || 'bell', 22)), h('div.b-main', h('div.b-title', h('span', o.title), h('small', o.when || 'now')), h('div.b-text', o.text)));
+  const close = () => closeAfter(460, el);
+  el.onclick = () => { close(); o.onTap && o.onTap(); };
+  add(overlays(), el); openSoon(el); if (o.duration !== 0) setTimeout(close, o.duration || 5000);
+  return { close };
+};
+/** Run something that needs the network: blocking HUD → latency → fn() → optional success tick. Returns false when offline
+    (after explaining), otherwise fn's result (true when fn returns nothing). o: {done, min, max, offlineOK} */
+ui.run = async (label, fn, o = {}) => {
+  if (S.offline && !o.offlineOK) { await ui.alert({ title: 'No Internet Connection', message: 'This needs a connection. Job changes are saved on this iPhone and sync later, but this action can’t be queued.' }); return false; }
+  const hud = ui.hud(label);
+  await WD.delay(o.min == null ? 700 : o.min, o.max == null ? 1500 : o.max);
+  const result = fn ? await fn() : undefined;
+  if (o.done) { hud.set(o.done, 'checkmark'); await WD.delay(750); }
+  hud.close(); WD.changed();
+  return result === undefined ? true : result;
+};
+
+/* ================= Navigation: pages, stacks, sheets, tabs ================= */
+const stacks = new Set(), sheets = [];
+function navButton(b, page) {
+  if (!b) return null; if (b instanceof Node) return b;
+  const el = h('button.nav-btn' + (b.bold ? '.bold' : '') + (b.destructive ? '.destructive' : ''), { disabled: !!b.disabled, 'aria-label': b.label || b.icon, onclick: () => b.onTap && b.onTap(page, el) },
+    b.icon && WD.icon(b.icon, b.size || 23), b.label && (!b.icon || b.showLabel) ? h('span', b.label) : null, b.badge ? h('span.badge.solid', { style: { '--c': 'var(--orange)', marginLeft: '2px' } }, b.badge) : null);
+  return el;
+}
+function makePage(spec, stack, prev) {
+  const lead = h('div.nav-lead'), trail = h('div.nav-trail'), title = h('div.nav-title' + (spec.large ? '.hidden' : '')), navbar = h('div.navbar', h('div.navbar-row', lead, title, trail));
+  const body = h('div.page-body' + (spec.plain ? '.plain' : '') + (spec.noScroll ? '.noscroll' : '')), el = h('div.page' + (spec.navbar === false ? '.no-navbar' : '') + (spec.class ? '.' + spec.class : ''), navbar, body);
+  const page = { spec, stack, el, body, navbar, sheet: stack.sheet || null };
+  if (spec.search) navbar.appendChild(h('div.nav-search', ui.searchField({ ...spec.search, onInput: v => spec.search.onInput && spec.search.onInput(v, page) })));
+  const accessory = spec.accessory ? h('div.nav-accessory') : null; if (accessory) navbar.appendChild(accessory);
+  const toolbar = spec.toolbar ? h('div.toolbar') : null; if (toolbar) el.appendChild(toolbar);
+  const evalSpec = v => typeof v === 'function' ? v(page) : v, list = v => (v == null ? [] : Array.isArray(v) ? v : [v]);
+  page.setTitle = t => { spec.title = t; title.textContent = t || ''; const lt = body.querySelector(':scope > .large-title'); if (lt) lt.textContent = t || ''; };
+  page.refresh = () => {
+    const top = body.scrollTop;
+    title.textContent = evalSpec(spec.title) || '';
+    lead.replaceChildren(); trail.replaceChildren();
+    if (prev && spec.back !== false) { const pt = evalSpec(prev.spec.title) || 'Back'; add(lead, h('button.nav-btn.back', { 'aria-label': 'Back', onclick: () => stack.pop() }, WD.icon('chevron.left', 25), h('span', spec.backLabel || (pt.length > 11 || pt.length + (title.textContent || '').length > 24 ? 'Back' : pt)))); }
+    list(evalSpec(spec.leading)).forEach(b => add(lead, navButton(b, page)));
+    list(evalSpec(spec.trailing)).forEach(b => add(trail, navButton(b, page)));
+    if (accessory) { accessory.replaceChildren(); add(accessory, evalSpec(spec.accessory)); }
+    if (toolbar) { toolbar.replaceChildren(); add(toolbar, evalSpec(spec.toolbar)); }
+    let content = spec.render ? spec.render(page) : null;
+    if (typeof content === 'string') content = h('div', { html: content });
+    body.replaceChildren(); if (spec.large) add(body, h('div.large-title', evalSpec(spec.title)));
+    add(body, content); body.scrollTop = top;
+  };
+  /** Close the enclosing sheet (or pop if this page is not in a sheet). */
+  page.dismiss = result => stack.sheet ? stack.sheet.close(result) : stack.pop();
+  page.pop = () => stack.pop();
+  page.push = s => stack.push(s);
+  body.addEventListener('scroll', () => { const y = body.scrollTop; navbar.classList.toggle('scrolled', y > 2); if (spec.large) title.classList.toggle('hidden', y < 38); });
+  return page;
+}
+function makeStack(o = {}) {
+  const el = h('div.navstack'), stack = { el, pages: [], sheet: o.sheet || null };
+  const top = () => stack.pages[stack.pages.length - 1];
+  stack.top = top;
+  stack.push = (spec, animated = true) => {
+    const prev = top(), page = makePage(spec, stack, prev);
+    stack.pages.push(page);
+    if (prev && animated) { page.el.classList.add('enter'); el.appendChild(page.el); page.refresh(); void page.el.offsetWidth; page.el.classList.remove('enter'); prev.el.classList.add('behind'); }
+    else { el.appendChild(page.el); page.refresh(); if (prev) prev.el.classList.add('behind'); }
+    if (document.activeElement && document.activeElement.blur && prev) document.activeElement.blur();
+    spec.onAppear && spec.onAppear(page);
+    return page;
+  };
+  stack.pop = () => {
+    if (stack.pages.length < 2) return;
+    const page = stack.pages.pop(), prev = top();
+    page.el.classList.add('enter'); prev.el.classList.remove('behind');
+    if (prev.spec.live !== false) prev.refresh(); prev.spec.onReappear && prev.spec.onReappear(prev);
+    setTimeout(() => page.el.remove(), 420); page.spec.onClose && page.spec.onClose(page);
+  };
+  stack.popToRoot = () => { while (stack.pages.length > 2) { const p = stack.pages.splice(stack.pages.length - 2, 1)[0]; p.el.remove(); p.spec.onClose && p.spec.onClose(p); } stack.pop(); };
+  stacks.add(stack);
+  return stack;
+}
+WD.on('change', () => stacks.forEach(st => {
+  if (!st.el.isConnected) return; const p = st.top(); if (!p || p.spec.live === false) { p && p.spec.onChange && p.spec.onChange(p); return; }
+  const a = document.activeElement; if (a && p.body.contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return;
+  p.refresh();
+}));
+/** Present a modal sheet with its own navigation stack. o: {detent: 'large'|'medium'|'small', dismissable}.
+    Returns {close(result), push(spec), closed: Promise<result>, stack}. */
+ui.sheet = (spec, o = {}) => {
+  const detent = o.detent || 'large', backdrop = h('div.sheet-backdrop'), el = h('div.sheet.' + detent, h('div.grabber'));
+  let resolve, open = true; const sheet = { el, detent, closed: new Promise(r => resolve = r) };
+  const stack = makeStack({ sheet }); sheet.stack = stack; el.appendChild(stack.el);
+  sheet.push = s => stack.push(s);
+  sheet.close = result => {
+    if (!open) return; open = false;
+    sheets.splice(sheets.indexOf(sheet), 1); closeAfter(460, backdrop, el); stacks.delete(stack); syncPushedBack();
+    stack.pages.slice().reverse().forEach(p => p.spec.onClose && p.spec.onClose(p));
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+    resolve(result); WD.changed();
+  };
+  backdrop.onclick = () => { if (o.dismissable !== false) sheet.close(); };
+  sheets.push(sheet); add(overlays(), [backdrop, el]); stack.push(spec, false); openSoon(backdrop, el); syncPushedBack();
+  return sheet;
+};
+function syncPushedBack() { $('#root').classList.toggle('pushed-back', sheets.some(s => s.detent === 'large')); }
+ui.closeAllSheets = () => sheets.slice().reverse().forEach(s => s.close());
+
+const app = WD.app = { tabs: [
+  { id: 'board', title: 'Dispatch', icon: 'calendar' }, { id: 'map', title: 'Map', icon: 'map' },
+  { id: 'customers', title: 'Customers', icon: 'person.2', can: 'crm.view' }, { id: 'shift', title: 'Shift', icon: 'truck' }, { id: 'settings', title: 'Settings', icon: 'gearshape' },
+] };
+let tabState = null, rootStack = null;
+const nav = WD.nav = {
+  /** The stack a push should go to: the top sheet if one is open, else the active tab (or the sign-in flow). */
+  current: () => sheets.length ? sheets[sheets.length - 1].stack : tabState ? tabState.stacks[tabState.active] : rootStack,
+  push: spec => nav.current().push(spec),
+  pop: () => nav.current().pop(),
+  switchTab: id => tabState && tabState.select(id),
+  activeTab: () => tabState && tabState.active,
+};
+function clearRoot() { stacks.forEach(st => { if (!st.sheet) stacks.delete(st); }); tabState = null; rootStack = null; $('#root').replaceChildren(); }
+/** Replace the whole app with one navigation stack (used by the sign-in flow). Returns the root page. */
+app.showRoot = spec => { ui.closeAllSheets(); clearRoot(); rootStack = makeStack(); $('#root').appendChild(rootStack.el); return rootStack.push(spec, false); };
+/** Show the signed-in tab interface. */
+app.showMain = tabId => {
+  ui.closeAllSheets(); clearRoot();
+  const tabs = app.tabs.filter(t => !t.can || WD.can(t.can)), panes = h('div.tabpanes'), bar = h('div.tabbar'), state = tabState = { stacks: {}, active: null, buttons: {} };
+  tabs.forEach(t => { const b = state.buttons[t.id] = h('button.tab', { onclick: () => state.select(t.id) }, WD.icon(t.icon, 27), h('span', t.title)); bar.appendChild(b); });
+  state.select = id => {
+    const t = tabs.find(x => x.id === id) || tabs[0]; id = t.id;
+    if (state.active === id) { state.stacks[id].popToRoot(); return; }
+    if (!state.stacks[id]) {
+      const mod = WD.screens[id], st = state.stacks[id] = makeStack(); st.el.dataset.tab = id; panes.appendChild(st.el);
+      st.push(mod && mod.root ? mod.root() : { title: t.title, large: true, render: () => ui.empty({ icon: t.icon, title: t.title, text: 'This screen is not part of the prototype yet.' }) }, false);
+    }
+    Object.entries(state.stacks).forEach(([k, st]) => st.el.classList.toggle('active', k === id));
+    Object.entries(state.buttons).forEach(([k, b]) => b.classList.toggle('active', k === id));
+    state.active = id; const p = state.stacks[id].top(); if (p.spec.live !== false) p.refresh(); p.spec.onReappear && p.spec.onReappear(p);
+    WD.emit('tab', id);
+  };
+  state.badges = () => tabs.forEach(t => { const b = state.buttons[t.id], n = t.badge ? t.badge() : 0; const old = b.querySelector('.tab-badge'); if (old) old.remove(); if (n) b.appendChild(h('span.tab-badge', n)); });
+  $('#root').appendChild(h('div.tabview', panes, bar));
+  state.select(tabId || (S.role === 'driver' && WD.screens.shift ? 'shift' : 'board')); state.badges();
+};
+WD.on('change', () => tabState && tabState.badges());
+/** Finish signing in and show the tabs. */
+app.signIn = () => { S.signedIn = true; app.showMain(); syncPanel(); };
+app.signOut = () => { S.signedIn = false; S.shift = null; ui.closeAllSheets(); if (WD.screens.auth && WD.screens.auth.show) WD.screens.auth.show(); else app.showMain(); syncPanel(); };
+app.setRole = role => { S.role = role; S.me = (WD.data.users || []).find(u => u.role === role && u.status !== 'invited') || S.me; if (S.signedIn) app.showMain(); syncPanel(); WD.emit('role', role); };
+app.setTheme = t => { S.theme = t; screen().dataset.theme = t; syncPanel(); };
+app.setOffline = off => { S.offline = off; $('.statusbar').classList.toggle('offline', off); S.pending.forEach(op => { if (op.status === 'queued') op.message = off ? 'Waiting for a connection' : 'Waiting to sync'; }); syncPanel(); WD.changed(); if (!off) WD.api.flush(); WD.emit('network', !off); };
+
+/* ================= Fake backend: the offline queue (PendingOperation) ================= */
+let opSeq = 0;
+const clone = j => ({ ...j, attachments: (j.attachments || []).slice(), events: (j.events || []).slice() });
+const api = WD.api = {
+  /** Queue a job change exactly like the real app: apply it on screen now, sync in the background (or when back online).
+      {kind: 'create'|'edit'|'delete'|'reassign'|'status'|'batch', title, scope, jobIds, apply()} → the pending operation. */
+  op(o) {
+    const jobs = WD.data.jobs, ids = o.jobIds || [], before = ids.map(id => jobs.find(j => j.id === id)).filter(Boolean).map(clone), existed = new Set(before.map(j => j.id));
+    const all = new Set(jobs.map(j => j.id));
+    if (o.apply) o.apply();
+    const created = WD.data.jobs.filter(j => !all.has(j.id)).map(j => j.id);
+    const op = { id: 'op' + (++opSeq), kind: o.kind, title: o.title, scope: o.scope || 'This job', jobIds: ids.concat(created), status: 'queued', message: S.offline ? 'Waiting for a connection' : 'Waiting to sync', at: +WD.now(),
+      revert() { WD.data.jobs = WD.data.jobs.filter(j => !created.includes(j.id) && !existed.has(j.id)).concat(before.map(clone)); } };
+    op.jobIds.forEach(id => { const j = WD.q.job(id); if (j) j.pending = true; });
+    S.pending.push(op); WD.changed(); api.flush();
+    return op;
+  },
+  /** Driver status change (en route / arrived / completed / skipped), queued offline the same way. */
+  setStatus(jobId, status, note) {
+    const j = WD.q.job(jobId), label = { enroute: 'En route', arrived: 'Arrived', completed: 'Completed', skipped: 'Skipped', scheduled: 'Reopened' }[status];
+    return api.op({ kind: 'status', title: j.title, scope: label, jobIds: [jobId], apply() {
+      j.status = status; const t = WD.nowMins();
+      if (status === 'arrived') j.arrivedAt = t; if (status === 'completed') { j.departedAt = t; if (j.arrivedAt == null) j.arrivedAt = Math.max(j.start, t - j.dur); }
+      j.events.push({ at: +WD.now(), actor: S.me.name, text: label + (note ? ' — ' + note : '') });
+    } });
+  },
+  finish(op) { S.pending = S.pending.filter(x => x !== op); op.jobIds.forEach(id => { const j = WD.q.job(id); if (j && !S.pending.some(x => x.jobIds.includes(id))) { j.pending = false; j.version = (j.version || 1) + 1; } }); },
+  async flush() {
+    if (api.busy || S.offline) return; api.busy = true;
+    try {
+      for (;;) {
+        const op = S.pending.find(x => x.status === 'queued'); if (!op || S.offline) break;
+        op.status = 'syncing'; op.message = 'Sending…'; WD.changed();
+        await WD.delay(600, 1500);
+        if (!S.pending.includes(op)) continue;
+        if (S.offline) { op.status = 'queued'; op.message = 'Waiting for a connection'; break; }
+        if (S.sim.conflictNext) { S.sim.conflictNext = false; syncPanel(); op.status = 'conflict'; op.message = 'Priya Raman changed this job on another device after you opened it.';
+          ui.banner({ title: 'Change needs review', text: op.title + ' was changed by someone else. Choose which version to keep.', icon: 'exclamationmark.triangle', color: 'var(--orange)', onTap: () => WD.screens.settings && WD.screens.settings.openPending && WD.screens.settings.openPending() }); continue; }
+        api.finish(op); WD.changed();
+      }
+    } finally { api.busy = false; WD.changed(); }
+  },
+  /** Resolve a conflict: keep 'server' (discard my change) or 'mine' (reapply). */
+  async resolve(opId, keep) { const op = S.pending.find(x => x.id === opId); if (!op) return; op.status = 'syncing'; op.message = keep === 'server' ? 'Loading the server version…' : 'Reapplying your change…'; WD.changed(); await WD.delay(700, 1300); if (keep === 'server') op.revert(); api.finish(op); WD.changed(); },
+  retry(opId) { const op = S.pending.find(x => x.id === opId); if (op) { op.status = 'queued'; op.message = 'Waiting to sync'; WD.changed(); api.flush(); } },
+  retryAll() { S.pending.forEach(op => { if (op.status === 'failed') op.status = 'queued'; }); WD.changed(); api.flush(); },
+  /** Cancel a pending change: stop retrying and keep it in the abandoned-operation journal. */
+  cancel(opId) { const op = S.pending.find(x => x.id === opId); if (!op) return; S.pending = S.pending.filter(x => x !== op); op.jobIds.forEach(id => { const j = WD.q.job(id); if (j && !S.pending.some(x => x.jobIds.includes(id))) j.pending = false; }); S.abandoned.unshift({ ...op, status: 'abandoned', cancelledAt: +WD.now() }); WD.changed(); },
+};
+
+/* ================= Prototype control panel (outside the phone) ================= */
+const panel = WD.panel = { actions: [], jumps: [],
+  /** Add a button under “Simulate”. */
+  addAction(label, fn) { panel.actions.push({ label, fn }); syncPanel(); },
+  /** Add a “Jump to” shortcut. fn runs with the tab interface showing and no sheets open. */
+  addJump(label, fn) { panel.jumps.push({ label, fn }); syncPanel(); },
+};
+function syncPanel() {
+  const el = $('#panel'); if (!el) return;
+  const seg = (opts, cur, fn) => h('div.pseg', opts.map(([v, l]) => h('button' + (v === cur ? '.on' : ''), { onclick: () => fn(v) }, l)));
+  const ready = fn => () => { if (!S.signedIn) { S.signedIn = true; } ui.closeAllSheets(); if (!tabState) app.showMain(); syncPanel(); setTimeout(fn, 60); };
+  el.replaceChildren(); add(el, [
+    h('h1', 'Work Dispatcher'), h('p.sub', 'Clickable iPhone prototype of the migrated app. Nothing is saved; reload to reset.'),
+    h('h2', 'Preview as'), seg([['owner', 'Owner'], ['dispatcher', 'Dispatch'], ['office', 'Office'], ['driver', 'Driver']], S.role, r => app.setRole(r)),
+    h('p.sub', { style: 'margin:6px 0 0' }, S.me ? S.me.name + ' · ' + WD.roles[S.role].title : ''),
+    h('h2', 'Appearance'), seg([['light', 'Light'], ['dark', 'Dark']], S.theme, t => app.setTheme(t)),
+    h('h2', 'Network'), seg([[false, 'Online'], [true, 'Offline']], S.offline, v => app.setOffline(v)),
+    h('label.pcheck', h('input', { type: 'checkbox', checked: S.sim.conflictNext, onchange: e => { S.sim.conflictNext = e.target.checked; } }), 'Next job change hits a conflict'),
+    h('h2', 'Simulate'), panel.actions.map(a => h('button.pbtn', { onclick: ready(a.fn) }, a.label)),
+    h('h2', 'Jump to'), h('div.jumps', h('button', { onclick: () => app.signOut() }, 'Sign-in'), panel.jumps.map(j => h('button', { onclick: ready(j.fn) }, j.label))),
+    h('p.foot', 'Tip: drag a job on the board to move or reassign it. Pinch or ⌘-scroll to zoom the timeline.')]);
+}
+
+/* ================= Boot ================= */
+function fit() {
+  const wrap = $('#phoneScale'), phone = $('#phone'), area = $('.device-area'); if (!wrap || innerWidth <= 480) { if (phone) phone.style.transform = ''; return; }
+  const k = Math.min(1.15, (area.clientHeight - 28) / 876, (area.clientWidth - 28) / 417);
+  phone.style.transform = 'scale(' + k + ')'; wrap.style.width = 417 * k + 'px'; wrap.style.height = 876 * k + 'px';
+}
+function tick() { const t = $('.sb-time'); if (t) t.textContent = F.time(WD.nowMins(), true); }
+app.start = () => {
+  screen().dataset.theme = S.theme;
+  S.me = (WD.data.users || []).find(u => u.role === S.role) || { id: 'u0', name: 'You', role: 'owner' };
+  S.org = (WD.data.orgs || [])[0] || { id: 'o1', name: 'Company' };
+  S.board.day = D.today();
+  fit(); addEventListener('resize', fit); tick(); setInterval(tick, 5000);
+  const toggle = $('#panelToggle'); if (toggle) toggle.onclick = () => document.body.classList.toggle('panel-open');
+  $('.device-area').addEventListener('click', () => document.body.classList.remove('panel-open'));
+  setInterval(() => WD.emit('minute'), 30000);
+  WD.on('change', () => $('.statusbar').classList.toggle('tracking', !!S.shift));
+  if (WD.screens.auth && WD.screens.auth.show && !/[?&]skip/.test(location.search)) WD.screens.auth.show(); else app.signIn();
+  syncPanel();
+};
+})();

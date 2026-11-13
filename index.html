@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Work Dispatcher — iPhone prototype</title>
+<link rel="icon" href="img/app-icon.png">
+<link rel="stylesheet" href="css/ios.css">
+</head>
+<body>
+<button class="panel-toggle" id="panelToggle" type="button">Controls</button>
+<div class="stage">
+  <aside class="panel" id="panel"></aside>
+  <main class="device-area">
+    <div class="phone-scale" id="phoneScale">
+      <div class="phone" id="phone">
+        <div class="screen" id="screen" data-theme="light">
+          <div class="statusbar">
+            <div class="sb-time">10:24</div>
+            <div class="island"><span class="loc"></span></div>
+            <div class="sb-right">
+              <span class="sb-off">No Service</span>
+              <svg class="sb-sig" width="18" height="12" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.500" width="3" height="6.500" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>
+              <svg class="sb-wifi" width="17" height="12" viewBox="0 0 17 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1.500 4.200a10 10 0 0 1 14 0M4 7a6.300 6.300 0 0 1 9 0"/><circle cx="8.500" cy="10.200" r="1.300" fill="currentColor" stroke="none"/></svg>
+              <svg width="27" height="13" viewBox="0 0 27 13" fill="none"><rect x=".500" y=".500" width="23" height="12" rx="3.800" stroke="currentColor" opacity=".4"/><rect x="2" y="2" width="16" height="9" rx="2.300" fill="currentColor"/><path d="M25 4.500v4c.800-.300 1.500-1 1.500-2s-.700-1.700-1.500-2z" fill="currentColor" opacity=".45"/></svg>
+            </div>
+          </div>
+          <div id="root"></div>
+          <div id="overlays"></div>
+          <div class="home-indicator"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+<script src="js/core.js"></script>
+<script src="js/data.js"></script>
+<script src="js/screens/auth.js"></script>
+<script src="js/screens/board.js"></script>
+<script src="js/screens/jobs.js"></script>
+<script src="js/screens/map.js"></script>
+<script src="js/screens/customers.js"></script>
+<script src="js/screens/shift.js"></script>
+<script src="js/screens/settings.js"></script>
+<script>WD.app.start();</script>
+</body>
+</html>
