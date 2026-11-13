@@ -1,9 +1,9 @@
 /* Dispatch board: routes side by side for one day, one route across days, and a month overview.
-   Drag a job to change its time or reassign it; tap empty time to add a job. */
+   Jobs have no times — each column is an ordered list (stop 1 is done first). Drag a job to reorder or reassign it. */
 (function () {
 'use strict';
 const { h, ui, icon, state: S, data, q, fmt, date: D, api } = WD;
-const START = 6 * 60, END = 19 * 60, GUTTER = 46, PAD = 10;
+const PAD = 6;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 WD.css(`
@@ -26,37 +26,38 @@ WD.css(`
 .bd-content { position: relative; min-width: 100%; }
 .bd-head { position: sticky; top: 0; z-index: 4; background: var(--cell); border-bottom: .5px solid var(--sep); }
 .bd-hrow { display: flex; }
-.bd-corner { position: sticky; left: 0; z-index: 5; flex: none; background: var(--cell); font-size: 10px; color: var(--label2); text-align: right; padding: 3px 6px 0 0; letter-spacing: 0; }
-.bd-colhead { flex: none; padding: 6px 6px 5px; font-size: 13px; line-height: 16px; font-weight: 600; letter-spacing: -.1px; display: flex; align-items: center; gap: 5px; border-left: .5px solid var(--sep); min-width: 0; }
+.bd-colhead { flex: none; padding: 6px 8px 5px; font-size: 13px; line-height: 16px; font-weight: 600; letter-spacing: -.1px; display: flex; align-items: center; gap: 5px; border-left: .5px solid var(--sep); min-width: 0; }
+.bd-colhead:first-child { border-left: 0; }
 .bd-colhead span.n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bd-colhead span.c { margin-left: auto; font-weight: 500; color: var(--label2); font-size: 12px; }
 .bd-colhead.today span.n { color: var(--red); }
 .bd-colhead .dot { width: 8px; height: 8px; }
-.bd-allday { flex: none; padding: 0 1.500px 2px; border-left: .5px solid var(--sep); min-height: 3px; }
-.bd-chip { margin-top: 2px; border-radius: 5px; background: color-mix(in srgb, var(--c) 22%, var(--cell)); color: var(--label); border-left: 3px solid var(--c); font-size: 11px; line-height: 14px; padding: 2px 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; letter-spacing: -.05px; }
-.bd-body { display: flex; position: relative; }
-.bd-gutter { position: sticky; left: 0; z-index: 3; flex: none; background: var(--cell); }
-.bd-time { position: absolute; right: 6px; font-size: 11px; color: var(--label2); transform: translateY(-50%); white-space: nowrap; letter-spacing: 0; }
-.bd-time.half { font-size: 10px; color: var(--label3); }
-.bd-nowdot { position: absolute; right: -4px; width: 8px; height: 8px; margin-top: -3px; border-radius: 50%; background: var(--red); z-index: 4; }
-.bd-col { flex: none; position: relative; border-left: .5px solid var(--sep); }
+.bd-chip { margin: 0 0 4px; border-radius: 6px; background: color-mix(in srgb, var(--c) 18%, var(--cell)); color: var(--label); border: 1px dashed color-mix(in srgb, var(--c) 60%, transparent); font-size: 11.500px; line-height: 14px; padding: 4px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; letter-spacing: -.05px; }
+.bd-chip .ic { margin: -2px 3px 0 0; }
+.bd-body { display: flex; position: relative; align-items: stretch; }
+.bd-col { flex: none; position: relative; border-left: .5px solid var(--sep); padding: 6px 4px 24px; box-sizing: border-box; }
+.bd-col:first-child { border-left: 0; }
 .bd-col.past { background: color-mix(in srgb, var(--fill3) 45%, transparent); }
-.bd-line { position: absolute; left: 0; right: 0; height: .5px; background: var(--sep); pointer-events: none; }
-.bd-line.half { opacity: .45; }
-.bd-now { position: absolute; left: 0; right: 0; height: 1.500px; background: var(--red); z-index: 2; pointer-events: none; }
-.bd-job { position: absolute; padding: 1px 1.500px; cursor: pointer; }
-.bd-job-in { height: 100%; border-radius: 6px; background: var(--c); color: #fff; padding: 2px 4px 2px 8px; overflow: hidden; position: relative; font-size: 12px; line-height: 14px; letter-spacing: -.1px; box-shadow: inset 4px 0 0 var(--ring, rgba(255,255,255,.28)); transition: opacity .2s; }
-.bd-job-title { font-weight: 600; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--lines, 1); word-break: break-word; }
+.bd-job { position: relative; margin-bottom: 5px; cursor: pointer; touch-action: pan-y; }
+.bd-job-in { border-radius: 9px; background: var(--c); color: #fff; padding: 6px 6px 6px 7px; overflow: hidden; position: relative; display: flex; gap: 6px; align-items: flex-start; font-size: 12.500px; line-height: 15px; letter-spacing: -.1px; box-shadow: inset 4px 0 0 var(--ring, rgba(255,255,255,.28)); transition: opacity .2s; }
+.bd-num { flex: none; width: 20px; height: 20px; margin-left: 2px; border-radius: 50%; background: rgba(255,255,255,.95); color: var(--c); font-size: 11.500px; font-weight: 800; display: grid; place-items: center; letter-spacing: 0; }
+.bd-job-main { min-width: 0; flex: 1; }
+.bd-job-title { font-weight: 600; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; word-break: break-word; }
 .bd-job-title .ic { margin: -2px 2px 0 0; }
-.bd-job-sub { font-size: 10.500px; line-height: 13px; opacity: .92; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: 0; }
+.bd-job-sub { font-size: 11px; line-height: 14px; opacity: .9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: 0; margin-top: 1px; }
 .bd-q { display: inline-block; background: #fff; color: #FF3B30; font-weight: 800; border-radius: 4px; padding: 0 4px; margin-right: 3px; font-size: 11px; line-height: 13px; }
 .bd-job.completed .bd-job-in, .bd-job.skipped .bd-job-in { opacity: .5; }
 .bd-job.skipped .bd-job-title { text-decoration: line-through; }
 .bd-job.arrived .bd-job-in { outline: 2px solid var(--label); outline-offset: -2px; }
 .bd-job.pending .bd-job-in { background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.2) 0 6px, transparent 6px 12px); }
-.bd-job.dragging .bd-job-in { opacity: .3; }
+.bd-job.dragging { opacity: .25; }
 .bd-job.flash .bd-job-in { animation: bd-flash 1.800s ease-out; }
 @keyframes bd-flash { 0%, 40% { box-shadow: 0 0 0 4px var(--yellow), inset 4px 0 0 var(--ring, rgba(255,255,255,.28)); transform: scale(1.04); } 100% { transform: none; } }
-.bd-ghost { z-index: 10; pointer-events: none; }
+.bd-add { display: flex; align-items: center; justify-content: center; gap: 4px; height: 34px; border-radius: 9px; border: 1px dashed var(--sep); color: var(--label3); font-size: 12px; cursor: pointer; letter-spacing: 0; }
+.bd-empty { text-align: center; color: var(--label3); font-size: 12px; padding: 14px 4px 10px; letter-spacing: 0; }
+.bd-ins { position: absolute; height: 3px; border-radius: 2px; background: var(--tint); z-index: 9; pointer-events: none; }
+.bd-ins::before { content: ''; position: absolute; left: -3px; top: -3px; width: 9px; height: 9px; border-radius: 50%; background: var(--tint); }
+.bd-ghost { position: absolute; z-index: 10; pointer-events: none; margin: 0; }
 .bd-ghost .bd-job-in { box-shadow: 0 10px 26px rgba(0,0,0,.35), inset 4px 0 0 var(--ring, rgba(255,255,255,.28)); transform: scale(1.03); opacity: .95; }
 .bd-month { flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--cell); border-top: .5px solid var(--sep); }
 .bd-mhead { display: grid; grid-template-columns: repeat(7, 1fr); font-size: 11px; color: var(--label2); text-align: center; padding: 4px 0; flex: none; letter-spacing: 0; }
@@ -78,9 +79,8 @@ WD.css(`
 .bd-cal-grid button.other { color: var(--label3); }
 `);
 
-let page = null, scroller = null, saved = { top: null, left: 0 }, layout = { cols: [], colW: 100 }, drag = null, flashId = null;
-const Y = m => PAD + (m - START) / 60 * S.board.hourH;
-const boardSort = (a, b) => (b.allDay - a.allDay) || (a.start - b.start) || a.id.localeCompare(b.id, undefined, { numeric: true });
+let page = null, scroller = null, saved = { top: null, left: 0 }, layout = { cols: [], colW: 100 }, drag = null, flashId = null, revealId = null;
+const boardSort = q.order;
 const jobsScreen = () => WD.screens.jobs || {};
 
 function columns() {
@@ -89,7 +89,7 @@ function columns() {
   return q.visibleRoutes().map(r => ({ routeId: r.id, day: b.day, title: q.routeName(r), color: q.routeColor(r), today: b.day === D.today() }));
 }
 function step(n) { const b = S.board; if (b.mode === 'month') { const d = D.parse(b.day); d.setDate(1); d.setMonth(d.getMonth() + n); b.day = D.key(d); } else b.day = D.add(b.day, n); keep(undefined, 0); refresh(); }
-/** Choose the scroll position for the next render (undefined = stay where we are, null = jump to now). */
+/** Choose the scroll position for the next render (undefined = stay where we are, null = back to the top). */
 function keep(top, left) { const live = scroller && scroller.isConnected; saved = { top: top === undefined ? (live ? scroller.scrollTop : saved.top) : top, left: left === undefined ? (live ? scroller.scrollLeft : saved.left) : left }; scroller = null; }
 function refresh() { if (page && page.el.isConnected) page.refresh(); }
 
@@ -119,9 +119,6 @@ function boardMenu(anchor) {
     WD.can('jobs.edit') && { label: 'AutoRoute a route…', icon: 'sparkles', onTap: () => jobsScreen().openAutoRoute && jobsScreen().openAutoRoute() },
     { label: 'Pending changes' + (n ? ' (' + n + ')' : ''), icon: 'sync', onTap: () => WD.screens.settings && WD.screens.settings.openPending && WD.screens.settings.openPending() },
     { label: 'Refresh', icon: 'arrow.clockwise', onTap: async () => { if (S.offline) return ui.toast('Offline — showing saved jobs', 'wifi.slash'); ui.toast('Checking for changes…'); await WD.delay(900, 1400); ui.toast('Up to date', 'checkmark'); } },
-    'divider',
-    { label: 'Fit whole day', icon: 'arrow.up.right', onTap: () => { b.hourH = fitHeight(); keep(0); refresh(); } },
-    { label: 'Zoom in', icon: 'plus', onTap: () => zoomTo(b.hourH * 1.35) }, { label: 'Zoom out', icon: 'minus', onTap: () => zoomTo(b.hourH / 1.35) },
   ]);
 }
 function modeRow() {
@@ -142,58 +139,41 @@ function statusStrip() {
   return h('div.bd-strip', { style: { '--c': 'var(--gray)' }, onclick: open }, ui.spinner(14), 'Syncing ' + n + (n === 1 ? ' change…' : ' changes…'));
 }
 
-/* ---------- Timeline grid ---------- */
-function fitHeight() { const head = scroller ? scroller.querySelector('.bd-head') : null, avail = (scroller ? scroller.clientHeight : 560) - (head ? head.offsetHeight : 30) - PAD * 2 - 2; return Math.max(30, avail / ((END - START) / 60)); }
-function zoomTo(v, anchorY) {
-  const b = S.board, old = b.hourH, head = scroller.querySelector('.bd-head').offsetHeight, y = anchorY == null ? scroller.clientHeight / 2 : anchorY;
-  const next = clamp(v, fitHeight(), 170); if (Math.abs(next - old) < .2) return;
-  const t = (scroller.scrollTop + y - head - PAD) / old; b.hourH = next;
-  saved = { top: Math.max(0, t * next + head + PAD - y), left: scroller.scrollLeft }; scroller = null; refresh();
-}
-function lanes(jobs) {
-  const out = []; let group = [], groupEnd = -1;
-  const flush = () => { const ends = [], lane = new Map(); group.forEach(j => { let i = ends.findIndex(e => e <= j.start); if (i < 0) { i = ends.length; ends.push(0); } ends[i] = j.start + Math.max(j.dur, 20); lane.set(j, i); }); group.forEach(j => out.push({ job: j, lane: lane.get(j), count: ends.length })); group = []; };
-  jobs.forEach(j => { if (group.length && j.start >= groupEnd) flush(); group.push(j); groupEnd = Math.max(groupEnd, j.start + Math.max(j.dur, 20)); });
-  if (group.length) flush(); return out;
-}
-function cell(job, lane, count) {
-  const hH = S.board.hourH, type = q.jobType(job.type), height = Math.max(job.dur / 60 * hH, 19), lines = Math.max(1, Math.floor((height - 5 - (height > 44 ? 13 : 0)) / 14));
-  const st = { enroute: 'truck', arrived: 'mappin', completed: 'checkmark', skipped: 'xmark' }[job.status];
-  const sub = job.eta ? 'ETA ' + fmt.time(job.eta.from, true) + '–' + fmt.time(job.eta.to) : fmt.time(job.start, true) + '–' + fmt.time(job.start + job.dur);
-  const el = h('div.bd-job.' + job.status + (job.pending ? '.pending' : '') + (drag && drag.job.id === job.id ? '.dragging' : '') + (flashId === job.id ? '.flash' : ''),
-    { 'data-job': job.id, style: { top: Y(job.start) + 'px', height: height + 'px', left: lane / count * 100 + '%', width: 100 / count + '%', '--c': q.routeColor(job.routeId), '--ring': type.color } },
-    h('div.bd-job-in', h('div.bd-job-title', { style: { '--lines': Math.min(lines, 3) } }, !job.located && job.address && job.type !== 'meet' ? h('span.bd-q', '?') : null, st && icon(st, 12), job.pending && icon('sync', 11), job.title, job.recurring && height > 30 ? h('span', { style: 'opacity:.8;font-weight:400' }, ' ↻') : null),
-      height > 44 && h('div.bd-job-sub', sub), height > 76 && job.address && h('div.bd-job-sub', job.address.split(',')[0])));
-  return el;
+/* ---------- Ordered lists ---------- */
+function cell(job, number) {
+  const type = q.jobType(job.type), st = { enroute: 'truck', arrived: 'mappin', completed: 'checkmark', skipped: 'xmark' }[job.status];
+  return h('div.bd-job.' + job.status + (job.pending ? '.pending' : '') + (drag && drag.job.id === job.id ? '.dragging' : '') + (flashId === job.id ? '.flash' : ''),
+    { 'data-job': job.id, style: { '--c': q.routeColor(job.routeId), '--ring': type.color } },
+    h('div.bd-job-in', h('span.bd-num', number),
+      h('div.bd-job-main', h('div.bd-job-title', !job.located && job.address && job.type !== 'meet' ? h('span.bd-q', '?') : null, st && icon(st, 12), job.pending && icon('sync', 11), job.title, job.recurring ? h('span', { style: 'opacity:.8;font-weight:400' }, ' ↻') : null),
+        h('div.bd-job-sub', job.address ? job.address.split(',')[0] : type.title))));
 }
 function grid() {
-  const b = S.board, cols = columns(), W = page.body.clientWidth || 393, hH = b.hourH, total = (END - START) / 60 * hH + PAD * 2;
+  const b = S.board, cols = columns(), W = page.body.clientWidth || 393;
   if (!cols.length) return h('div', { style: 'flex:1;background:var(--cell);border-top:.5px solid var(--sep)' }, ui.empty({ icon: 'columns', title: 'No routes selected', text: 'Choose which routes appear on the board.', action: ui.button('Choose routes', { kind: 'tinted', block: false, small: true, onTap: (e, el) => boardMenu(el) }) }));
-  const colW = Math.floor((W - GUTTER) / Math.min(cols.length, 3)), showHead = cols.length > 1, today = D.today(), now = WD.nowMins();
+  const colW = Math.floor(W / Math.min(cols.length, 3)), showHead = cols.length > 1, today = D.today(), canEdit = WD.can('jobs.edit');
   layout = { cols, colW };
-  const allDay = cols.map(c => q.jobsFor(c.routeId, c.day).filter(j => j.allDay));
-  const head = h('div.bd-head',
-    showHead && h('div.bd-hrow', h('div.bd-corner', { style: { width: GUTTER + 'px' } }), cols.map(c => h('div.bd-colhead' + (c.today && b.mode === 'days' ? '.today' : ''), { style: { width: colW + 'px' } }, c.color && ui.dot(c.color), h('span.n', c.title)))),
-    h('div.bd-hrow', h('div.bd-corner', { style: { width: GUTTER + 'px' } }, allDay.some(a => a.length) ? 'all-day' : ''), cols.map((c, i) => h('div.bd-allday', { style: { width: colW + 'px' } },
-      allDay[i].map(j => h('div.bd-chip', { style: { '--c': q.routeColor(j.routeId) }, onclick: () => jobsScreen().openDetails && jobsScreen().openDetails(j.id) }, j.title))))));
-  const half = hH / 2 >= 21, gutter = h('div.bd-gutter', { style: { width: GUTTER + 'px', height: total + 'px' } });
-  for (let m = START; m <= END; m += half ? 30 : 60) gutter.appendChild(h('div.bd-time' + (m % 60 ? '.half' : ''), { style: { top: Y(m) + 'px' } }, m % 60 ? ':30' : fmt.time(m).replace(':00', '')));
-  if (cols.some(c => c.today) && now >= START && now <= END) gutter.appendChild(h('div.bd-nowdot', { style: { top: Y(now) + 'px' } }));
-  const body = h('div.bd-body', { style: { height: total + 'px' } }, gutter, cols.map((c, i) => {
-    const col = h('div.bd-col' + (c.day < today ? '.past' : ''), { 'data-i': i, style: { width: colW + 'px', height: total + 'px' } });
-    for (let m = START; m <= END; m += half ? 30 : 60) col.appendChild(h('div.bd-line' + (m % 60 ? '.half' : ''), { style: { top: Y(m) + 'px' } }));
-    if (c.today && now >= START && now <= END) col.appendChild(h('div.bd-now', { style: { top: Y(now) + 'px' } }));
-    lanes(q.jobsFor(c.routeId, c.day).filter(j => !j.allDay)).forEach(x => col.appendChild(cell(x.job, x.lane, x.count)));
-    return col;
+  const lists = cols.map(c => ({ notes: q.jobsFor(c.routeId, c.day).filter(j => j.allDay), stops: q.stopList(c.routeId, c.day) }));
+  const head = showHead && h('div.bd-head', h('div.bd-hrow', cols.map((c, i) => h('div.bd-colhead' + (c.today && b.mode === 'days' ? '.today' : ''), { style: { width: colW + 'px' } },
+    c.color && ui.dot(c.color), h('span.n', c.title), h('span.c', lists[i].stops.length)))));
+  const body = h('div.bd-body', cols.map((c, i) => {
+    const { notes, stops } = lists[i];
+    return h('div.bd-col' + (c.day < today ? '.past' : ''), { 'data-i': i, style: { width: colW + 'px' } },
+      notes.map(j => h('div.bd-chip', { style: { '--c': q.routeColor(j.routeId) }, onclick: () => jobsScreen().openDetails && jobsScreen().openDetails(j.id) }, icon('note', 11), j.title)),
+      stops.map((j, n) => cell(j, n + 1)),
+      !stops.length && h('div.bd-empty', 'No stops'),
+      canEdit && h('div.bd-add', { 'data-add': i }, icon('plus', 13), 'Add stop'));
   }));
-  const el = scroller = h('div.bd-scroll', h('div.bd-content', { style: { width: GUTTER + colW * cols.length + 'px' } }, head, body));
+  const el = scroller = h('div.bd-scroll', h('div.bd-content', { style: { width: colW * cols.length + 'px' } }, head, body));
   el.addEventListener('pointerdown', onPointerDown);
-  el.addEventListener('wheel', e => { if (!(e.ctrlKey || e.metaKey)) return; e.preventDefault(); zoomTo(S.board.hourH * Math.exp(-e.deltaY * 0.012), ui.localPoint(e, el).y); }, { passive: false });
-  let gestureBase = 0; el.addEventListener('gesturestart', e => { e.preventDefault(); gestureBase = S.board.hourH; });
-  el.addEventListener('gesturechange', e => { e.preventDefault(); zoomTo(gestureBase * e.scale); });
   el.addEventListener('touchmove', e => { if (drag) e.preventDefault(); }, { passive: false });
-  const top = saved.top, left = saved.left;
-  requestAnimationFrame(() => { if (!el.isConnected) return; el.scrollTop = top == null ? Math.max(0, Y(b.day === today ? now - 100 : 7 * 60 + 30)) : top; el.scrollLeft = left; if (drag) { el.querySelector('.bd-body').appendChild(drag.ghost); dragMove(drag.last); } });
+  const top = saved.top, left = saved.left, reveal = revealId; revealId = null;
+  requestAnimationFrame(() => {
+    if (!el.isConnected) return; el.scrollTop = top == null ? 0 : top; el.scrollLeft = left;
+    const target = reveal && el.querySelector('.bd-job[data-job="' + reveal + '"]');
+    if (target) { const r = target.getBoundingClientRect(), box = el.getBoundingClientRect(); if (r.bottom > box.bottom - 10 || r.top < box.top + 30) el.scrollTop += r.top - box.top - box.height / 3; const cx = r.left - box.left; if (cx < 0 || cx + r.width > box.width) el.scrollLeft += cx - 4; }
+    if (drag) { el.querySelector('.bd-body').append(drag.ghost, drag.ins); dragMove(drag.last); }
+  });
   if (flashId) setTimeout(() => { flashId = null; }, 1900);
   return el;
 }
@@ -201,7 +181,7 @@ function grid() {
 /* ---------- Tap, swipe and drag ---------- */
 function onPointerDown(e) {
   if (e.button > 0 || e.target.closest('.bd-chip') || drag) return;
-  const cellEl = e.target.closest('.bd-job'), colEl = e.target.closest('.bd-col'), sx = e.clientX, sy = e.clientY, touch = e.pointerType === 'touch', el = scroller;
+  const cellEl = e.target.closest('.bd-job'), colEl = e.target.closest('.bd-col'), addEl = e.target.closest('.bd-add'), sx = e.clientX, sy = e.clientY, touch = e.pointerType === 'touch', el = scroller;
   const job = cellEl && q.job(cellEl.dataset.job), canDrag = job && WD.can('jobs.edit') && !job.pending && (job.status === 'scheduled' || job.status === 'enroute');
   let moved = false, active = false, timer = null;
   const begin = ev => { active = true; startDrag(job, cellEl, ev); };
@@ -214,38 +194,41 @@ function onPointerDown(e) {
   const up = ev => {
     cleanup(); if (active) return dragEnd();
     const dx = ev.clientX - sx, dy = ev.clientY - sy;
-    if (!moved) { if (job) jobsScreen().openDetails && jobsScreen().openDetails(job.id); else if (colEl && WD.can('jobs.edit')) tapEmpty(ev, colEl); }
+    if (!moved) { if (job) jobsScreen().openDetails && jobsScreen().openDetails(job.id); else if (colEl && WD.can('jobs.edit') && (addEl || !e.target.closest('.bd-empty'))) addStop(colEl); }
     else if (!job && Math.abs(dx) > 70 && Math.abs(dy) < 45 && (dx < 0 ? el.scrollLeft >= el.scrollWidth - el.clientWidth - 2 : el.scrollLeft <= 2)) step(dx < 0 ? 1 : -1);
   };
-  const cancel = () => { cleanup(); if (active) { drag.ghost.remove(); drag = null; refresh(); } };
+  const cancel = () => { cleanup(); if (active) { drag.ghost.remove(); drag.ins.remove(); drag = null; refresh(); } };
   document.addEventListener('pointermove', move); document.addEventListener('pointerup', up); document.addEventListener('pointercancel', cancel);
 }
-function tapEmpty(ev, colEl) {
-  const c = layout.cols[+colEl.dataset.i], y = ui.localPoint(ev, colEl).y, m = clamp(Math.floor((START + (y - PAD) / S.board.hourH * 60) / 30) * 30, START, END - 30);
-  jobsScreen().openEditor && jobsScreen().openEditor({ day: c.day, routeId: c.routeId, start: m });
-}
+/** Tapping a column's empty space (or its Add stop button) adds a job at the end of that list. */
+function addStop(colEl) { const c = layout.cols[+colEl.dataset.i]; jobsScreen().openEditor && jobsScreen().openEditor({ day: c.day, routeId: c.routeId }); }
 function startDrag(job, cellEl, ev) {
-  const type = q.jobType(job.type), when = h('div.bd-job-sub');
-  const ghost = h('div.bd-job.bd-ghost', { style: { '--c': q.routeColor(job.routeId), '--ring': type.color } }, h('div.bd-job-in', h('div.bd-job-title', job.title), when));
-  drag = { job, ghost, when, grabY: ui.localPoint(ev, cellEl).y, last: ev, target: null, edge: 0, edgeAt: 0 };
-  cellEl.classList.add('dragging'); scroller.querySelector('.bd-body').appendChild(ghost); dragMove(ev); autoScroll();
+  const r = cellEl.getBoundingClientRect(), ghost = cellEl.cloneNode(true); ghost.classList.remove('dragging', 'flash'); ghost.classList.add('bd-ghost');
+  drag = { job, ghost, ins: h('div.bd-ins'), grabY: ev.clientY - r.top, height: r.height, last: ev, target: null, edge: 0, edgeAt: 0 };
+  cellEl.classList.add('dragging'); scroller.querySelector('.bd-body').append(ghost, drag.ins); dragMove(ev); autoScroll();
 }
+/** The list slot under the pointer: column i and 0-based index among that list's other jobs. Finished and in-progress stops stay ahead of it. */
 function dragMove(ev) {
   if (!drag || !scroller) return; drag.last = ev;
   const body = scroller.querySelector('.bd-body'), { cols, colW } = layout, job = drag.job, p = ui.localPoint(ev, body);
-  const i = clamp(Math.floor((p.x - GUTTER) / colW), 0, cols.length - 1), m = clamp(Math.round((START + (p.y - PAD - drag.grabY) / S.board.hourH * 60) / 15) * 15, START, END - job.dur);
-  drag.target = { routeId: cols[i].routeId, day: cols[i].day, start: m };
-  Object.assign(drag.ghost.style, { left: GUTTER + i * colW + 'px', width: colW + 'px', top: Y(m) + 'px', height: Math.max(job.dur / 60 * S.board.hourH, 30) + 'px' });
+  const i = clamp(Math.floor(p.x / colW), 0, cols.length - 1), colEl = body.children[i]; if (!colEl) return;
+  const cards = [...colEl.querySelectorAll('.bd-job')].filter(c => c.dataset.job !== job.id), list = cards.map(c => q.job(c.dataset.job));
+  let index = cards.findIndex(c => p.y < c.offsetTop + c.offsetHeight / 2); if (index < 0) index = cards.length;
+  const locked = list.reduce((n, j, k) => j && !['scheduled', 'enroute'].includes(j.status) ? k + 1 : n, 0); index = Math.max(index, locked);
+  drag.target = { routeId: cols[i].routeId, day: cols[i].day, index };
+  const y = index < cards.length ? cards[index].offsetTop - 3 : cards.length ? cards[cards.length - 1].offsetTop + cards[cards.length - 1].offsetHeight + 1 : colEl.querySelector('.bd-chip:last-of-type') ? colEl.querySelector('.bd-chip:last-of-type').offsetTop + colEl.querySelector('.bd-chip:last-of-type').offsetHeight + 2 : PAD - 2;
+  Object.assign(drag.ins.style, { left: i * colW + 8 + 'px', width: colW - 14 + 'px', top: y + 'px' });
+  Object.assign(drag.ghost.style, { left: i * colW + 4 + 'px', width: colW - 8 + 'px', top: p.y - drag.grabY + 'px' });
   drag.ghost.style.setProperty('--c', q.routeColor(cols[i].routeId));
-  drag.when.textContent = fmt.time(m) + (cols[i].routeId !== job.routeId ? ' · ' + q.routeName(cols[i].routeId) : cols[i].day !== job.day ? ' · ' + fmt.day(cols[i].day) : '');
+  const num = drag.ghost.querySelector('.bd-num'); if (num) num.textContent = index + 1;
 }
 function autoScroll() {
   if (!drag) return;
   const el = scroller, ev = drag.last;
   if (el && ev) {
-    const p = ui.localPoint(ev, el), headH = el.querySelector('.bd-head').offsetHeight, t = Date.now();
+    const p = ui.localPoint(ev, el), headEl = el.querySelector('.bd-head'), headH = headEl ? headEl.offsetHeight : 0, t = Date.now();
     if (p.y > el.clientHeight - 44) el.scrollTop += 9; else if (p.y < headH + 36) el.scrollTop -= 9;
-    const side = p.x > el.clientWidth - 24 ? 1 : p.x < GUTTER + 14 ? -1 : 0, canScroll = side > 0 ? el.scrollLeft < el.scrollWidth - el.clientWidth - 1 : side < 0 ? el.scrollLeft > 0 : false;
+    const side = p.x > el.clientWidth - 24 ? 1 : p.x < 18 ? -1 : 0, canScroll = side > 0 ? el.scrollLeft < el.scrollWidth - el.clientWidth - 1 : side < 0 ? el.scrollLeft > 0 : false;
     if (side && canScroll) { el.scrollLeft += side * 9; drag.edge = 0; }
     else if (side) { if (drag.edge !== side) { drag.edge = side; drag.edgeAt = t; } else if (t - drag.edgeAt > 850) { drag.edgeAt = t; S.board.day = D.add(S.board.day, side); saved = { top: el.scrollTop, left: el.scrollLeft }; scroller = null; refresh(); } }
     else drag.edge = 0;
@@ -253,7 +236,7 @@ function autoScroll() {
   }
   requestAnimationFrame(autoScroll);
 }
-function dragEnd() { const { job, target, ghost } = drag; ghost.remove(); drag = null; refresh(); if (target) dropped(job, target); }
+function dragEnd() { const { job, target, ghost, ins } = drag; ghost.remove(); ins.remove(); drag = null; refresh(); if (target) dropped(job, target); }
 
 const SCOPES = ['This job', 'This and following jobs', 'All jobs'];
 /** Other occurrences of a recurring job covered by a scope (excluding the job itself). */
@@ -263,23 +246,22 @@ function seriesJobs(job, scope) {
 }
 WD.boardHelpers = { SCOPES, seriesJobs };
 async function dropped(job, t) {
-  const routeChanged = t.routeId !== job.routeId, dayChanged = t.day !== job.day; if (!routeChanged && !dayChanged && t.start === job.start) return;
-  const when = fmt.day(t.day) + ' at ' + fmt.time(t.start), me = S.me.name;
-  const others = q.jobsFor(t.routeId, t.day).filter(j => j.id !== job.id && !j.allDay && j.status === 'scheduled'), shifts = [];
-  if (S.board.pushDown) { let cursor = t.start + job.dur; others.filter(j => j.start + j.dur > t.start).forEach(j => { if (j.start < cursor) { shifts.push({ job: j, start: cursor }); cursor += j.dur; } else cursor = Math.max(cursor, j.start + j.dur); }); }
-  let scope, kind = 'edit';
+  const routeChanged = t.routeId !== job.routeId, dayChanged = t.day !== job.day, pos = q.position(job);
+  if (!routeChanged && !dayChanged && t.index === pos.n - 1) return;
+  const where = 'Stop ' + (t.index + 1) + ' on ' + (routeChanged ? q.routeName(t.routeId) : 'the list') + (dayChanged ? ' · ' + fmt.day(t.day) : ''), me = S.me.name;
+  let scope = 'This job', kind = 'edit';
   if (routeChanged) { kind = 'reassign';
-    scope = await ui.actionSheet({ title: 'Reassign ' + job.title + ' to ' + q.routeName(t.routeId) + '?', message: when + '. The job keeps its duration.' + (shifts.length ? ' ' + shifts.length + ' overlapping job(s) on that route will shift later.' : ''), buttons: job.recurring ? SCOPES.map(s => ({ label: s })) : [{ label: 'Reassign job', value: 'This job' }] });
-  } else if (shifts.length) { kind = 'batch';
-    scope = await ui.actionSheet({ title: 'Move job and shift overlapping jobs?', message: 'Move ' + job.title + ' to ' + when + ' and shift ' + shifts.length + ' job(s) later. Durations stay the same. Only these occurrences change.', buttons: [{ label: 'Move and shift jobs', value: 'This job' }] });
-  } else scope = await ui.actionSheet({ title: 'Change job time?', message: when, buttons: job.recurring && !dayChanged ? [{ label: 'This job' }, { label: 'All jobs' }] : [{ label: 'Change time', value: 'This job' }] });
-  if (!scope) return;
-  const series = seriesJobs(job, scope);
-  api.op({ kind, title: job.title, scope: shifts.length && !routeChanged ? 'Grouped schedule change · ' + (shifts.length + 1) + ' jobs' : scope, jobIds: [job.id, ...shifts.map(s => s.job.id), ...series.map(j => j.id)], apply() {
-    const from = job.start; job.routeId = t.routeId; job.day = t.day; job.start = t.start; if (job.eta) job.eta = null;
-    job.events.push({ at: +WD.now(), actor: me, text: routeChanged ? 'Reassigned to ' + q.routeName(t.routeId) + ' · ' + fmt.time(t.start) : 'Moved to ' + when });
-    shifts.forEach(s => { s.job.start = s.start; s.job.events.push({ at: +WD.now(), actor: me, text: 'Shifted to ' + fmt.time(s.start) + ' (push down)' }); });
-    series.forEach(j => { if (routeChanged) j.routeId = t.routeId; j.start += t.start - from; });
+    scope = await ui.actionSheet({ title: 'Reassign ' + job.title + ' to ' + q.routeName(t.routeId) + '?', message: where + '.' + (job.recurring ? ' Other visits in the series go to the end of that route’s list.' : ''), buttons: job.recurring ? SCOPES.map(s => ({ label: s })) : [{ label: 'Reassign job', value: 'This job' }] });
+    if (!scope) return;
+  } else if (dayChanged) {
+    scope = await ui.actionSheet({ title: 'Move ' + job.title + ' to ' + fmt.day(t.day) + '?', message: where + '. Only this visit changes.', buttons: [{ label: 'Move job', value: 'This job' }] });
+    if (!scope) return;
+  }
+  const series = routeChanged ? seriesJobs(job, scope) : [];
+  api.op({ kind, title: job.title, scope: routeChanged || dayChanged ? scope : 'Reordered · stop ' + pos.n + ' → ' + (t.index + 1), jobIds: [job.id, ...series.map(j => j.id)], apply() {
+    WD.placeJob(job, t.routeId, t.day, t.index);
+    job.events.push({ at: +WD.now(), actor: me, text: routeChanged ? 'Reassigned to ' + q.routeName(t.routeId) + ' · stop ' + job.seq : dayChanged ? 'Moved to ' + fmt.day(t.day) + ' · stop ' + job.seq : 'Moved to stop ' + job.seq });
+    series.forEach(j => WD.placeJob(j, t.routeId, j.day, Infinity));
   } });
   flashId = job.id;
 }
@@ -312,7 +294,6 @@ function pickDate() {
 /* ---------- Page ---------- */
 function render(p) {
   page = p; const b = S.board;
-  if (!b.hourH) b.hourH = 66;
   if (scroller && scroller.isConnected) saved = { top: scroller.scrollTop, left: scroller.scrollLeft };
   if (!q.route(b.routeId)) { const mine = data.routes.find(r => r.driverId === S.me.id); b.routeId = (mine || q.visibleRoutes()[0] || q.routes()[0]).id; }
   return [topBar(), modeRow(), statusStrip(), b.mode === 'month' ? monthView() : grid()];
@@ -320,14 +301,13 @@ function render(p) {
 WD.screens.board = {
   root: () => ({ title: 'Dispatch', navbar: false, noScroll: true, live: false, render, onChange: p => { if (!drag) p.refresh(); }, onReappear: p => p.refresh() }),
   /** Show a day (and optionally one job, highlighted) on the board. */
-  show(day, jobId) { S.board.day = day; if (S.board.mode === 'month') S.board.mode = 'routes'; keep(null); flashId = jobId || null; const j = jobId && q.job(jobId); if (j) { const r = q.route(j.routeId); if (r && !r.visible) r.visible = true; if (!j.allDay) keep(Math.max(0, Y(j.start) - 120)); } WD.nav.switchTab('board'); refresh(); },
+  show(day, jobId) { S.board.day = day; if (S.board.mode === 'month') S.board.mode = 'routes'; keep(null); flashId = jobId || null; const j = jobId && q.job(jobId); if (j) { const r = q.route(j.routeId); if (r && !r.visible) r.visible = true; revealId = j.id; } WD.nav.switchTab('board'); refresh(); },
 };
-WD.on('minute', () => { if (!drag && WD.nav.activeTab() === 'board' && S.board.mode !== 'month') refresh(); });
 
 WD.panel.addAction('Live update: dispatcher moves a job', () => {
-  const j = data.jobs.filter(x => x.day === D.today() && x.status === 'scheduled' && !x.allDay && !x.pending && q.route(x.routeId).visible).sort((a, b) => a.start - b.start)[1]; if (!j) return;
-  j.start += 30; j.version++; j.events.push({ at: +WD.now(), actor: 'Priya Raman', text: 'Moved to ' + fmt.time(j.start) }); flashId = j.id; WD.changed();
-  ui.banner({ title: 'Priya Raman', text: 'Moved ' + j.title + ' to ' + fmt.time(j.start) + ' on ' + q.routeName(j.routeId), icon: 'calendar', color: q.routeColor(j.routeId), onTap: () => jobsScreen().openDetails && jobsScreen().openDetails(j.id) });
+  const j = data.jobs.filter(x => x.day === D.today() && x.status === 'scheduled' && !x.allDay && !x.pending && q.route(x.routeId).visible).sort(q.order).find(x => q.position(x).n < q.position(x).of); if (!j) return;
+  WD.placeJob(j, j.routeId, j.day, q.position(j).n + 1); j.version++; j.events.push({ at: +WD.now(), actor: 'Priya Raman', text: 'Moved to stop ' + j.seq }); flashId = j.id; WD.changed();
+  ui.banner({ title: 'Priya Raman', text: 'Moved ' + j.title + ' to stop ' + j.seq + ' on ' + q.routeName(j.routeId), icon: 'calendar', color: q.routeColor(j.routeId), onTap: () => jobsScreen().openDetails && jobsScreen().openDetails(j.id) });
 });
 const go = mode => () => { S.board.mode = mode; S.board.day = D.today(); keep(null, 0); WD.nav.switchTab('board'); refresh(); };
 WD.panel.addJump('Board: routes', go('routes')); WD.panel.addJump('Board: one route', go('days')); WD.panel.addJump('Month', go('month'));

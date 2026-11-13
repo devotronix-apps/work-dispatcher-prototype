@@ -149,7 +149,7 @@ function gen(c) {
 data.customers.forEach(gen);
 
 /* Billing mirror: invoices from completed jobs, older paid history, and an overdue invoice for any balance due. */
-const addInvoice = o => { const j = o.jobId && q.job(o.jobId), inv = { id: 'inv' + (++invSeq), payments: [], at: stamp(o.day, j ? (j.departedAt != null ? j.departedAt : j.start + j.dur) + 40 : 9 * 60), ...o }; data.invoices.push(inv); return inv; };
+const addInvoice = o => { const j = o.jobId && q.job(o.jobId), inv = { id: 'inv' + (++invSeq), payments: [], at: stamp(o.day, j ? (j.departedAt != null ? j.departedAt : 8 * 60 + (j.seq || 1) * 40) + 40 : 9 * 60), ...o }; data.invoices.push(inv); return inv; };
 const addPayment = (inv, when, method) => { const pay = { id: 'pay' + (++paySeq), invoiceId: inv.id, customerId: inv.customerId, at: when, amount: inv.amount, method }; data.payments.push(pay); inv.payments.push(pay.id); return pay; };
 const methodFor = c => c.type === 'creditCard' ? 'Card on file (Stripe)' : pick(['Check', 'ACH transfer', 'Card (Stripe)']);
 data.jobs.forEach(j => { if (j.invoice && j.customerId) addInvoice({ number: j.invoice.number, customerId: j.customerId, jobId: j.id, day: j.day, amount: j.invoice.amount, status: j.invoice.status, auto: !!j.invoice.auto }); });
@@ -183,7 +183,7 @@ data.mergeSuggestions = [
 function timeline(cid) {
   const out = data.interactions.filter(i => i.customerId === cid);
   q.jobsForCustomer(cid).forEach(j => { if (j.status !== 'completed' && j.status !== 'skipped') return; const r = q.route(j.routeId), drv = q.driverFor(j.routeId);
-    out.push({ id: 'job-' + j.id, type: 'job', customerId: cid, jobId: j.id, at: stamp(j.day, j.departedAt != null ? j.departedAt : j.start + 5), title: j.status === 'completed' ? 'Service completed' : 'Stop skipped', snippet: j.title + (j.containers ? ' · ' + j.containers : ''), who: q.routeName(r) + (drv ? ' · ' + drv.name : '') }); });
+    out.push({ id: 'job-' + j.id, type: 'job', customerId: cid, jobId: j.id, at: stamp(j.day, j.departedAt != null ? j.departedAt : 8 * 60 + (j.seq || 1) * 40), title: j.status === 'completed' ? 'Service completed' : 'Stop skipped', snippet: j.title + (j.containers ? ' · ' + j.containers : ''), who: q.routeName(r) + (drv ? ' · ' + drv.name : '') }); });
   if (WD.can('billing.view')) {
     data.invoices.forEach(inv => { if (inv.customerId === cid) out.push({ id: 'inv-' + inv.id, type: 'invoice', customerId: cid, invoiceId: inv.id, at: inv.at, title: 'Invoice ' + inv.number + (inv.auto ? ' auto-charged' : ' sent'), snippet: fmt.money(inv.amount) + ' · ' + inv.status, who: 'Invoice Ninja' }); });
     data.payments.forEach(pay => { if (pay.customerId !== cid) return; const inv = data.invoices.find(x => x.id === pay.invoiceId); out.push({ id: 'pay-' + pay.id, type: 'payment', customerId: cid, invoiceId: pay.invoiceId, at: pay.at, title: 'Payment received', snippet: fmt.money(pay.amount) + ' · ' + pay.method, who: inv ? inv.number : '' }); });
@@ -423,7 +423,7 @@ function editLocation(cid, lid) {
       ui.section('Access notes', ui.inputRow({ placeholder: 'Gate codes, where to park, who to ask for', multiline: true, value: f.notes, onInput: v => { f.notes = v; } }))) });
 }
 const statusBadge = j => { const s = WD.jobStatuses[j.status] || WD.jobStatuses.scheduled; return ui.badge(s.title, s.color); };
-const jobRow = j => ui.row({ title: fmt.day(j.day, 'rel') + ' · ' + (j.allDay ? 'All day' : fmt.time(j.start)), subtitle: h('span.cu-route', ui.dot(q.routeColor(j.routeId)), q.routeName(j.routeId) + ' · ' + q.jobType(j.type).title), badge: statusBadge(j), chevron: true, onTap: () => openJob(j.id) });
+const jobRow = j => ui.row({ title: fmt.day(j.day, 'rel') + ' · ' + (j.allDay ? 'Note' : 'Stop ' + q.position(j).n), subtitle: h('span.cu-route', ui.dot(q.routeColor(j.routeId)), q.routeName(j.routeId) + ' · ' + q.jobType(j.type).title), badge: statusBadge(j), chevron: true, onTap: () => openJob(j.id) });
 function jobsSections(c) {
   const jobs = q.jobsForCustomer(c.id), up = jobs.filter(isUpcoming), past = jobs.filter(j => !isUpcoming(j)).reverse();
   if (!jobs.length) return ui.section('Jobs', ui.row({ title: 'No jobs yet' }), WD.can('jobs.edit') && ui.row({ title: 'New job', tint: true, onTap: () => newJob(c.id) }));

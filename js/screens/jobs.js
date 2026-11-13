@@ -56,8 +56,8 @@ function details(job, p) {
     h('div.title2', unresolved && h('span.jb-q', '?'), h('span', job.title)),
     h('div.jb-badges', ui.badge(st.title, st.color), type.color && ui.badge(type.title, type.color), job.pending && ui.badge('Pending sync', 'var(--orange)')),
     h('div.jb-line', ui.dot(q.routeColor(route)), h('span', q.routeName(route) + (driver ? ' · ' + driver.name : '') + (vehicle ? ' · ' + vehicle.name : ''))),
-    line('clock', job.allDay ? 'All day · ' + fmt.day(job.day, 'long') : fmt.day(job.day, 'long') + ' · ' + fmt.range(job.start, job.dur)),
-    job.eta && line('timer', 'Customer ETA ' + fmt.time(job.eta.from) + ' – ' + fmt.time(job.eta.to)),
+    line('calendar', fmt.day(job.day, 'long')),
+    line('list.bullet', job.allDay ? 'Note for the day (not a stop)' : (p => 'Stop ' + p.n + ' of ' + p.of + ' on the list')(q.position(job))),
     job.recurring && line('repeat', job.recurring.rule));
 
   const setStatus = (s, note) => api.setStatus(job.id, s, note);
@@ -126,14 +126,14 @@ function openReassign(job) {
     trailing: () => [{ label: 'Reassign', bold: true, disabled: !dest, onTap: async p => {
       const ok = await ui.actionSheet({ title: 'Reassign ' + job.title + '?', message: 'To ' + q.routeName(dest) + (job.recurring ? ' · ' + scope.toLowerCase() : ''), buttons: [{ label: 'Reassign' }] }); if (!ok) return;
       const series = seriesJobs(job, scope), to = dest;
-      api.op({ kind: 'reassign', title: job.title, scope, jobIds: [job.id, ...series.map(j => j.id)], apply() { [job, ...series].forEach(j => { j.routeId = to; }); job.events.push({ at: +WD.now(), actor: S.me.name, text: 'Reassigned to ' + q.routeName(to) }); } });
+      api.op({ kind: 'reassign', title: job.title, scope, jobIds: [job.id, ...series.map(j => j.id)], apply() { [job, ...series].forEach(j => { if (!j.allDay) WD.placeJob(j, to, j.day, Infinity); else j.routeId = to; }); job.events.push({ at: +WD.now(), actor: S.me.name, text: 'Reassigned to ' + q.routeName(to) }); } });
       p.dismiss();
     } }],
     render: p => ui.list(
       ui.section('Assign to', q.routes().filter(r => r.writable && r.id !== job.routeId).map(r => { const d = q.driverFor(r.id), n = q.jobsFor(r.id, job.day).filter(j => !j.allDay).length;
         return ui.row({ leading: ui.dot(q.routeColor(r)), title: q.routeName(r), subtitle: (d ? d.name : 'No driver assigned') + ' · ' + n + (n === 1 ? ' job' : ' jobs') + ' that day', trailing: dest === r.id ? icon('checkmark', 20, 'var(--tint)') : null, onTap: () => { dest = r.id; p.refresh(); } }); })),
       job.recurring && ui.section('Apply to', SCOPES.map(s => ui.row({ title: s, trailing: scope === s ? icon('checkmark', 20, 'var(--tint)') : null, onTap: () => { scope = s; p.refresh(); } }))),
-      h('div', { style: 'margin-top:10px' }, ui.note('The job keeps its date, time, and duration.'))) }, { detent: job.recurring ? 'large' : 'medium' });
+      h('div', { style: 'margin-top:10px' }, ui.note('The job keeps its date and goes to the end of that route’s list.'))) }, { detent: job.recurring ? 'large' : 'medium' });
 }
 
 /* ================= Job editor ================= */
@@ -146,8 +146,8 @@ function ruleLabel(f) {
 }
 function openEditor(o = {}) {
   const job = o.jobId ? q.job(o.jobId) : null, isNew = !job;
-  const f = job ? { title: job.title, address: job.address, notes: job.notes, routeId: job.routeId, day: job.day, allDay: job.allDay, start: job.start, dur: job.dur, type: job.type, containers: job.containers, bizOpen: job.bizOpen, bizClose: job.bizClose, custFrom: job.custFrom, custUntil: job.custUntil, customerId: job.customerId, located: job.located, x: job.x, y: job.y, ...parseRule(job.recurring && job.recurring.rule) }
-    : { title: '', address: '', notes: '', routeId: o.routeId || (q.visibleRoutes()[0] || q.routes()[0]).id, day: o.day || S.board.day, allDay: false, start: o.start == null ? 9 * 60 : o.start, dur: 30, type: 'purge', containers: '', bizOpen: '', bizClose: '', custFrom: '', custUntil: '', customerId: null, located: false, x: null, y: null, repeat: 'none', interval: 1 };
+  const f = job ? { title: job.title, address: job.address, notes: job.notes, routeId: job.routeId, day: job.day, allDay: job.allDay, pos: (p => p.n < p.of ? p.n : 0)(q.position(job)), dur: job.dur, type: job.type, containers: job.containers, bizOpen: job.bizOpen, bizClose: job.bizClose, custFrom: job.custFrom, custUntil: job.custUntil, customerId: job.customerId, located: job.located, x: job.x, y: job.y, ...parseRule(job.recurring && job.recurring.rule) }
+    : { title: '', address: '', notes: '', routeId: o.routeId || (q.visibleRoutes()[0] || q.routes()[0]).id, day: o.day || S.board.day, allDay: false, pos: o.pos || 0, dur: 30, type: 'purge', containers: '', bizOpen: '', bizClose: '', custFrom: '', custUntil: '', customerId: null, located: false, x: null, y: null, repeat: 'none', interval: 1 };
   Object.assign(f, { ends: 'never', count: 10, until: D.add(f.day, 90), attachments: [] });
   const wasRecurring = f.repeat !== 'none';
   let page = null, matchBox = null, suggestBox = null, timer = null, dirty = false;
@@ -185,15 +185,16 @@ function openEditor(o = {}) {
         locations: [{ id: 'l' + Date.now(), label: 'Main office', address: f.address, x: f.x, y: f.y, containers: f.containers, bizOpen: f.bizOpen, bizClose: f.bizClose, notes: f.notes, located: f.located }], stats: { jobs: 0, invoiced: 0, paid: 0, balance: 0, lastService: null, firstInvoice: null, rate: 85 } };
       data.customers.push(newCustomer); f.customerId = newCustomer.id;
     }
-    const fields = { title: f.title.trim(), address: f.address.trim(), notes: f.notes, routeId: f.routeId, day: f.day, allDay: f.allDay, start: f.start, dur: f.dur, type: f.type, containers: f.containers, bizOpen: f.bizOpen, bizClose: f.bizClose, custFrom: f.custFrom, custUntil: f.custUntil, customerId: f.customerId, locationId: null, located: f.located, x: f.x, y: f.y };
+    const fields = { title: f.title.trim(), address: f.address.trim(), notes: f.notes, routeId: f.routeId, day: f.day, allDay: f.allDay, dur: f.dur, type: f.type, containers: f.containers, bizOpen: f.bizOpen, bizClose: f.bizClose, custFrom: f.custFrom, custUntil: f.custUntil, customerId: f.customerId, locationId: null, located: f.located, x: f.x, y: f.y };
     const series = job ? seriesJobs(job, scope) : [], me = S.me.name;
     api.op({ kind: isNew ? 'create' : 'edit', title: fields.title, scope: isNew ? (f.repeat === 'none' ? 'New job' : 'New recurring job') : scope, jobIds: job ? [job.id, ...series.map(j => j.id)] : [], apply() {
       const recurring = f.repeat === 'none' ? null : { rule: ruleLabel(f), seriesId: job && job.recurring && scope === 'All jobs' ? job.recurring.seriesId : 's-' + Date.now() };
       if (job) {
-        Object.assign(job, fields, { recurring: wasRecurring && scope === 'This job' ? job.recurring : recurring }); job.events.push({ at: +WD.now(), actor: me, text: 'Edited' + (scope !== 'This job' ? ' (' + scope.toLowerCase() + ')' : '') });
-        series.forEach(j => Object.assign(j, { title: fields.title, address: fields.address, notes: fields.notes, routeId: fields.routeId, start: fields.start, dur: fields.dur, allDay: fields.allDay, type: fields.type, containers: fields.containers, recurring: recurring || j.recurring }));
+        const from = { routeId: job.routeId, day: job.day }; Object.assign(job, from, fields, { routeId: from.routeId, day: from.day, recurring: wasRecurring && scope === 'This job' ? job.recurring : recurring });
+        if (fields.allDay) { job.routeId = fields.routeId; job.day = fields.day; job.seq = 0; WD.renumber(from.routeId, from.day); } else WD.placeJob(job, fields.routeId, fields.day, f.pos ? f.pos - 1 : Infinity); job.events.push({ at: +WD.now(), actor: me, text: 'Edited' + (scope !== 'This job' ? ' (' + scope.toLowerCase() + ')' : '') });
+        series.forEach(j => Object.assign(j, { title: fields.title, address: fields.address, notes: fields.notes, dur: fields.dur, allDay: fields.allDay, type: fields.type, containers: fields.containers, recurring: recurring || j.recurring })); series.forEach(j => { if (j.routeId !== fields.routeId) WD.placeJob(j, fields.routeId, j.day, Infinity); });
       } else {
-        const make = day => WD.makeJob({ ...fields, day, recurring, attachments: f.attachments.slice(), events: [{ at: +WD.now(), actor: me, text: 'Created' }] }); make(f.day);
+        const make = (day, pos) => { const j = WD.makeJob({ ...fields, day, recurring, seq: fields.allDay ? 0 : null, attachments: f.attachments.slice(), events: [{ at: +WD.now(), actor: me, text: 'Created' }] }); if (pos && !j.allDay) WD.placeJob(j, j.routeId, day, pos - 1); }; make(f.day, f.pos);
         if (recurring) { const stepDays = { daily: 1, weekly: 7, monthly: 28 }[f.repeat] * f.interval, max = f.ends === 'count' ? f.count : 60; for (let i = 1; i < max && i * stepDays <= 548; i++) { const day = D.add(f.day, i * stepDays); if (f.ends === 'until' && day > f.until) break; make(day); } }
       }
     } });
@@ -210,6 +211,12 @@ function openEditor(o = {}) {
       page = p; matchBox = h('div.jb-match'); suggestBox = h('div');
       const cust = q.customer(f.customerId), set = (k, v, re) => { f[k] = v; dirty = true; if (re) p.refresh(); };
       const unit = { daily: 'day', weekly: 'week', monthly: 'month' }[f.repeat];
+      /* No times: the job's place in that day's list decides when it is done. */
+      function positionRow() {
+        const list = q.stopList(f.routeId, f.day).filter(j => j !== job); if (f.pos > list.length) f.pos = 0;
+        const options = [{ value: 0, label: 'End of list (stop ' + (list.length + 1) + ')' }, ...list.map((j, i) => ({ value: i + 1, label: 'Stop ' + (i + 1) + ' · before ' + j.title }))];
+        return ui.pickerRow({ title: 'Position', value: f.pos, options, onChange: v => set('pos', +v, true) });
+      }
       return ui.list(
         ui.section({ header: 'Job', footer: cust ? null : 'Type a name, phone, email or address to find an existing customer.' },
           ui.inputRow({ placeholder: 'Customer or job title', value: f.title, caps: 'words', autofocus: isNew && !f.title, onInput: v => { f.title = v; dirty = true; syncSave(); lookup(v); } }),
@@ -219,18 +226,17 @@ function openEditor(o = {}) {
           ui.inputRow({ icon: 'mappin', placeholder: 'Street address or any text', value: f.address, onInput: v => { f.address = v; f.x = null; f.located = false; dirty = true; suggest(v); if (!f.title.trim()) lookup(v); } })),
         suggestBox,
         ui.section('Schedule',
-          ui.pickerRow({ title: 'Route', value: f.routeId, options: q.routes().filter(r => r.writable).map(r => ({ value: r.id, label: q.routeName(r) })), onChange: v => set('routeId', v, true) }),
-          ui.toggleRow({ title: 'All-day', value: f.allDay, onChange: v => set('allDay', v, true) }),
-          ui.dateRow({ title: 'Date', value: f.day, onChange: v => set('day', v) }),
-          !f.allDay && ui.timeRow({ title: 'Starts', value: fmt.hhmm(f.start), onChange: v => { const m = fmt.fromHHMM(v); if (m != null) set('start', m, true); } }),
-          !f.allDay && ui.timeRow({ title: 'Ends', value: fmt.hhmm(f.start + f.dur), onChange: v => { const m = fmt.fromHHMM(v); if (m != null) set('dur', Math.max(5, m - f.start), true); } })),
+          ui.pickerRow({ title: 'Route', value: f.routeId, options: q.routes().filter(r => r.writable).map(r => ({ value: r.id, label: q.routeName(r) })), onChange: v => { f.pos = 0; set('routeId', v, true); } }),
+          ui.dateRow({ title: 'Date', value: f.day, onChange: v => { f.pos = 0; set('day', v, true); } }),
+          ui.toggleRow({ title: 'Note only', subtitle: 'Shows at the top of the day, not as a stop', value: f.allDay, onChange: v => set('allDay', v, true) }),
+          !f.allDay && positionRow()),
         ui.section({ header: 'Repeat', footer: f.repeat === 'none' ? null : ruleLabel(f) + '. Each visit is created ahead of time for the next 18 months.' },
           ui.pickerRow({ title: 'Repeat', value: f.repeat, options: REPEATS, onChange: v => set('repeat', v, true) }),
           f.repeat !== 'none' && ui.row({ title: 'Every', detail: f.interval + ' ' + unit + (f.interval > 1 ? 's' : ''), trailing: ui.stepper(f.interval, 1, 12, v => set('interval', v, true)) }),
           f.repeat !== 'none' && ui.pickerRow({ title: 'Ends', value: f.ends, options: [{ value: 'never', label: 'Never' }, { value: 'count', label: 'After a number of visits' }, { value: 'until', label: 'On a date' }], onChange: v => set('ends', v, true) }),
           f.repeat !== 'none' && f.ends === 'count' && ui.row({ title: 'Visits', detail: f.count, trailing: ui.stepper(f.count, 1, 60, v => set('count', v, true)) }),
           f.repeat !== 'none' && f.ends === 'until' && ui.dateRow({ title: 'Last visit by', value: f.until, onChange: v => set('until', v) })),
-        ui.section({ header: 'Service', footer: f.type === 'creditCard' ? 'Card-on-file jobs are charged automatically when the stop is completed.' : 'AutoRoute keeps arrivals inside these windows.' },
+        ui.section({ header: 'Service', footer: f.type === 'creditCard' ? 'Card-on-file jobs are charged automatically when the stop is completed.' : 'AutoRoute orders the list so stops fall inside these hours.' },
           ui.pickerRow({ title: 'Job type', value: f.type, options: WD.jobTypes.map(t => ({ value: t.id, label: t.title })), onChange: v => set('type', v, true) }),
           ui.inputRow({ label: 'Containers', placeholder: 'e.g. 2 consoles', value: f.containers, onInput: v => set('containers', v) }),
           ui.timeRow({ title: 'Business opens', value: f.bizOpen, onChange: v => set('bizOpen', v) }), ui.timeRow({ title: 'Business closes', value: f.bizClose, onChange: v => set('bizClose', v) }),
@@ -253,7 +259,7 @@ function openSearch() {
       return box.replaceChildren(found.length ? ui.list(ui.section(found.length + (found.length === 1 ? ' customer' : ' customers'), found.map(m => ui.row({ leading: ui.avatar(m.customer.name, { size: 36 }), title: m.customer.name, subtitle: m.match, chevron: true, onTap: () => guard('customers', 'openDetail', m.customer.id) }))))
         : ui.empty({ icon: 'magnifyingglass', title: 'No customers', text: 'Nothing matches “' + s + '”.' })); }
     const found = q.searchJobs(s, routeIds()).slice(0, 40), today = D.today(), groups = [['Today', j => j.day === today], ['Upcoming', j => j.day > today], ['Past', j => j.day < today]];
-    box.replaceChildren(found.length ? ui.list(groups.map(([name, test]) => ui.section(name, found.filter(test).map(j => ui.row({ leading: ui.dot(q.routeColor(j.routeId)), title: j.title, subtitle: fmt.day(j.day) + (j.allDay ? ' · all day' : ' · ' + fmt.time(j.start)) + ' · ' + q.routeName(j.routeId), trailing: icon(WD.jobStatuses[j.status].icon, 18, WD.jobStatuses[j.status].color), onTap: () => openDetails(j.id) })))))
+    box.replaceChildren(found.length ? ui.list(groups.map(([name, test]) => ui.section(name, found.filter(test).map(j => ui.row({ leading: ui.dot(q.routeColor(j.routeId)), title: j.title, subtitle: fmt.day(j.day) + (j.allDay ? ' · note' : ' · stop ' + q.position(j).n) + ' · ' + q.routeName(j.routeId), trailing: icon(WD.jobStatuses[j.status].icon, 18, WD.jobStatuses[j.status].color), onTap: () => openDetails(j.id) })))))
       : ui.empty({ icon: 'magnifyingglass', title: 'No jobs', text: 'Nothing on your selected routes matches “' + s + '”.' }));
   }
   function run(p) { clearTimeout(timer); loading = text.trim().length >= 2; fill(p); if (loading) timer = setTimeout(() => { loading = false; fill(p); }, 300 + Math.random() * 350); }
@@ -264,28 +270,29 @@ function openSearch() {
 }
 
 /* ================= AutoRoute ================= */
-const ETA = start => { const from = Math.floor(start / 60) * 60, w = start < 600 ? 120 : start < 780 ? 180 : 240; return { from, to: from + w }; };
+/* Reorders the remaining (unstarted, located) stops on a route's day list. There are no clock times: the result is a new order. */
 async function openAutoRoute(routeId) {
   if (!routeId) { routeId = await ui.actionSheet({ title: 'AutoRoute which route?', message: fmt.day(S.board.day, 'long'), buttons: q.visibleRoutes().map(r => ({ label: q.routeName(r), value: r.id })) }); if (!routeId) return; }
-  const day = S.board.day, route = q.route(routeId), color = q.routeColor(route), all = q.jobsFor(routeId, day).filter(j => !j.allDay), todo = all.filter(j => j.status === 'scheduled' && !j.pending);
+  const day = S.board.day, route = q.route(routeId), color = q.routeColor(route), all = q.stopList(routeId, day), todo = all.filter(j => j.status === 'scheduled' && !j.pending);
   const stops = todo.filter(j => j.located && j.x != null), skipped = todo.filter(j => !stops.includes(j));
   const done = all.filter(j => j.status !== 'scheduled' && j.located).pop(), origin = done || data.depot, drive = (a, b) => Math.round(Math.hypot(a.x - b.x, a.y - b.y) * 0.05 + 3);
-  const startAt = Math.max(day === D.today() ? WD.nowMins() + 5 : 0, done ? done.start + done.dur : 0, stops.length ? Math.min(...stops.map(j => j.start)) - 20 : 0);
-  const stages = ['Driving times from Apple Maps', 'Service averages from the whole team’s visits', 'Business and customer windows'];
+  const stages = ['Driving times from Apple Maps', 'Service averages from the whole team’s visits', 'Business and customer hours'];
   let stage = 0, plan = null;
   function build() {
-    const seq = list => { let at = origin, t = startAt, total = 0;
-      const order = list.map(j => { const d = drive(at, j), arrive = Math.ceil(Math.max(t + d, fmt.fromHHMM(j.bizOpen) || 0, fmt.fromHHMM(j.custFrom) || 0) / 5) * 5; total += d; t = arrive + j.dur; at = j; return { job: j, drive: d, start: arrive, visits: 6 + (parseInt(j.id.slice(1), 10) * 7) % 23 }; });
-      const home = drive(at, data.depot); return { order, drive: total + home, back: t + home }; };
+    const seq = list => { let at = origin, total = 0, onSite = 0;
+      const order = list.map(j => { const d = drive(at, j); total += d; onSite += j.dur; at = j; return { job: j, drive: d, was: q.position(j).n, visits: 6 + (parseInt(j.id.slice(1), 10) * 7) % 23 }; });
+      return { order, drive: total + drive(at, data.depot), onSite }; };
     const left = stops.slice(), nearest = []; let at = origin;
     while (left.length) { left.sort((a, b) => drive(at, a) - drive(at, b)); at = left.shift(); nearest.push(at); }
     const current = seq(stops), best = seq(nearest), use = best.drive < current.drive ? best : current;
-    plan = { order: use.order, driveNew: use.drive, driveOld: current.drive, back: use.back };
+    plan = { order: use.order, driveNew: use.drive, driveOld: current.drive, onSite: use.onSite };
   }
+  /** Finished and in-progress stops keep their places at the top; then the proposed order; then stops that could not be routed. */
+  const newList = () => [...all.filter(j => !todo.includes(j)), ...plan.order.map(o => o.job), ...skipped];
   const sheet = ui.sheet({ title: 'AutoRoute', live: false, leading: [{ label: 'Cancel', onTap: p => p.dismiss() }],
     trailing: () => plan && plan.order.length ? [{ label: 'Accept', bold: true, onTap: p => {
       const order = plan.order;
-      api.op({ kind: 'batch', title: q.routeName(route) + ' · AutoRoute', scope: order.length + ' jobs · all or nothing', jobIds: order.map(o => o.job.id), apply() { order.forEach(o => { o.job.start = o.start; if (!o.job.recurring) o.job.eta = ETA(o.start); o.job.events.push({ at: +WD.now(), actor: S.me.name, text: 'AutoRoute: arrive ' + fmt.time(o.start) }); }); } });
+      api.op({ kind: 'batch', title: q.routeName(route) + ' · AutoRoute', scope: order.length + ' jobs · all or nothing', jobIds: order.map(o => o.job.id), apply() { newList().forEach((j, i) => { j.seq = i + 1; }); order.forEach(o => o.job.events.push({ at: +WD.now(), actor: S.me.name, text: 'AutoRoute: moved to stop ' + o.job.seq })); } });
       p.dismiss(); ui.toast('Route accepted', 'checkmark'); guard('board', 'show', day);
     } }] : [],
     render() {
@@ -295,11 +302,12 @@ async function openAutoRoute(routeId) {
       const saved = plan.driveOld - plan.driveNew;
       return ui.list(
         ui.section(null, h('div.jb-plan', h('div.caption', q.routeName(route) + ' · ' + fmt.day(day, 'long')), h('div.big', fmt.dur(plan.driveNew) + ' driving'),
-          h('div.subhead', saved > 0 ? h('span.save', 'Saves ' + fmt.dur(saved)) : h('span.secondary', 'Already the best order'), h('span.secondary', ' · ' + plan.order.length + ' stops · back at the shop about ' + fmt.time(plan.back))))),
-        ui.section({ header: 'Proposed order', footer: 'Arrival times use driving time, the team’s recorded service averages, and the business and customer windows. One-time jobs also get a customer ETA window. Accepting changes every job together or none of them.' },
-          plan.order.map((o, i) => ui.row({ leading: h('div.jb-num', { style: { '--c': color } }, i + 1), title: o.job.title,
-            subtitle: [fmt.time(o.start) + (o.start !== o.job.start ? ' (was ' + fmt.time(o.job.start) + ')' : ''), o.drive + ' min drive', '~' + o.job.dur + ' min on site, ' + o.visits + ' visits'].join(' · ') + (o.job.recurring ? '' : ' · ETA ' + fmt.time(ETA(o.start).from) + '–' + fmt.time(ETA(o.start).to)) }))),
-        skipped.length > 0 && ui.section({ header: 'Not routed', footer: 'These keep their current time. Stops without a confirmed address never get routing coordinates.' },
+          h('div.subhead', saved > 0 ? h('span.save', 'Saves ' + fmt.dur(saved)) : h('span.secondary', 'Already the best order'), h('span.secondary', ' · ' + plan.order.length + ' stops · about ' + fmt.dur(plan.onSite) + ' on site')))),
+        ui.section({ header: 'Proposed order', footer: 'The order uses driving time, the team’s recorded service averages, and business and customer hours. Finished stops keep their places. Accepting reorders every job together or none of them.' },
+          plan.order.map(o => { const n = all.length - todo.length + plan.order.indexOf(o) + 1;
+            return ui.row({ leading: h('div.jb-num', { style: { '--c': color } }, n), title: o.job.title,
+              subtitle: [n !== o.was ? 'was stop ' + o.was : 'same place', o.drive + ' min drive', '~' + o.job.dur + ' min on site, ' + o.visits + ' visits'].join(' · ') }); })),
+        skipped.length > 0 && ui.section({ header: 'Not routed', footer: 'These move to the end of the list. Stops without a confirmed address never get routing coordinates.' },
           skipped.map(j => ui.row({ leading: h('span.jb-q', { style: 'font-size:20px;width:26px;text-align:center' }, j.address ? '?' : '–'), title: j.title, subtitle: j.address ? 'Address not found: ' + j.address : 'No address' }))));
     } });
   const page = sheet.stack.top();
@@ -308,9 +316,9 @@ async function openAutoRoute(routeId) {
 }
 
 WD.screens.jobs = { openDetails, openEditor, openReassign, openSearch, openAutoRoute };
-const firstToday = pred => data.jobs.filter(j => j.day === D.today() && !j.allDay && pred(j)).sort((a, b) => a.start - b.start)[0];
+const firstToday = pred => data.jobs.filter(j => j.day === D.today() && !j.allDay && pred(j)).sort(q.order)[0];
 WD.panel.addJump('Job details', () => { WD.nav.switchTab('board'); const j = firstToday(x => x.status === 'arrived') || firstToday(() => true); if (j) openDetails(j.id); });
-WD.panel.addJump('New job', () => { WD.nav.switchTab('board'); openEditor({ day: D.today(), routeId: 'r1', start: 14 * 60 }); });
+WD.panel.addJump('New job', () => { WD.nav.switchTab('board'); openEditor({ day: D.today(), routeId: 'r1' }); });
 WD.panel.addJump('Search', () => { WD.nav.switchTab('board'); openSearch(); });
 WD.panel.addJump('AutoRoute', () => { let day = D.add(D.today(), 1); while ([0, 6].includes(D.parse(day).getDay())) day = D.add(day, 1); guard('board', 'show', day); openAutoRoute('r1'); });
 })();

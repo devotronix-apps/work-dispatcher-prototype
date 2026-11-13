@@ -7,7 +7,7 @@ const NS = 'http://www.w3.org/2000/svg', SMAX = 4, SPEED = 3.2 /* map units per 
 const DONE = { completed: 1, skipped: 1 };
 const STATE = { driving: { title: 'Driving', color: 'var(--blue)' }, 'on site': { title: 'On site', color: 'var(--orange)' }, parked: { title: 'Parked', color: 'var(--gray)' } };
 const hash = s => { let n = 7; for (const c of String(s)) n = (n * 31 + c.charCodeAt(0)) >>> 0; return n; };
-const depot = data.depot;
+const depot = data.depot, stopLabel = j => { const p = q.position(j); return 'Stop ' + p.n + ' of ' + p.of; };
 
 WD.addIcons({ 'mp.fit': '<path d="M4 9V4h5M4 4l5.500 5.500M20 15v5h-5M20 20l-5.500-5.500M15 4h5v5M20 4l-5.500 5.500M9 20H4v-5M4 20l5.500-5.500"/>' });
 
@@ -166,7 +166,7 @@ function spawn(r, driverId) {
   let x = depot.x, y = depot.y, state = 'parked';
   if (cur) { x = cur.x; y = cur.y; state = 'on site'; }
   else if (nx) { const prev = stops.slice(0, stops.indexOf(nx)).reverse().find(j => j.status === 'completed') || depot; x = prev.x + (nx.x - prev.x) * 0.45; y = prev.y + (nx.y - prev.y) * 0.45; state = 'driving'; }
-  const first = q.jobsFor(r.id, D.today()).find(j => !j.allDay), start = new Date(WD.now()); start.setHours(0, (first ? first.start : 450) - 25, 0, 0);
+  const start = new Date(WD.now()); start.setHours(7, 20 + hash(r.id) % 30, 0, 0);
   const t = { routeId: r.id, vehicleId: r.vehicleId, driverId, x, y, heading: 0, speedMph: 0, state, lastFix: +WD.now() - (n % 9) * 1000, battery: 46 + n % 45, nextJobId: null, shiftStart: +start };
   return { t, px: x, py: y, at: performance.now(), hd: 0, trail: [[x, y]], dwell: cur ? 8 + n % 18 : 0, fixN: 0 };
 }
@@ -184,7 +184,7 @@ function reconcile() {
 /** A status change made by another driver's phone (arrives through sync, so it is not a local pending operation). */
 function remote(job, status, text, actor) {
   const m = WD.nowMins(); job.status = status;
-  if (status === 'arrived') job.arrivedAt = m; if (status === 'completed') { job.departedAt = m; if (job.arrivedAt == null) job.arrivedAt = Math.max(job.start, m - job.dur); }
+  if (status === 'arrived') job.arrivedAt = m; if (status === 'completed') { job.departedAt = m; if (job.arrivedAt == null) job.arrivedAt = m - (job.dur || 20); }
   job.events.push({ at: +WD.now(), actor, text });
 }
 function tick() {
@@ -393,7 +393,7 @@ function createMap() {
   function stopCard(job) {
     const stx = WD.jobStatuses[job.status], n = numberOf(job);
     return h('div.mp-card.mp-glass.mp-stop',
-      h('div.mp-sh', mini(job, n), h('div', h('div.headline', job.title), h('div.footnote', job.allDay ? 'All day' : fmt.range(job.start, job.dur))), h('button.mp-x', { 'aria-label': 'Close', onclick: () => select(null) }, icon('xmark', 13))),
+      h('div.mp-sh', mini(job, n), h('div', h('div.headline', job.title), h('div.footnote', job.allDay ? 'Note for the day' : stopLabel(job))), h('button.mp-x', { 'aria-label': 'Close', onclick: () => select(null) }, icon('xmark', 13))),
       h('div.mp-meta', ui.badge(stx.title, stx.color), job.pending && ui.badge('Pending sync', 'var(--orange)'), h('span', ui.dot(q.routeColor(job.routeId)), q.routeName(job.routeId)), h('span', job.address)),
       h('div.mp-acts', ui.button('Details', { kind: 'gray', small: true, icon: 'info.circle', onTap: () => openDetails(job.id) }), ui.button('Directions', { kind: 'filled', small: true, icon: 'arrow.triangle.turn.up.right', onTap: () => ui.toast('Opening Apple Maps…', 'map') })));
   }
@@ -407,7 +407,7 @@ function createMap() {
         return ui.list(h('div.footnote', { style: { padding: '2px 16px 0' } }, dayLabel(st.day) + ' · stops in board order'),
           routes.map(r => ui.section({ header: h('span.hstack', { style: { gap: '6px' } }, ui.dot(q.routeColor(r)), q.routeName(r)) },
             q.stops(r.id, st.day).map(({ job, number }) => { const sx = WD.jobStatuses[job.status];
-              return ui.row({ leading: mini(job, number), title: job.title, subtitle: (job.allDay ? 'All day' : fmt.range(job.start, job.dur)) + (job.pending ? ' · Pending sync' : ''), trailing: icon(sx.icon, 18, sx.color), onTap: () => { page.dismiss(); focusJob(job.id); } }); }),
+              return ui.row({ leading: mini(job, number), title: job.title, subtitle: (job.allDay ? 'Note for the day' : stopLabel(job)) + (job.pending ? ' · Pending sync' : ''), trailing: icon(sx.icon, 18, sx.color), onTap: () => { page.dismiss(); focusJob(job.id); } }); }),
             q.jobsFor(r.id, st.day).filter(j => !j.located && j.address).map(job => ui.row({ leading: h('span.mp-q', '?'), title: job.title, subtitle: 'Address not found · not on the map', chevron: true, onTap: () => openDetails(job.id) })),
             !q.jobsFor(r.id, st.day).length && ui.row({ title: 'No jobs', subtitle: 'Nothing scheduled on this route' }))));
       } }, { detent: 'medium' });

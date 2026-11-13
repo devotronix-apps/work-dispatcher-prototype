@@ -225,7 +225,7 @@ function nextCard(r) {
   return h('div.sh-card.sh-next',
     h('div.hstack', h('span.sh-kicker', 'Next stop'), h('span.spacer'), ui.badge(sx.title, sx.color), job.pending && ui.badge('Pending sync', 'var(--orange)')),
     h('div.sh-top', numFor(job, stop.number), h('div', h('div.title3', job.title), h('div.subhead.secondary', job.address))),
-    h('div.sh-lines', h('div', icon('clock', 17), h('span', fmt.range(job.start, job.dur) + (job.eta ? ' · window ' + fmt.time(job.eta.from) + ' – ' + fmt.time(job.eta.to) : ''))),
+    h('div.sh-lines', h('div', icon('list.bullet', 17), h('span', (p => 'Stop ' + p.n + ' of ' + p.of + ' on today’s list')(q.position(job)))),
       job.containers && h('div', icon('shippingbox', 17), h('span', job.containers)), job.notes && h('div', icon('note', 17), h('span', job.notes))),
     h('div.sh-acts', flow, b('Navigate', 'gray', () => ui.toast('Opening Apple Maps…', 'map'), 'arrow.triangle.turn.up.right')),
     h('div.sh-acts', { style: { marginTop: '8px' } }, b('Details', 'plain', () => openDetails(job.id), 'info.circle'), b('Skip…', 'plain', () => skip(job), 'xmark.circle.fill')));
@@ -244,7 +244,7 @@ function onShift() {
       ui.button('Add photo or note', { kind: 'tinted', small: true, block: false, icon: 'camera', onTap: () => openCamera(done) })),
     nextCard(r),
     ui.section('Today · ' + q.routeName(r), q.jobsFor(r.id, D.today()).map(j => { const sx = WD.jobStatuses[j.status];
-      return ui.row({ leading: numFor(j, numbers.get(j.id), true), title: j.title, subtitle: (j.allDay ? 'All day' : fmt.range(j.start, j.dur)) + (!j.located && j.address ? ' · address not found' : '') + (j.pending ? ' · waiting to sync' : ''),
+      return ui.row({ leading: numFor(j, numbers.get(j.id), true), title: j.title, subtitle: (j.allDay ? 'Note for the day' : 'Stop ' + q.position(j).n) + (!j.located && j.address ? ' · address not found' : '') + (j.pending ? ' · waiting to sync' : ''),
         trailing: h('span.hstack', { style: { gap: '6px' } }, j.pending && icon('sync', 16, 'var(--orange)'), j.allDay ? null : icon(sx.icon, 18, sx.color)), onTap: () => openDetails(j.id) }); })),
     ui.section({ header: 'Tracking', footer: denied ? 'Location isn’t allowed, so nothing is recorded. Use the status buttons to report stops.' : 'Points are thinned to one every 30 seconds and upload in small batches. Without a connection they wait on this iPhone.' },
       ui.row({ title: 'Last location', detail: span('lastFix'), icon: 'location.fill', iconColor: 'var(--blue)' }), ui.row({ title: 'Accuracy', detail: span('accuracy'), icon: 'scope', iconColor: 'var(--teal)' }),
@@ -276,7 +276,7 @@ WD.panel.addAction('Driver arrives at next stop (geofence)', () => {
   const js = todayJobs(r.id).filter(j => !DONE[j.status] && (j.located || !j.address)), j = js.find(x => x.status === 'arrived' || x.status === 'enroute') || js[0];
   if (!j) return ui.toast('Every stop on ' + q.routeName(r) + ' is done', 'checkmark');
   const own = S.shift && S.shift.routeId === r.id, who = own ? S.me : q.driverFor(r.id), name = who ? who.name : q.routeName(r), next = { scheduled: 'enroute', enroute: 'arrived', arrived: 'completed' }[j.status], m = WD.nowMins();
-  j.status = next; if (next === 'arrived') j.arrivedAt = m; if (next === 'completed') { j.departedAt = m; if (j.arrivedAt == null) j.arrivedAt = Math.max(j.start, m - j.dur); }
+  j.status = next; if (next === 'arrived') j.arrivedAt = m; if (next === 'completed') { j.departedAt = m; if (j.arrivedAt == null) j.arrivedAt = m - (j.dur || 20); }
   j.events.push({ at: +WD.now(), actor: name, text: { enroute: 'En route', arrived: 'Arrived (geofence)', completed: 'Completed (left geofence)' }[next] });
   const t = next === 'arrived' && j.located && (data.trucks || []).find(x => x.routeId === r.id); if (t) { t.x = j.x; t.y = j.y; }
   if (own && next === 'completed') lastCompleted = j.id;

@@ -20,7 +20,7 @@ The panel beside the phone (a **Controls** button on narrower windows) drives th
 - **Simulate** triggers things that would come from elsewhere: a dispatcher moving a job, an incoming call, a driver arriving at a stop.
 - **Jump to** opens a specific screen directly.
 
-On the board, drag a job to move or reassign it, tap empty time to add one, and pinch or ⌘-scroll to zoom. The prototype clock starts at 10:24 AM; other drivers' trucks move and complete their stops on their own, faster than real life, so the board and map change while you watch.
+Jobs have no scheduled times: each route's day is an ordered list, and stop 1 is done first. On the board, drag a job up or down to reorder it or into another column to reassign it, and tap a column's empty space (or **Add stop**) to add a job at the end. Notes for the day sit above the list. The prototype clock starts at 10:24 AM; other drivers' trucks move and complete their stops on their own, faster than real life, so the board and map change while you watch.
 
 ## Files
 
@@ -87,9 +87,9 @@ A page is a spec object:
 
 - `WD.state`: `me`, `role`, `org`, `offline`, `theme`, `pending`, `abandoned`, `board`, `shift`, `tracking {consent, consentAt}`, `googleMirror {enabled, lastSync, errors}`.
 - `WD.can('jobs.edit' | 'tracking.view_live' | 'crm.view' | 'crm.edit' | 'analytics.view' | 'billing.view' | 'billing.manage' | 'users.manage' | 'settings.manage')`. `WD.roles`, `WD.permissionList`.
-- `WD.now()` / `WD.nowMins()` — the prototype clock (today, starting 10:24 AM). `WD.date.today() / add(key, n) / key(Date) / parse(key)`; day keys are `YYYY-MM-DD`; job times are minutes since midnight.
-- `WD.fmt.day(key, 'short'|'long'|'rel'|'md'|'weekday')`, `time(mins)`, `range(start, dur)`, `dur(mins)`, `rel(Date)`, `money(n)`, `phone(str)`, `clock(Date)`.
-- `WD.data`: `orgs users vehicles routes customers jobs depot`. `WD.q`: `routes() visibleRoutes() route(id) routeName(id) routeColor(id) job(id) customer(id) user(id) vehicle(id) jobType(id) jobsFor(routeId, day) jobsOn(day) stops(routeId, day) jobsForCustomer(id) driverFor(routeId) searchCustomers(text) searchJobs(text, routeIds)`. `WD.jobTypes`, `WD.jobStatuses`, `WD.lifecycle`.
+- `WD.now()` / `WD.nowMins()` — the prototype clock (today, starting 10:24 AM). `WD.date.today() / add(key, n) / key(Date) / parse(key)`; day keys are `YYYY-MM-DD`. Jobs carry no scheduled time: `job.seq` is the 1-based place in its route's day list (`allDay` marks a day note, not a stop), `dur` is typical minutes on site, and `arrivedAt`/`departedAt` are recorded minutes since midnight. Reorder with `WD.placeJob(job, routeId, day, index)`; `WD.renumber(routeId, day)` tidies a list.
+- `WD.fmt.day(key, 'short'|'long'|'rel'|'md'|'weekday')`, `time(mins)`, `dur(mins)`, `rel(Date)`, `money(n)`, `phone(str)`, `clock(Date)`.
+- `WD.data`: `orgs users vehicles routes customers jobs depot`. `WD.q`: `routes() visibleRoutes() route(id) routeName(id) routeColor(id) job(id) customer(id) user(id) vehicle(id) jobType(id) jobsFor(routeId, day) stopList(routeId, day) position(job) order(a, b) jobsOn(day) stops(routeId, day) jobsForCustomer(id) driverFor(routeId) searchCustomers(text) searchJobs(text, routeIds)`. `WD.jobTypes`, `WD.jobStatuses`, `WD.lifecycle`.
 - Map space for `x`/`y` on jobs, locations and the depot is 1000 × 1000.
 
 ### Cross-screen entry points
@@ -97,7 +97,7 @@ A page is a spec object:
 | Call | Owner |
 |---|---|
 | `WD.screens.auth.show()` | auth.js |
-| `WD.screens.jobs.openDetails(jobId)`, `WD.screens.jobs.openEditor({jobId} \| {day, routeId, start, customerId})` | jobs.js |
+| `WD.screens.jobs.openDetails(jobId)`, `WD.screens.jobs.openEditor({jobId} \| {day, routeId, pos, customerId})` | jobs.js |
 | `WD.screens.customers.openDetail(customerId)` | customers.js |
 | `WD.screens.settings.openPending()` | settings.js |
 | `WD.screens.map.root()`, `WD.screens.shift.root()` | map.js, shift.js |

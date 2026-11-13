@@ -10,7 +10,7 @@ WD.jobTypes = [
   { id: 'creditCard', title: 'Credit card on file', color: '#039BE5' }, { id: 'setup', title: 'Setup / first service', color: '#D50000' }, { id: 'meet', title: 'Meet the truck', color: '#E67C73' },
 ];
 WD.jobStatuses = {
-  scheduled: { title: 'Scheduled', color: 'var(--gray)', icon: 'clock' }, enroute: { title: 'En route', color: 'var(--blue)', icon: 'truck' },
+  scheduled: { title: 'Scheduled', color: 'var(--gray)', icon: 'circle' }, enroute: { title: 'En route', color: 'var(--blue)', icon: 'truck' },
   arrived: { title: 'On site', color: 'var(--orange)', icon: 'mappin' }, completed: { title: 'Completed', color: 'var(--green)', icon: 'checkmark.circle.fill' }, skipped: { title: 'Skipped', color: 'var(--red)', icon: 'xmark.circle.fill' },
 };
 WD.lifecycle = ['lead', 'contacted', 'quoted', 'scheduled', 'serviced', 'customer'];
@@ -87,14 +87,26 @@ data.customers.forEach(c => { if (c.id === 'c28') c.locations[0].located = false
 let jobSeq = 0; data.jobs = [];
 const today = D.today(), nowM = 10 * 60 + 24;
 const actor = id => (data.users.find(u => u.id === id) || {}).name || 'System';
+/* Jobs have no scheduled time: each route's day is an ordered list, and seq (1, 2, 3…) is the job's place in it.
+   allDay marks a note on the day (not a stop). dur is only the typical minutes on site, used by AutoRoute. */
+const nextSeq = (routeId, day) => data.jobs.reduce((m, j) => j.routeId === routeId && j.day === day && !j.allDay ? Math.max(m, j.seq || 0) : m, 0) + 1;
 function makeJob(o) {
   const c = o.customerId && data.customers.find(x => x.id === o.customerId), loc = c && c.locations[0];
-  const j = Object.assign({ id: 'j' + (++jobSeq), routeId: 'r1', day: today, allDay: false, start: 540, dur: 30, title: c ? c.name : 'Job', customerId: null, locationId: loc ? loc.id : null,
+  const j = Object.assign({ id: 'j' + (++jobSeq), routeId: 'r1', day: today, allDay: false, seq: null, dur: 30, title: c ? c.name : 'Job', customerId: null, locationId: loc ? loc.id : null,
     address: loc ? loc.address : '', located: loc ? loc.located !== false : false, x: loc ? loc.x : null, y: loc ? loc.y : null, notes: loc ? loc.notes : '', type: c ? c.type : 'regular', containers: loc ? loc.containers : '',
-    bizOpen: loc ? loc.bizOpen : '', bizClose: loc ? loc.bizClose : '', custFrom: '', custUntil: '', eta: null, status: 'scheduled', recurring: null, version: 1, pending: false, attachments: [], events: [], invoice: null, arrivedAt: null, departedAt: null }, o);
+    bizOpen: loc ? loc.bizOpen : '', bizClose: loc ? loc.bizClose : '', custFrom: '', custUntil: '', status: 'scheduled', recurring: null, version: 1, pending: false, attachments: [], events: [], invoice: null, arrivedAt: null, departedAt: null }, o);
+  delete j.start; if (j.seq == null) j.seq = j.allDay ? 0 : nextSeq(j.routeId, j.day);
   data.jobs.push(j); return j;
 }
 WD.makeJob = makeJob;
+/** Renumber a route's day 1…n in its current order (after a move, insert or delete). */
+WD.renumber = (routeId, day) => { q.stopList(routeId, day).forEach((j, i) => { j.seq = i + 1; }); };
+/** Move a job to position index (0-based) of a route's day, renumbering both the old and new lists. */
+WD.placeJob = (job, routeId, day, index) => {
+  const from = { routeId: job.routeId, day: job.day }, list = q.stopList(routeId, day).filter(j => j !== job);
+  job.routeId = routeId; job.day = day; list.splice(Math.max(0, Math.min(index, list.length)), 0, job); list.forEach((j, i) => { j.seq = i + 1; });
+  if (from.routeId !== routeId || from.day !== day) WD.renumber(from.routeId, from.day);
+};
 function generate() {
   const pools = {}; data.routes.forEach(r => pools[r.id] = data.customers.filter(c => c.route === r.id && c.lifecycle !== 'lead' && c.lifecycle !== 'lost' && c.lifecycle !== 'contacted' && c.kind !== 'household' && c.id !== 'c23'));
   for (let n = -10; n <= 14; n++) {
@@ -105,7 +117,7 @@ function generate() {
       picks.forEach((c, i) => {
         const loc = c.locations[0], open = WD.fmt.fromHHMM(loc.bizOpen) || 0; if (t < open) t = open;
         const dur = c.type === 'government' ? 45 : c.type === 'setup' ? 45 : pick([20, 30, 30, 30, 40]);
-        const j = makeJob({ routeId: rid, day, start: t, dur, customerId: c.id, recurring: c.type === 'setup' && n <= 0 ? null : { rule: c.freq + ' on ' + ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][dow], seriesId: 's-' + c.id } });
+        const j = makeJob({ routeId: rid, day, dur, customerId: c.id, recurring: c.type === 'setup' && n <= 0 ? null : { rule: c.freq + ' on ' + ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][dow], seriesId: 's-' + c.id } });
         if (c.type === 'setup') { j.title = c.name + ' — setup'; if (n !== 0) { data.jobs.pop(); return; } }
         const end = t + dur;
         if (n < 0 || (n === 0 && end <= nowM - 4)) {
@@ -116,18 +128,17 @@ function generate() {
           else j.events.push({ at: when(t + 5), actor: actor(route.driverId), text: 'Skipped — office closed' });
         } else if (n === 0 && t <= nowM) { j.status = 'arrived'; j.arrivedAt = t + 3; j.events.push({ at: +new Date(D.parse(day).setHours(0, t + 3, 0, 0)), actor: actor(route.driverId), text: 'Arrived (geofence)' }); }
         else if (n === 0 && !data.jobs.some(x => x.routeId === rid && x.day === day && (x.status === 'arrived' || x.status === 'enroute') && x !== j) && !data.jobs.some(x => x.routeId === rid && x.day === day && x.status === 'scheduled' && x !== j)) { j.status = 'enroute'; j.events.push({ at: +new Date(D.parse(day).setHours(10, 12, 0, 0)), actor: actor(route.driverId), text: 'En route' }); }
-        if (n >= 0 && !j.recurring && j.status === 'scheduled') { const w = t < 600 ? 120 : t < 780 ? 180 : 240, from = Math.floor(t / 60) * 60; j.eta = { from, to: from + w }; }
         j.events.unshift({ at: +new Date(D.parse(day).setHours(8, 0, 0, 0)) - 6 * 864e5, actor: 'Priya Raman', text: 'Scheduled' });
         t = end + pick([15, 15, 20, 25, 30]); t = Math.round(t / 5) * 5;
       });
     });
     /* Purge truck: one-time jobs */
-    if (n === 0) { makeJob({ routeId: 'r4', day, start: 9 * 60, dur: 60, customerId: 'c22', status: 'completed', arrivedAt: 9 * 60 + 4, departedAt: 10 * 60 + 2, eta: { from: 8 * 60, to: 10 * 60 }, invoice: { number: 'INV-2391', status: 'Sent', amount: 320 }, attachments: [{ id: 'a1', name: 'Before – garage.jpg', kind: 'photo', size: '2.1 MB' }, { id: 'a2', name: 'Certificate of destruction.pdf', kind: 'doc', size: '84 KB' }] });
-      makeJob({ routeId: 'r4', day, start: 13 * 60, dur: 45, customerId: 'c21', eta: { from: 13 * 60, to: 17 * 60 }, custFrom: '13:00', custUntil: '17:00' });
+    if (n === 0) { makeJob({ routeId: 'r4', day, dur: 60, customerId: 'c22', status: 'completed', arrivedAt: 9 * 60 + 4, departedAt: 10 * 60 + 2, invoice: { number: 'INV-2391', status: 'Sent', amount: 320 }, attachments: [{ id: 'a1', name: 'Before – garage.jpg', kind: 'photo', size: '2.1 MB' }, { id: 'a2', name: 'Certificate of destruction.pdf', kind: 'doc', size: '84 KB' }] });
+      makeJob({ routeId: 'r4', day, dur: 45, customerId: 'c21', custFrom: '13:00', custUntil: '17:00' });
       makeJob({ routeId: 'r4', day, allDay: true, title: 'Truck 9 — oil change after route', type: 'regular', notes: 'Drop at Lakemont Fleet Service by 4:30.' });
-      makeJob({ routeId: 'r4', day, start: 15 * 60, dur: 30, title: 'Meet the truck — Dr. Alvarez', type: 'meet', notes: 'Customer brings 3 boxes to the shop. Call when 10 minutes out: (512) 555-0290.' }); }
-    else if (n > 0 && n % 2 === 1) { makeJob({ routeId: 'r4', day, start: 10 * 60, dur: 90, customerId: 'c23', title: 'Vista Medical Billing — purge', eta: { from: 10 * 60, to: 13 * 60 } }); }
-    else if (n < 0 && n % 3 === 0) { const j = makeJob({ routeId: 'r4', day, start: 9 * 60 + 30, dur: 60, customerId: 'c22', status: 'completed', arrivedAt: 9 * 60 + 33, departedAt: 10 * 60 + 40 }); j.title = 'Tanaka — estate boxes'; }
+      makeJob({ routeId: 'r4', day, dur: 30, title: 'Meet the truck — Dr. Alvarez', type: 'meet', notes: 'Customer brings 3 boxes to the shop. Call when 10 minutes out: (512) 555-0290.' }); }
+    else if (n > 0 && n % 2 === 1) { makeJob({ routeId: 'r4', day, dur: 90, customerId: 'c23', title: 'Vista Medical Billing — purge' }); }
+    else if (n < 0 && n % 3 === 0) { const j = makeJob({ routeId: 'r4', day, dur: 60, customerId: 'c22', status: 'completed', arrivedAt: 9 * 60 + 33, departedAt: 10 * 60 + 40 }); j.title = 'Tanaka — estate boxes'; }
     if (n === 1) makeJob({ routeId: 'r2', day, allDay: true, title: 'Tony out — Sam covers South', notes: 'Route assignment override for the day.' });
   }
   const first = data.jobs.find(j => j.day === today && j.routeId === 'r1' && j.status === 'completed'); if (first) first.attachments.push({ id: 'a3', name: 'Console key tag.jpg', kind: 'photo', size: '1.4 MB' });
@@ -151,12 +162,17 @@ const q = WD.q = {
   routeColor: r => (r = typeof r === 'string' ? q.route(r) : r) ? (r.colorOverride || r.color) : '#8E8E93',
   job: id => data.jobs.find(j => j.id === id), customer: id => data.customers.find(c => c.id === id), user: id => data.users.find(u => u.id === id), vehicle: id => data.vehicles.find(v => v.id === id),
   jobType: id => WD.jobTypes.find(t => t.id === id) || WD.jobTypes[0],
-  /** Board order: all-day first, then start time, then stable id. */
-  jobsFor: (routeId, day) => data.jobs.filter(j => j.routeId === routeId && j.day === day).sort((a, b) => (b.allDay - a.allDay) || (a.start - b.start) || a.id.localeCompare(b.id, undefined, { numeric: true })),
+  /** Board order: day notes first, then the job list in order (seq), then stable id. */
+  jobsFor: (routeId, day) => data.jobs.filter(j => j.routeId === routeId && j.day === day).sort(q.order),
+  order: (a, b) => (b.allDay - a.allDay) || (a.seq - b.seq) || a.id.localeCompare(b.id, undefined, { numeric: true }),
+  /** The ordered job list for a route's day (notes excluded). */
+  stopList: (routeId, day) => q.jobsFor(routeId, day).filter(j => !j.allDay),
+  /** A job's place in its day's list: { n, of }. */
+  position: job => { const list = q.stopList(job.routeId, job.day); return { n: list.indexOf(job) + 1, of: list.length }; },
   jobsOn: day => data.jobs.filter(j => j.day === day),
   /** Located stops for the map, numbered from 1 per route (addressless jobs and all-day notes are excluded). */
   stops: (routeId, day) => q.jobsFor(routeId, day).filter(j => j.located && j.x != null).map((j, i) => ({ job: j, number: i + 1 })),
-  jobsForCustomer: id => data.jobs.filter(j => j.customerId === id).sort((a, b) => a.day.localeCompare(b.day) || a.start - b.start),
+  jobsForCustomer: id => data.jobs.filter(j => j.customerId === id).sort((a, b) => a.day.localeCompare(b.day) || q.order(a, b)),
   driverFor: routeId => { const r = q.route(routeId); return r && r.driverId ? q.user(r.driverId) : null; },
   /** One search box: customer name, contact name, phone digits, email or address. Returns [{customer, match}] best first. */
   searchCustomers(text, limit = 8) {
@@ -173,7 +189,7 @@ const q = WD.q = {
   },
   searchJobs(text, routeIds) {
     const s = norm(text).trim(); if (s.length < 2) return [];
-    return data.jobs.filter(j => (!routeIds || routeIds.includes(j.routeId)) && [j.title, j.address, j.notes, q.routeName(j.routeId)].some(v => norm(v).includes(s))).sort((a, b) => Math.abs(D.diff(a.day, today)) - Math.abs(D.diff(b.day, today)) || a.start - b.start);
+    return data.jobs.filter(j => (!routeIds || routeIds.includes(j.routeId)) && [j.title, j.address, j.notes, q.routeName(j.routeId)].some(v => norm(v).includes(s))).sort((a, b) => Math.abs(D.diff(a.day, today)) - Math.abs(D.diff(b.day, today)) || q.order(a, b));
   },
 };
 })();

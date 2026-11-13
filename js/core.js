@@ -197,7 +197,7 @@ const S = WD.state = {
   offline: false, sim: { conflictNext: false },
   theme: (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light',
   pending: [], abandoned: [],
-  board: { day: null, mode: 'routes', routeId: null, dayCount: 3, pushDown: true },
+  board: { day: null, mode: 'routes', routeId: null, dayCount: 3 },
   shift: null,                                   // set by the Shift screen while clocked in
   tracking: { consent: false, consentAt: null }, // employee location-tracking consent (Settings + clock-in)
   googleMirror: { enabled: true, lastSync: Date.now() - 4 * 60000, errors: 2 },
@@ -503,7 +503,7 @@ const api = WD.api = {
     const j = WD.q.job(jobId), label = { enroute: 'En route', arrived: 'Arrived', completed: 'Completed', skipped: 'Skipped', scheduled: 'Reopened' }[status];
     return api.op({ kind: 'status', title: j.title, scope: label, jobIds: [jobId], apply() {
       j.status = status; const t = WD.nowMins();
-      if (status === 'arrived') j.arrivedAt = t; if (status === 'completed') { j.departedAt = t; if (j.arrivedAt == null) j.arrivedAt = Math.max(j.start, t - j.dur); }
+      if (status === 'arrived') j.arrivedAt = t; if (status === 'completed') { j.departedAt = t; if (j.arrivedAt == null) j.arrivedAt = t - (j.dur || 20); }
       j.events.push({ at: +WD.now(), actor: S.me.name, text: label + (note ? ' — ' + note : '') });
     } });
   },
