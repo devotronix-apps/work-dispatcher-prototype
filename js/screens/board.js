@@ -46,7 +46,7 @@ WD.css(`
 .bd-job-title .ic { margin: -2px 2px 0 0; }
 .bd-job-sub { font-size: 11px; line-height: 14px; opacity: .9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: 0; margin-top: 1px; }
 .bd-q { display: inline-block; background: #fff; color: #FF3B30; font-weight: 800; border-radius: 4px; padding: 0 4px; margin-right: 3px; font-size: 11px; line-height: 13px; }
-.bd-job.dim .bd-job-in, .bd-job.struck .bd-job-in { opacity: .55; }
+.bd-job.faded .bd-job-in, .bd-job.struck .bd-job-in { opacity: .55; }
 .bd-tag.nb { background: #fff; color: #C93400; }
 .bd-slot { margin-bottom: 5px; border-radius: 9px; border: 2px dashed var(--tint); background: color-mix(in srgb, var(--tint) 12%, transparent); position: relative; box-sizing: border-box; transition: height .12s; }
 .bd-slot .bd-job-in { opacity: .45; border-color: transparent; }
@@ -153,7 +153,7 @@ function cell(job, number) {
   const type = q.jobType(job.type), st = { enroute: 'truck', arrived: 'mappin', completed: 'checkmark', skipped: 'xmark', canceled: 'xmark', rescheduled: 'calendar', postponed: 'clock' }[job.status], struck = WD.struck[job.status];
   const tag = { skipped: 'Skipped', canceled: 'Canceled', rescheduled: 'Rescheduled', postponed: 'Postponed' }[job.status];
   const wf = WD.workflow, notBilled = job.status === 'completed' && !wf.billed(job) && job.type !== 'meet';
-  return h('div.bd-job.' + job.status + (struck ? '.struck' : '') + (wf.dimmed(job) ? '.dim' : '') + (job.pending ? '.pending' : '') + (drag && drag.job.id === job.id ? '.dragging' : '') + (flashId === job.id ? '.flash' : ''),
+  return h('div.bd-job.' + job.status + (struck ? '.struck' : '') + (wf.dimmed(job) ? '.faded' : '') + (job.pending ? '.pending' : '') + (drag && drag.job.id === job.id ? '.dragging' : '') + (flashId === job.id ? '.flash' : ''),
     { 'data-job': job.id, style: cardStyle(job) },
     h('div.bd-job-in', h('span.bd-num', number),
       h('div.bd-job-main', h('div.bd-job-title', !job.located && job.address && job.type !== 'meet' ? h('span.bd-q', '?') : null, st && icon(st, 12), job.pending && icon('sync', 11), wf.titleNode(job), job.recurring ? h('span', { style: 'opacity:.8;font-weight:400' }, ' ↻') : null),

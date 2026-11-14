@@ -99,7 +99,7 @@ function teamMapSpec() {
   return { title: 'Team locations', render: page => {
     if (!WD.can('team.locations')) return ui.empty({ icon: 'lock', title: 'Ask an admin', text: 'Team locations are for owners, dispatchers and office.' });
     const people = onShiftToday().map(u => { const st = staysFor(u), now = nowFor(u, st); return { u, st, now }; }).filter(x => x.now);
-    const pts = []; people.forEach(x => { x.st.filter(longEnough).forEach(s => pts.push({ x: s.x, y: s.y, cls: 'dim', style: { '--c': '#8E8E93', '--ring': '#fff' } })); pts.push(personPin(x.u, x.now, true)); });
+    const pts = []; people.forEach(x => { x.st.filter(longEnough).forEach(s => pts.push({ x: s.x, y: s.y, cls: 'faded', style: { '--c': '#8E8E93', '--ring': '#fff' } })); pts.push(personPin(x.u, x.now, true)); });
     return ui.list(
       ui.section({ header: 'Now · ' + people.length + ' clocked in', footer: 'Gray dots are places someone stayed at least ' + R.stayMinutes + ' minutes today. Only employees who are clocked in are shown, and only while they’re on shift.' },
         pts.length ? h('div.tc-map', WD.miniMap({ points: pts, aspect: 1.25, pad: 50 })) : ui.row({ title: 'Nobody is clocked in' })),

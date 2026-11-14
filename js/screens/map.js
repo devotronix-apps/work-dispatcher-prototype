@@ -57,7 +57,7 @@ WD.css(`
 .mm svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .mm .mp-svg .acase { stroke-width: 2.5px; } .mm .mp-svg .art { stroke-width: 1.5px; } .mm .mp-svg .hcase { stroke-width: 4px; } .mm .mp-svg .hwy { stroke-width: 2.5px; } .mm .mp-svg .minor { display: none; }
 .mm-p { position: absolute; transform: translate(-50%, -50%); width: 20px; height: 20px; border-radius: 50%; background: var(--c); border: 2.5px solid var(--ring, #fff); color: var(--fg, #fff); font-size: 10px; font-weight: 800; display: grid; place-items: center; letter-spacing: 0; box-shadow: 0 1px 3px rgba(0,0,0,.35); }
-.mm-p.sq { border-radius: 5px; width: 18px; height: 18px; } .mm-p.big { width: 28px; height: 28px; font-size: 12px; } .mm-p.dim { opacity: .45; }
+.mm-p.sq { border-radius: 5px; width: 18px; height: 18px; } .mm-p.big { width: 28px; height: 28px; font-size: 12px; } .mm-p.faded { opacity: .45; }
 .mm-cap { position: absolute; left: 8px; top: 6px; font-size: 11px; font-weight: 700; letter-spacing: 0; background: var(--material); border-radius: 7px; padding: 1px 7px; }
 .mp-tv { position: absolute; left: -18px; top: -18px; width: 36px; height: 36px; }
 .mp-cone { position: absolute; left: 50%; top: 50%; width: 0; height: 0; transition: transform .9s linear; }
