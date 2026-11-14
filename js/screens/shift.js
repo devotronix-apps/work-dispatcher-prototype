@@ -2,7 +2,7 @@
 (function () {
 'use strict';
 const WD = window.WD, { h, ui, icon, state: S, data, q, fmt, date: D, nav } = WD;
-const MI = 0.03, DONE = WD.closed, CUTOFF_HRS = 14;
+const MI = 0.03, DONE = WD.closed, cutoff = () => data.workflow.shiftCutoff, wf = () => WD.workflow;
 let inst = null, locationAuth = null, geofenceTimer = 0, uploading = 0, lastCompleted = null;
 const mine = [];   // shifts finished in this session, newest first
 
@@ -58,6 +58,8 @@ const numFor = (job, n, small) => n ? h('span.sh-num' + (small ? '.small' : ''),
 const defaultRoute = () => (q.routes().find(r => r.driverId === (S.me && S.me.id)) || q.routes()[0]);
 /** What the truck is doing right now, from the route's job statuses (works with location off too). */
 function activity(sh) { const js = todayJobs(sh.routeId); return js.some(j => j.status === 'arrived') ? 'service' : js.some(j => j.status === 'enroute') ? 'drive' : 'idle'; }
+const canSeeInv = () => WD.can('billing.view') || WD.can('billing.field');
+WD.on('stopCompleted', id => { lastCompleted = id; });
 const lowPower = sh => sh.lowPower || sh.battery < 20;
 function elapsed(sh) { const now = +WD.now(); return now - sh.startedAt - sh.breakMs - (sh.onBreak ? now - sh.breakStartedAt : 0); }
 function sampling(sh) {
@@ -84,7 +86,7 @@ setInterval(() => {
     if (t) { if (sh.lx != null) sh.miles += Math.hypot(t.x - sh.lx, t.y - sh.ly) * MI * 1.35; sh.lx = t.x; sh.ly = t.y; } else if (moving) sh.miles += 0.03;
     if (!S.offline && !uploading && sh.pointsQueued && sh.tick % (lowPower(sh) ? 20 : 5) === 0) { sh.pointsSent += sh.pointsQueued; sh.pointsQueued = 0; sh.lastUpload = +WD.now(); }
   }
-  if (+WD.now() - sh.startedAt > CUTOFF_HRS * 36e5) { S.shift = null; ui.banner({ title: 'Tracking stopped', text: 'You were clocked out automatically 14 hours after clock-in.', icon: 'location', color: 'var(--gray)' }); WD.changed(); return; }
+  if (+WD.now() - sh.startedAt > cutoff() * 36e5) { S.shift = null; ui.banner({ title: 'Tracking stopped', text: 'You were clocked out automatically ' + cutoff() + ' hours after clock-in.', icon: 'location', color: 'var(--gray)' }); WD.changed(); return; }
   if (inst) inst.paint();
 }, 1000);
 WD.on('network', online => {
@@ -129,7 +131,7 @@ function shiftDetail(s) {
 function openNotice() {
   ui.sheet({ title: 'Location tracking', leading: [{ label: 'Not now', onTap: p => p.dismiss() }], render: p => ui.list(
     h('div.sh-card.sh-notice',
-      h('p', h('b', 'When. '), 'Work Dispatcher records this iPhone’s location only while you’re clocked in to a shift. It stops when you clock out, or automatically 14 hours after clock-in.'),
+      h('p', h('b', 'When. '), 'Work Dispatcher records this iPhone’s location only while you’re clocked in to a shift. It stops when you clock out, or automatically ' + cutoff() + ' hours after clock-in.'),
       h('p', h('b', 'What. '), 'Position, speed and heading about every 30 seconds while moving, a check-in every 5 minutes while parked, stop arrival and departure times, and phone battery level.'),
       h('p', h('b', 'Who sees it. '), 'Owners, admins, dispatchers and office staff. They see where you are and the places you stayed longer than ' + data.timeRules.stayMinutes + ' minutes. It is used for routing, customer arrival windows, timesheets and service records.'),
       h('p', h('b', 'How long. '), 'Raw points are kept for 24 months and then thinned. Stop visits stay with the job history.'),
@@ -152,7 +154,10 @@ async function clockIn(routeId, vehicleId, m) {
   if (ok && S.offline) ui.toast('Clock-in syncs when you’re back online', 'wifi.slash', 2600);
 }
 async function clockOut() {
-  const sh = S.shift, r = routeOf(), left = remaining(sh.routeId).length;
+  const sh = S.shift, r = routeOf(), miss = data.workflow.missedCheck ? wf().missed(sh.routeId, D.today()) : [];
+  if (miss.length && !(await wf().missedSheet(miss, { continueLabel: 'Clock out anyway' }))) return;
+  if (S.shift !== sh) return;
+  const left = remaining(sh.routeId).length;
   const v = await ui.actionSheet({ title: 'Clock out?', message: left ? left + ' stop' + (left === 1 ? '' : 's') + ' on ' + q.routeName(r) + (left === 1 ? ' isn’t' : ' aren’t') + ' done yet. ' + (left === 1 ? 'It stays' : 'They stay') + ' on the route for dispatch.' : 'Tracking stops as soon as you clock out.',
     buttons: [{ label: 'Clock out', value: true, role: 'destructive' }] });
   if (!v || S.shift !== sh) return;
@@ -171,9 +176,9 @@ async function clockOut() {
 /* ---------- Stop status flow ---------- */
 const setStatus = (id, s, note) => WD.api.setStatus(id, s, note);
 function armGeofence(job) {
-  clearTimeout(geofenceTimer); if (!S.shift || S.shift.location === 'denied') return;
+  clearTimeout(geofenceTimer); if (!S.shift || S.shift.location === 'denied' || data.workflow.arrival === 'button') return;
   geofenceTimer = setTimeout(() => { const j = q.job(job.id); if (!S.shift || !j || j.status !== 'enroute') return;
-    setStatus(j.id, 'arrived', 'detected by geofence'); ui.banner({ title: 'Work Dispatcher', text: 'Arrived at ' + j.title + ' — detected by geofence', icon: 'mappin', color: 'var(--orange)' }); }, 6000);
+    setStatus(j.id, 'arrived', 'from GPS · ' + data.workflow.dwellMin + ' min at the stop'); ui.banner({ title: 'Work Dispatcher', text: 'Arrived at ' + j.title + ' — recorded from GPS, no need to tap', icon: 'mappin', color: 'var(--orange)' }); }, 6000);
 }
 /** Skip with three choices: no charge, charge the customer, or reschedule (jobs.js). */
 async function skip(job) { if (WD.screens.jobs && WD.screens.jobs.skipFlow && await WD.screens.jobs.skipFlow(job)) clearTimeout(geofenceTimer); }
@@ -225,21 +230,25 @@ function offShift(m) {
 function nextCard(r) {
   const stop = q.stops(r.id, D.today()).find(s => !DONE[s.job.status]);
   if (!stop) return h('div.sh-card.sh-done', icon('checkmark.circle.fill', 34, 'var(--green)'), h('div', h('div.headline', remaining(r.id).length ? 'No more mapped stops' : 'All stops done'), h('div.footnote', remaining(r.id).length ? 'The jobs left need an address or are meet-the-truck jobs.' : 'Head back to the shop and clock out.')));
-  const job = stop.job, sx = WD.jobStatuses[job.status], b = (label, kind, fn, ic) => ui.button(label, { kind, icon: ic, block: false, onTap: fn });
-  const flow = { scheduled: [b('Start driving', 'filled', () => { setStatus(job.id, 'enroute'); armGeofence(job); }, 'truck')], enroute: [b('I’ve arrived', 'filled', () => { clearTimeout(geofenceTimer); setStatus(job.id, 'arrived'); }, 'mappin')],
-    arrived: [b('Complete stop', 'filled', () => { setStatus(job.id, 'completed'); lastCompleted = job.id; ui.toast('Stop completed', 'checkmark'); }, 'checkmark')] }[job.status] || [];
+  const job = stop.job, sx = WD.jobStatuses[job.status], b = (label, kind, fn, ic) => ui.button(label, { kind, icon: ic, block: false, onTap: fn }), btnArrive = data.workflow.arrival !== 'auto';
+  const complete = b('Complete stop', 'filled', () => { clearTimeout(geofenceTimer); wf().completeStop(job); }, 'checkmark');
+  /* Complete works from any status: drivers who know the way, or several customers at one address, skip Start driving and arrival. */
+  const flow = { scheduled: [b('Start driving', 'tinted', () => { setStatus(job.id, 'enroute'); armGeofence(job); if (data.workflow.afterBilling === 'navigate') wf().openDirections(job); }, 'truck'), complete],
+    enroute: [btnArrive && b('I’ve arrived', 'tinted', () => { clearTimeout(geofenceTimer); setStatus(job.id, 'arrived'); }, 'mappin'), complete],
+    arrived: [complete] }[job.status] || [];
   return h('div.sh-card.sh-next',
     h('div.hstack', h('span.sh-kicker', 'Next stop'), h('span.spacer'), ui.badge(sx.title, sx.color), job.pending && ui.badge('Pending sync', 'var(--orange)')),
-    h('div.sh-top', numFor(job, stop.number), h('div', h('div.title3', job.title), h('div.subhead.secondary', job.address))),
+    h('div.sh-top', numFor(job, stop.number), h('div', h('div.title3', job.title), (d => d.length ? h('div.wf-chips', d.map(x => h('span.wf-chip', x))) : null)(wf().titleDetails(job)), h('div.subhead.secondary', { style: { marginTop: '4px' } }, job.address))),
     h('div.sh-lines', h('div', icon('list.bullet', 17), h('span', (p => 'Stop ' + p.n + ' of ' + p.of + ' on today’s list')(q.position(job)))),
       job.containers && h('div', icon('shippingbox', 17), h('span', job.containers)), job.notes && h('div', icon('note', 17), h('span', job.notes))),
-    h('div.sh-acts', flow, b('Navigate', 'gray', () => ui.toast('Opening Apple Maps…', 'map'), 'arrow.triangle.turn.up.right')),
-    h('div.sh-acts', { style: { marginTop: '8px' } }, b('Details', 'plain', () => openDetails(job.id), 'info.circle'), b('Skip…', 'plain', () => skip(job), 'xmark.circle.fill')));
+    h('div.sh-acts', flow),
+    h('div.sh-acts', { style: { marginTop: '8px' } }, b('Navigate', 'gray', () => wf().openDirections(job), 'arrow.triangle.turn.up.right'), b('Details', 'plain', () => openDetails(job.id), 'info.circle'), b('Skip…', 'plain', () => skip(job), 'xmark.circle.fill')));
 }
 function onShift() {
   const sh = S.shift, r = routeOf(), v = liveVals(), denied = sh.location === 'denied', veh = q.vehicle(sh.vehicleId);
   if (!r) return ui.empty({ icon: 'truck', title: 'Route not found' });
-  const span = k => h('span', { 'data-sh': k }, v[k]), numbers = new Map(q.stops(r.id, D.today()).map(s => [s.job.id, s.number])), done = lastCompleted && q.job(lastCompleted);
+  const span = k => h('span', { 'data-sh': k }, v[k]), numbers = new Map(q.stops(r.id, D.today()).map(s => [s.job.id, s.number])), done = lastCompleted && q.job(lastCompleted) && !wf().billed(q.job(lastCompleted)) ? q.job(lastCompleted) : null;
+  const unbilled = todayJobs(r.id).filter(j => j.status === 'completed' && !wf().billed(j) && j.type !== 'meet' && j !== done);
   return ui.list(
     h('div.sh-card.sh-head', { style: { '--c': q.routeColor(r) } },
       h('div.hstack', h('span.sh-kicker', 'On shift since ' + fmt.clock(new Date(sh.startedAt))), h('span.spacer'),
@@ -247,12 +256,13 @@ function onShift() {
       h('div.sh-timer' + (sh.onBreak ? '.paused' : ''), { 'data-sh': 'timer' }, v.timer),
       h('div.subhead', ui.dot(q.routeColor(r)), ' ', q.routeName(r), h('span.secondary', ' · ' + (veh ? veh.name : 'No vehicle') + ' · ', span('miles')))),
     done && h('div.sh-card', h('div.sh-done', icon('checkmark.circle.fill', 30, 'var(--green)'), h('div', h('div.headline', done.title), h('div.footnote', 'Completed ' + (done.departedAt != null ? fmt.time(done.departedAt) : '') + (done.invoice ? ' · ' + done.invoice.number + ' ' + done.invoice.status.toLowerCase() : '')))),
-      h('div.sh-acts', { style: { marginTop: '10px' } }, !done.invoice && WD.screens.billing && WD.screens.billing.canInvoice() && done.type !== 'creditCard' && ui.button('Invoice', { kind: 'tinted', small: true, block: false, icon: 'doc.text', onTap: () => WD.screens.billing.openEditor(done.id) }),
-        !done.invoice && WD.screens.billing && WD.screens.billing.canInvoice() && done.type !== 'creditCard' && ui.button('Paid on site', { kind: 'tinted', small: true, block: false, icon: 'dollarsign.circle', onTap: () => WD.screens.billing.openEditor(done.id, { pay: 'cash' }) }),
+      h('div.sh-acts', { style: { marginTop: '10px' } }, !done.invoice && WD.screens.billing && WD.screens.billing.canInvoice() && done.type !== 'creditCard' && ui.button('Bill', { kind: 'tinted', small: true, block: false, icon: 'doc.text', onTap: () => WD.screens.billing.openEditor(done.id, { onDone: () => wf().afterBilling(done) }) }),
+        !done.invoice && WD.screens.billing && WD.screens.billing.canInvoice() && done.type !== 'creditCard' && ui.button('Paid, no inv.', { kind: 'tinted', small: true, block: false, icon: 'dollarsign.circle', onTap: () => wf().paidNoInvoice(done, null, () => wf().afterBilling(done)) }),
         ui.button('Photo or note', { kind: 'gray', small: true, block: false, icon: 'camera', onTap: () => openCamera(done) }))),
+    unbilled.length > 0 && ui.section(null, ui.row({ icon: 'exclamationmark.triangle', iconColor: 'var(--orange)', title: unbilled.length + (unbilled.length === 1 ? ' completed stop isn’t billed' : ' completed stops aren’t billed'), subtitle: 'Create the invoice, mark paid–no invoice, or skip', chevron: true, onTap: () => wf().missedSheet(unbilled) })),
     nextCard(r),
     ui.section('Today · ' + q.routeName(r), q.jobsFor(r.id, D.today()).map(j => { const sx = WD.jobStatuses[j.status];
-      return ui.row({ class: WD.struck[j.status] ? 'sh-struck' : null, leading: numFor(j, numbers.get(j.id), true), title: j.title, subtitle: (j.allDay ? 'Note for the day' : 'Stop ' + q.position(j).n) + (WD.struck[j.status] ? ' · ' + sx.title + (j.rescheduledTo ? ' to ' + fmt.day(j.rescheduledTo, 'md') : '') : '') + (!j.located && j.address ? ' · address not found' : '') + (j.pending ? ' · waiting to sync' : ''),
+      return ui.row({ class: WD.struck[j.status] ? 'sh-struck' : null, leading: numFor(j, numbers.get(j.id), true), title: wf().titleNode(j), subtitle: (j.allDay ? 'Note for the day' : 'Stop ' + q.position(j).n) + (j.status === 'completed' && !j.allDay && j.type !== 'meet' ? (wf().billed(j) ? ' · ' + (j.invoice ? j.invoice.number : wf().billingLabel(j)) : ' · not billed') : '') + (WD.struck[j.status] ? ' · ' + sx.title + (j.rescheduledTo ? ' to ' + fmt.day(j.rescheduledTo, 'md') : '') : '') + (!j.located && j.address ? ' · address not found' : '') + (j.pending ? ' · waiting to sync' : ''),
         trailing: h('span.hstack', { style: { gap: '6px' } }, j.pending && icon('sync', 16, 'var(--orange)'), j.allDay ? null : icon(sx.icon, 18, sx.color)), onTap: () => openDetails(j.id) }); })),
     ui.section({ header: 'Tracking', footer: denied ? 'Location isn’t allowed, so nothing is recorded. Use the status buttons to report stops.' : 'Points are thinned to one every 30 seconds and upload in small batches. Without a connection they wait on this iPhone.' },
       ui.row({ title: 'Last location', detail: span('lastFix'), icon: 'location.fill', iconColor: 'var(--blue)' }), ui.row({ title: 'Accuracy', detail: span('accuracy'), icon: 'scope', iconColor: 'var(--teal)' }),
@@ -263,9 +273,10 @@ function onShift() {
       ui.toggleRow({ title: 'Low Power Mode', icon: 'bolt.fill', iconColor: 'var(--yellow)', value: sh.lowPower, onChange: on => { sh.lowPower = on; WD.changed(); } })),
     ui.section(null, ui.toggleRow({ title: 'Take a break', subtitle: 'Pauses your shift time', icon: 'sh.cup', iconColor: 'var(--orange)', value: sh.onBreak, onChange: on => {
       const now = +WD.now(); if (on) sh.breakStartedAt = now; else { sh.breakMs += now - sh.breakStartedAt; sh.breakStartedAt = null; } sh.onBreak = on; WD.changed(); } })),
+    canSeeInv() && ui.section(null, ui.row({ icon: 'doc.text', iconColor: 'var(--indigo)', title: 'Invoices', subtitle: 'Newest first · search by invoice number', chevron: true, onTap: () => nav.push(wf().invoicesSpec()) })),
     weekSection(), teamSection(),
     h('div.sh-cta', ui.button('Clock out', { kind: 'destructive', icon: 'stop.fill', onTap: clockOut })),
-    h('div', { style: { marginTop: '10px' } }, ui.note('Tracking stops automatically ' + CUTOFF_HRS + ' hours after clock-in.')));
+    h('div', { style: { marginTop: '10px' } }, ui.note('Tracking stops automatically ' + cutoff() + ' hours after clock-in (Settings → Field workflow).')));
 }
 /** Everyone who clocks in sees their hours this week; owners, dispatch and office also get the team rows. */
 function weekSection() {

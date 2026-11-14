@@ -20,6 +20,8 @@ The panel beside the phone (a **Controls** button on narrower windows) drives th
 - **Simulate** triggers things that would come from elsewhere: a dispatcher moving a job, an incoming call, a driver arriving at a stop.
 - **Jump to** opens a specific screen directly.
 
+Completing a stop: **Complete** works from any status (no need for Start driving or I’ve arrived — arrival is taken from GPS). By default it opens the billing details; from there **Get signature** and **Create invoice** (or **Paid — no invoice**, or a signed **service note** for master-invoice customers), then the next customer comes up. Completed jobs fade only once billed; unbilled ones show **Not billed** and are listed before clock-out. Settings → Field workflow changes all of this per company.
+
 Board and map colors: the job type fills each card and pin (purge yellow, government indigo, card-on-file blue, setup red, meet-the-truck pink, route service graphite) and the route's calendar color rims it. Skipped, canceled, rescheduled and postponed jobs stay on the list with a line through the title and a label.
 
 Jobs have no scheduled times: each route's day is an ordered list, and stop 1 is done first. On the board, drag a job up or down to reorder it or into another column to reassign it, and tap a column's empty space (or **Add stop**) to add a job at the end. Notes for the day sit above the list. The prototype clock starts at 10:24 AM; other drivers' trucks move and complete their stops on their own, faster than real life, so the board and map change while you watch.
@@ -38,7 +40,8 @@ Jobs have no scheduled times: each route's day is an ordered list, and stop 1 is
 | `js/screens/customers.js` | Customer lookup, record and timeline, leads, tasks |
 | `js/screens/shift.js` | Driver clock in/out, stop statuses, GPS tracking state |
 | `js/screens/settings.js` | Routes, pending changes, Google mirror, team and roles, vehicles and their start/end places, integrations (incl. OneStep GPS), signature on file, tracking consent, account |
-| `js/screens/billing.js` | Invoice editor (rates, quantities, add/delete lines, PO and contract), paid on site (cash, check, card), signature pad, invoice preview |
+| `js/screens/billing.js` | Billing details / invoice editor (lines, service date, pounds, PO by service date), signature per customer policy, paid on site, service-note mode, the invoice document (company layout: service summary by location, page subtotals, certificate of destruction) |
+| `js/screens/workflow.js` | Field workflow: Complete stop from any status → billing → next customer (optionally start directions), arrival from GPS, details after job titles, paid–no invoice, missed-invoice check, Invoices list (search by number, my route / all routes), invoice actions, service notes saved to the database and the monthly master invoice built from them, customer documents and dated PO schedules, directions app, Settings → Field workflow |
 | `js/screens/team.js` | Overtime rules (daily, weekly, double time), timesheets, team locations map with stays over N minutes |
 | `js/screens/admin.js` | Sign-in policy, job types and the fields each asks for, import from .ics or Excel/CSV, new-company “connect your tools” step |
 

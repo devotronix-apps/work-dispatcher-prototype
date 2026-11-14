@@ -21,6 +21,8 @@ WD.css(`
 .st-arrow:disabled { color: var(--label3); cursor: default; }
 .row.st-colors { flex-wrap: wrap; gap: 11px; padding: 12px 16px; }
 .st-swatch { width: 30px; height: 30px; border-radius: 50%; border: 0; padding: 0; cursor: pointer; box-shadow: inset 0 0 0 .5px var(--sep); }
+.st-custom { position: relative; background: conic-gradient(#f44336, #ffeb3b, #4caf50, #00bcd4, #3f51b5, #e91e63, #f44336); overflow: hidden; display: inline-block; }
+.st-custom input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; border: 0; padding: 0; }
 .st-swatch.on { box-shadow: 0 0 0 2px var(--cell), 0 0 0 4px var(--label); }
 .st-seg { width: 136px; flex: none; }
 .st-stage { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 14px 32px; text-align: center; }
@@ -31,7 +33,9 @@ WD.css(`
 
 /* ---------- Shared helpers ---------- */
 const PRICE = 29, ADMIN = 'Ask an admin';
-const PALETTE = ['#D50000', '#E67C73', '#F4511E', '#F6BF26', '#33B679', '#0B8043', '#039BE5', '#3F51B5', '#7986CB', '#8E24AA', '#616161'];
+/* Google Calendar's colors first (they mirror cleanly), then more choices; any color can also be picked with Custom. */
+const PALETTE = ['#D50000', '#E67C73', '#F4511E', '#F6BF26', '#33B679', '#0B8043', '#039BE5', '#3F51B5', '#7986CB', '#8E24AA', '#616161',
+  '#AD1457', '#F09300', '#C0CA33', '#7CB342', '#009688', '#4285F4', '#B39DDB', '#795548', '#A79B8E', '#E4C441', '#00ACC1', '#5E35B1', '#D81B60', '#EF6C00', '#827717', '#1A237E', '#263238'];
 const ZONES = [['America/New_York', 'Eastern'], ['America/Chicago', 'Central'], ['America/Denver', 'Mountain'], ['America/Phoenix', 'Arizona'], ['America/Los_Angeles', 'Pacific']].map(([value, label]) => ({ value, label }));
 const ROLE_COLOR = { owner: 'var(--purple)', admin: 'var(--indigo)', dispatcher: 'var(--blue)', office: 'var(--teal)', driver: 'var(--orange)', staff: 'var(--brown)' };
 const ROLE_INFO = { owner: 'Everything, including billing and the company itself.', admin: 'Everything except transferring ownership.', dispatcher: 'Edits jobs, sees live trucks, customers and reports.', office: 'Edits jobs and customers, handles invoices and payments.', driver: 'Sees their route, runs shifts, updates stop status and invoices on site.', staff: 'Clocks in and out for shop, office or helper work. No route.' };
@@ -67,6 +71,7 @@ function root() {
         ui.row({ icon: 'globe', iconColor: 'var(--blue)', title: 'Open web dashboard', trailing: icon('arrow.up.right', 17, 'var(--label3)'), onTap: () => ui.toast('Analytics, CRM and billing are on the web', 'globe', 2600) })),
       ui.section({ header: 'Routes and board', footer: 'Single-route portrait view shows 1 or 3 days from the active day. Landscape always shows 7.' },
         ui.row({ icon: 'route', iconColor: 'var(--blue)', title: 'Routes', detail: q.visibleRoutes().length + ' of ' + data.routes.length + ' shown', chevron: true, onTap: () => push(routesSpec()) }),
+        ui.pickerRow({ icon: 'arrow.triangle.turn.up.right', iconColor: 'var(--green)', title: 'Directions app', subtitle: 'Opens for Navigate and Directions', value: S.prefs.mapsApp, options: WD.MAPS_APPS, onChange: v => { S.prefs.mapsApp = v; WD.changed(); ui.toast('Directions open in ' + WD.workflow.mapsName(), 'checkmark'); } }),
         ui.row({ icon: 'columns', iconColor: 'var(--teal)', title: 'Single route', trailing: h('div.st-seg', ui.segmented([{ value: 1, label: '1 day' }, { value: 3, label: '3 days' }], S.board.dayCount, v => { S.board.dayCount = v; WD.changed(); })) })),
       ui.section({ header: 'Sync', footer: S.offline ? 'You’re offline. Changes are saved on this iPhone and sync when the connection returns.' : null },
         ui.row({ icon: 'sync', iconColor: issues ? 'var(--orange)' : 'var(--gray)', title: 'Pending changes', badge: issues ? ui.badge(issues + ' to review', 'var(--orange)') : null, detail: n ? String(n) : 'None', chevron: true, onTap: openPending })),
@@ -75,6 +80,7 @@ function root() {
         ui.row(gated('users.manage', { icon: 'person.2', iconColor: 'var(--green)', title: 'Team and roles', detail: String(data.users.filter(u => u.status === 'active').length), chevron: true, onTap: () => push(teamSpec()) })),
         ui.row({ icon: 'truck', iconColor: 'var(--orange)', title: 'Vehicles', detail: String(data.vehicles.length), chevron: true, onTap: () => push(vehiclesSpec()) }),
         ui.row(gated('settings.manage', { icon: 'link', iconColor: 'var(--purple)', title: 'Integrations', detail: INTEG.filter(connected).length + ' connected', chevron: true, onTap: () => push(integrationsSpec()) })),
+        ui.row({ icon: 'checklist', iconColor: 'var(--indigo)', title: 'Field workflow', subtitle: 'Arrival, Complete stop, invoices, job titles, shift limit', chevron: true, onTap: () => push(WD.workflow.workflowSpec()) }),
         ui.row({ icon: 'tag', iconColor: 'var(--pink)', title: 'Job types and fields', chevron: true, onTap: () => WD.admin && push(WD.admin.typesSpec()) }),
         ui.row(gated('settings.manage', { icon: 'square.and.pencil', iconColor: 'var(--teal)', title: 'Import jobs', subtitle: 'Calendar file (.ics), Excel or CSV', chevron: true, onTap: () => WD.admin && push(WD.admin.importSpec()) })),
         ui.row({ icon: 'clock', iconColor: 'var(--orange)', title: 'Time clock and overtime', detail: WD.timeclock ? 'Over ' + data.timeRules.daily.hours + ' h/day · ' + data.timeRules.weekly.hours + ' h/wk' : '', chevron: true, onTap: () => WD.timeclock && push(WD.timeclock.rulesSpec()) })),
@@ -131,7 +137,9 @@ function routesSpec() {
         trailing: h('div.st-order', arrow('chevron.up', i === 0, () => move(rs, i, -1)), arrow('chevron.down', i === rs.length - 1, () => move(rs, i, 1))), chevron: true, onTap: () => page.push(routeSpec(r)) }))),
     ui.section(ui.row(gated('settings.manage', { icon: 'plus.circle.fill', iconPlain: true, title: 'Add route', tint: true, onTap: addRouteSheet })))); } };
 }
-const swatches = (cur, pick) => h('div.row.st-colors', PALETTE.map(c => h('button.st-swatch' + (c === cur ? '.on' : ''), { style: { background: c }, 'aria-label': c, onclick: () => { blur(); pick(c); } })));
+const swatches = (cur, pick) => h('div.row.st-colors', PALETTE.map(c => h('button.st-swatch' + (c.toLowerCase() === String(cur).toLowerCase() ? '.on' : ''), { style: { background: c }, 'aria-label': c, onclick: () => { blur(); pick(c); } })),
+  h('label.st-swatch.st-custom' + (PALETTE.some(c => c.toLowerCase() === String(cur).toLowerCase()) ? '' : '.on'), { 'aria-label': 'Custom color', title: 'Custom color', style: PALETTE.some(c => c.toLowerCase() === String(cur).toLowerCase()) ? null : { background: cur } },
+    h('input', { type: 'color', value: cur, onchange: e => pick(e.target.value.toUpperCase()) })));
 function routeSpec(r) {
   return { title: () => q.routeName(r), render: () => { const admin = WD.can('settings.manage'), drivers = data.users.filter(u => u.role === 'driver' && u.status === 'active'); return ui.list(
     ui.section({ header: 'Just for you', footer: 'Only you see these choices, on any device signed in to this account.' },

@@ -44,6 +44,9 @@ WD.css(`
 .jb-count { width: 54px; border: 0; background: var(--fill3); border-radius: 7px; padding: 6px 8px; font-size: 15px; text-align: right; color: var(--label); outline: 0; }
 .jb-qn { min-width: 22px; text-align: right; font-variant-numeric: tabular-nums; font-size: 16px; }
 .jb-rec .row-detail { color: var(--tint); }
+.jb-day { border: 0; width: 30px; height: 28px; border-radius: 7px; background: var(--fill3); color: var(--label); font-size: 13px; cursor: pointer; padding: 0; }
+.jb-day.on { background: var(--red); color: #fff; font-weight: 600; }
+.jb-steps .btn { min-width: 0; }
 `);
 WD.addIcons({ 'line.3': '<path d="M5 8h14M5 12h14M5 16h14"/>' });
 
@@ -69,10 +72,11 @@ function openDetails(jobId) {
 function details(job, p) {
   const route = q.route(job.routeId), type = q.jobType(job.type), st = WD.jobStatuses[job.status], canEdit = WD.can('jobs.edit') && route && route.writable;
   const driver = q.driverFor(job.routeId), vehicle = route && q.vehicle(route.vehicleId), cust = q.customer(job.customerId), unresolved = !job.located && job.address && job.type !== 'meet';
-  const line = (ic, ...kids) => h('div.jb-line', icon(ic, 18), h('span', kids));
+  const line = (ic, ...kids) => h('div.jb-line', icon(ic, 18), h('span', kids)), wf = WD.workflow;
   const head = h('div.jb-head',
     h('div.title2', unresolved && h('span.jb-q', '?'), h('span', { style: WD.struck[job.status] ? { textDecoration: 'line-through' } : null }, job.title)),
-    h('div.jb-badges', ui.badge(st.title, st.color), type.color && ui.badge(type.title, type.color), job.pending && ui.badge('Pending sync', 'var(--orange)')),
+    h('div.jb-badges', ui.badge(st.title, st.color), type.color && ui.badge(type.title, type.color), job.pending && ui.badge('Pending sync', 'var(--orange)'), job.status === 'completed' && !wf.billed(job) && ui.badge('Not billed', 'var(--orange)')),
+    (d => d.length ? h('div.wf-chips', d.map(x => h('span.wf-chip', x))) : null)(wf.titleDetails(job)),
     h('div.jb-line', ui.dot(q.routeColor(route)), h('span', q.routeName(route) + (driver ? ' · ' + driver.name : '') + (vehicle ? ' · ' + vehicle.name : ''))),
     line('calendar', fmt.day(job.day, 'long')),
     line('list.bullet', job.allDay ? 'Note for the day (not a stop)' : (p => 'Stop ' + p.n + ' of ' + p.of + ' on the list')(q.position(job))),
@@ -82,10 +86,10 @@ function details(job, p) {
   const skip = () => skipFlow(job);
   let steps = null;
   if (!job.allDay) {
-    const b = (label, kind, fn, ic) => ui.button(label, { kind, icon: ic, block: false, onTap: fn });
-    if (job.status === 'scheduled') steps = h('div.jb-steps', b('Start driving', 'tinted', () => setStatus('enroute'), 'truck'), b('Skip…', 'gray', skip));
-    else if (job.status === 'enroute') steps = h('div.jb-steps', b('Arrived', 'filled', () => setStatus('arrived'), 'mappin'), b('Skip…', 'gray', skip));
-    else if (job.status === 'arrived') steps = h('div.jb-steps', b('Complete stop', 'filled', () => setStatus('completed'), 'checkmark'), b('Skip…', 'gray', skip));
+    const b = (label, kind, fn, ic) => ui.button(label, { kind, icon: ic, block: false, onTap: fn }), complete = b('Complete', 'filled', () => wf.completeStop(job), 'checkmark'), arriveBtn = data.workflow.arrival !== 'auto';
+    if (job.status === 'scheduled') steps = h('div.jb-steps', b('Start driving', 'tinted', () => setStatus('enroute'), 'truck'), complete, b('Skip…', 'gray', skip));
+    else if (job.status === 'enroute') steps = h('div.jb-steps', arriveBtn && b('Arrived', 'tinted', () => setStatus('arrived'), 'mappin'), complete, b('Skip…', 'gray', skip));
+    else if (job.status === 'arrived') steps = h('div.jb-steps', complete, b('Skip…', 'gray', skip));
     else steps = h('div.jb-done', icon(st.icon, 22, st.color), h('span', job.status === 'completed' && job.arrivedAt != null ? 'Arrived ' + fmt.time(job.arrivedAt) + ' · left ' + fmt.time(job.departedAt) + ' · ' + fmt.dur(Math.max(1, job.departedAt - job.arrivedAt)) + ' on site' : st.title + (job.rescheduledTo ? ' to ' + fmt.day(job.rescheduledTo) : '') + (job.skipNote ? ' · ' + job.skipNote : '')), h('span.spacer'), h('button', { onclick: () => setStatus('scheduled') }, 'Reopen'));
   }
   const contact = cust && cust.contacts[0];
@@ -103,18 +107,22 @@ function details(job, p) {
     !cust && job.phone && ui.section('Contact', ui.row({ title: fmt.phone(job.phone), subtitle: job.contactName || null, icon: 'phone', iconPlain: true, tint: true, onTap: () => ui.toast('Calling via Quo…', 'phone') })),
     job.address && ui.section({ header: 'Location', footer: unresolved ? 'Apple Maps could not find this address, so the stop has no pin and is left out of routing. Edit the job to fix it.' : null },
       ui.row({ title: job.address, icon: 'mappin', iconPlain: true, iconColor: unresolved ? 'var(--red)' : 'var(--label2)' }),
-      ui.row({ title: 'Directions', icon: 'arrow.triangle.turn.up.right', iconPlain: true, tint: true, onTap: () => ui.toast('Opening Apple Maps…', 'map') }),
+      ui.row({ title: 'Directions', subtitle: wf.mapsName(), icon: 'arrow.triangle.turn.up.right', iconPlain: true, tint: true, onTap: () => wf.openDirections(job) }),
       job.located && ui.row({ title: 'Show on map', icon: 'map', iconPlain: true, tint: true, onTap: () => { p.dismiss(); setTimeout(() => guard('map', 'focusJob', job.id), 350); } })),
     ui.section('Service',
       ui.row({ title: 'Job type', trailing: h('span.hstack.secondary', type.color && ui.dot(type.color), type.title) }),
       (job.items && job.items.length ? ui.row({ title: job.type === 'purge' ? 'Estimated boxes' : 'Containers', detail: WD.itemsLabel(job.items, job.type === 'purge') }) : job.containers && ui.row({ title: 'Containers', detail: job.containers })),
       job.bizOpen && ui.row({ title: 'Office hours', detail: fmt.time(fmt.fromHHMM(job.bizOpen)) + ' – ' + fmt.time(fmt.fromHHMM(job.bizClose)) }),
-      (job.custFrom || job.custUntil) && ui.row({ title: 'Requested window', subtitle: job.custStrict ? 'Required — must be done in this window' : 'Preferred — fit it in if possible', detail: windowText(job) }),
-      job.po && ui.row({ title: 'PO number', detail: job.po }), job.contract && ui.row({ title: 'Contract', detail: job.contract })),
+      job.lunchFrom && ui.row({ title: 'Closed for lunch', detail: fmt.time(fmt.fromHHMM(job.lunchFrom)) + ' – ' + fmt.time(fmt.fromHHMM(job.lunchUntil)) }),
+      job.closedDays && job.closedDays.length > 0 && ui.row({ title: 'Closed', detail: job.closedDays.join(', ') }),
+      (job.custFrom || job.custUntil) && ui.row({ title: job.windowBy === 'us' ? 'Window we gave them' : 'Window they asked for', subtitle: job.custStrict ? 'Required — must be done in this window' : 'Preferred — fit it in if possible', detail: windowText(job) }),
+      job.callAhead > 0 && ui.row({ title: 'Call ahead', detail: job.callAhead + ' min before arriving' }),
+      (job.po || (cust && cust.poSchedule && cust.poSchedule.length)) && ui.row({ title: 'PO number', subtitle: cust && cust.poSchedule && cust.poSchedule.length ? 'From the PO schedule for ' + fmt.day(job.day, 'md') : null, detail: job.po || 'None' }),
+      cust && wf.poAlert(cust, job.day) && wf.alertRow(wf.poAlert(cust, job.day)), job.contract && ui.row({ title: 'Contract', detail: job.contract })),
     job.notes && ui.section('Notes', h('div.jb-notes', job.notes)),
     ui.section('Attachments', job.attachments.map(a => attachmentRow(a)),
       ui.row({ title: 'Add photo or file', icon: 'paperclip', iconPlain: true, tint: true, onTap: () => addAttachment(job.attachments) })),
-    (WD.can('billing.view') || WD.can('billing.field')) && !job.allDay && (job.invoice || job.status === 'completed' || job.status === 'arrived') && WD.screens.billing && ui.section({ header: 'Billing', footer: job.invoice ? null : 'Nothing is sent until you review the charges.' }, WD.screens.billing.billingRows(job)),
+    (WD.can('billing.view') || WD.can('billing.field')) && !job.allDay && !WD.struck[job.status] && WD.screens.billing && ui.section({ header: 'Billing', footer: job.invoice || job.billing ? null : job.status === 'completed' ? 'This stop is completed but not billed. It stays bright on the board until it is.' : 'Nothing is sent until you review the charges.' }, WD.screens.billing.billingRows(job)),
     ui.section({ header: 'History', footer: (S.googleMirror.enabled && route ? 'Copied to the ' + route.name + ' Google calendar a few seconds after each change syncs. ' : '') + 'Version ' + job.version + '.' },
       job.events.slice().reverse().map(e => ui.row({ title: e.text, subtitle: e.actor + ' · ' + fmt.rel(e.at) }))));
 }
@@ -239,12 +247,12 @@ function addressSuggestions(text) {
 }
 function openEditor(o = {}) {
   const job = o.jobId ? q.job(o.jobId) : null, isNew = !job;
-  const f = job ? { title: job.title, address: job.address, notes: job.notes, routeId: job.routeId, day: job.day, allDay: job.allDay, pos: (p => p.n < p.of ? p.n : 0)(q.position(job)), dur: job.dur, type: job.type, items: WD.copyItems(job.items), bizOpen: job.bizOpen, bizClose: job.bizClose, custFrom: job.custFrom, custUntil: job.custUntil, custStrict: !!job.custStrict, customerId: job.customerId, located: job.located, x: job.x, y: job.y, po: job.po || '', contract: job.contract || '', contact: job.contactName || '', phone: job.phone ? fmt.phone(job.phone) : '', email: '', billingEmail: '', sign: !!(q.customer(job.customerId) || {}).requiresSignature, ...parseRule(job.recurring && job.recurring.rule) }
-    : { title: '', address: '', notes: '', routeId: o.routeId || (q.visibleRoutes()[0] || q.routes()[0]).id, day: o.day || S.board.day, allDay: false, pos: o.pos || 0, dur: 30, type: o.type || 'purge', items: (o.type || 'purge') === 'purge' ? [{ id: 'box', qty: 0, rate: 8 }] : [], bizOpen: '', bizClose: '', custFrom: '', custUntil: '', custStrict: false, customerId: null, located: false, x: null, y: null, po: '', contract: '', contact: '', phone: '', email: '', billingEmail: '', sign: false, repeat: 'none', interval: 1 };
+  const f = job ? { title: job.title, address: job.address, notes: job.notes, routeId: job.routeId, day: job.day, allDay: job.allDay, pos: (p => p.n < p.of ? p.n : 0)(q.position(job)), dur: job.dur, type: job.type, items: WD.copyItems(job.items), bizOpen: job.bizOpen, bizClose: job.bizClose, custFrom: job.custFrom, custUntil: job.custUntil, custStrict: !!job.custStrict, customerId: job.customerId, located: job.located, x: job.x, y: job.y, po: job.po || '', contract: job.contract || '', contact: job.contactName || '', phone: job.phone ? fmt.phone(job.phone) : '', email: '', billingEmail: '', sig: WD.sigPolicy(q.customer(job.customerId)), windowBy: job.windowBy || 'customer', lunchFrom: job.lunchFrom || '', lunchUntil: job.lunchUntil || '', closedDays: (job.closedDays || []).slice(), callAhead: job.callAhead || 0, flags: { ...(job.flags || {}) }, ...parseRule(job.recurring && job.recurring.rule) }
+    : { title: '', address: '', notes: '', routeId: o.routeId || (q.visibleRoutes()[0] || q.routes()[0]).id, day: o.day || S.board.day, allDay: false, pos: o.pos || 0, dur: 30, type: o.type || 'purge', items: (o.type || 'purge') === 'purge' ? [{ id: 'box', qty: 0, rate: 8 }] : [], bizOpen: '', bizClose: '', custFrom: '', custUntil: '', custStrict: false, customerId: null, located: false, x: null, y: null, po: '', contract: '', contact: '', phone: '', email: '', billingEmail: '', sig: 'optional', windowBy: 'customer', lunchFrom: '', lunchUntil: '', closedDays: [], callAhead: 0, flags: {}, repeat: 'none', interval: 1 };
   Object.assign(f, { ends: 'never', count: 10, until: D.add(f.day, 90), attachments: [] });
   const wasRecurring = f.repeat !== 'none';
   let page = null, matchBox = null, suggestBox = null, recBox = null, timer = null, dirty = false;
-  const fill = c => { const l = c.locations[0], p = c.contacts[0] || {}; Object.assign(f, { customerId: c.id, title: c.name, address: l.address, notes: l.notes, type: c.type, items: WD.copyItems(l.items), bizOpen: l.bizOpen, bizClose: l.bizClose, located: l.located !== false, x: l.x, y: l.y, po: c.po || '', contract: c.contract || '', sign: !!c.requiresSignature, contact: p.name || '', phone: p.phone ? fmt.phone(p.phone) : '', email: p.email || '', billingEmail: c.billingEmail || '' }); dirty = true; };
+  const fill = c => { const l = c.locations[0], p = c.contacts[0] || {}; Object.assign(f, { customerId: c.id, title: c.name, address: l.address, notes: l.notes, type: c.type, items: WD.copyItems(l.items), bizOpen: l.bizOpen, bizClose: l.bizClose, located: l.located !== false, x: l.x, y: l.y, po: WD.workflow.poFor(c, f.day).po, contract: c.contract || '', sig: WD.sigPolicy(c), lunchFrom: l.lunchFrom || '', lunchUntil: l.lunchUntil || '', closedDays: (l.closedDays || []).slice(), callAhead: l.callAhead || 0, contact: p.name || '', phone: p.phone ? fmt.phone(p.phone) : '', email: p.email || '', billingEmail: c.billingEmail || '' }); dirty = true; };
   if (isNew && o.customerId && q.customer(o.customerId)) fill(q.customer(o.customerId));
   const blurAndRefresh = () => { if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); page.refresh(); };
   const syncSave = () => { const b = page.navbar.querySelector('.nav-trail .nav-btn'); if (b) b.disabled = !f.title.trim(); };
@@ -285,11 +293,12 @@ function openEditor(o = {}) {
     let newCustomer = null;
     if (isNew && !f.customerId && f.type !== 'meet' && (f.address.trim() || phone || f.email.trim())) {
       newCustomer = { id: 'c' + (900 + data.customers.length), name: f.title.trim(), kind: 'company', route: f.routeId, lifecycle: 'scheduled', channel: 'Other', type: f.type, freq: f.repeat === 'none' ? 'One time' : ruleLabel(f), contacts: (f.contact.trim() || phone || f.email.trim()) ? [{ name: f.contact.trim() || f.title.trim(), role: '', phone, email: f.email.trim().toLowerCase() }] : [], owner: S.me.id, nextAction: null, notes: '', tags: [], successful: false,
-        billingEmail: f.billingEmail.trim(), po: f.po.trim(), contract: f.contract.trim(), requiresSignature: f.sign,
+        billingEmail: f.billingEmail.trim(), po: f.po.trim(), contract: f.contract.trim(), signature: f.sig, billingMode: 'invoice', documents: [], poSchedule: [],
         locations: [{ id: 'l' + Date.now(), label: 'Main office', address: f.address, x: f.x, y: f.y, containers, items: WD.copyItems(f.items), bizOpen: f.bizOpen, bizClose: f.bizClose, notes: f.notes, located: f.located }], stats: { jobs: 0, invoiced: 0, paid: 0, balance: 0, lastService: null, firstInvoice: null, rate: 85 } };
       data.customers.push(newCustomer); f.customerId = newCustomer.id;
-    } else if (f.customerId && q.customer(f.customerId) && asks('signature')) q.customer(f.customerId).requiresSignature = f.sign;
-    const fields = { title: f.title.trim(), address: f.address.trim(), notes: f.notes, routeId: f.routeId, day: f.day, allDay: f.allDay, dur: f.dur, type: f.type, containers, items: WD.copyItems(f.items), bizOpen: f.bizOpen, bizClose: f.bizClose, custFrom: f.custFrom, custUntil: f.custUntil, custStrict: f.custStrict, customerId: f.customerId, locationId: null, located: f.located, x: f.x, y: f.y, po: f.po.trim(), contract: f.contract.trim(), phone: f.customerId ? '' : phone, contactName: f.customerId ? '' : f.contact.trim() };
+    } else if (f.customerId && q.customer(f.customerId) && asks('signature')) q.customer(f.customerId).signature = f.sig;
+    if (f.customerId && q.customer(f.customerId)) { const l = q.customer(f.customerId).locations[0]; if (l) Object.assign(l, { lunchFrom: f.lunchFrom, lunchUntil: f.lunchUntil, closedDays: f.closedDays.slice(), callAhead: f.callAhead }); }
+    const fields = { title: f.title.trim(), address: f.address.trim(), notes: f.notes, routeId: f.routeId, day: f.day, allDay: f.allDay, dur: f.dur, type: f.type, containers, items: WD.copyItems(f.items), bizOpen: f.bizOpen, bizClose: f.bizClose, custFrom: f.custFrom, custUntil: f.custUntil, custStrict: f.custStrict, customerId: f.customerId, locationId: null, located: f.located, x: f.x, y: f.y, po: f.po.trim(), contract: f.contract.trim(), phone: f.customerId ? '' : phone, contactName: f.customerId ? '' : f.contact.trim(), windowBy: f.windowBy, lunchFrom: f.lunchFrom, lunchUntil: f.lunchUntil, closedDays: f.closedDays.slice(), callAhead: f.callAhead, flags: { ...f.flags } };
     const series = job ? seriesJobs(job, scope) : [], me = S.me.name;
     api.op({ kind: isNew ? 'create' : 'edit', title: fields.title, scope: isNew ? (f.repeat === 'none' ? 'New job' : 'New recurring job') : scope, jobIds: job ? [job.id, ...series.map(j => j.id)] : [], apply() {
       const recurring = f.repeat === 'none' ? null : { rule: ruleLabel(f), seriesId: job && job.recurring && scope === 'All jobs' ? job.recurring.seriesId : 's-' + Date.now() };
@@ -316,6 +325,16 @@ function openEditor(o = {}) {
         h('input.jb-count', { type: 'text', inputmode: 'numeric', 'aria-label': 'Estimated boxes', value: n ? String(n) : '', placeholder: '0', oninput: e => { setQty('box', parseInt(e.target.value.replace(/\D/g, ''), 10) || 0); }, onchange: () => p.refresh() }));
       return h('div.row.jb-item', h('div.row-main', h('div.row-title', ITEM_LABEL[id]), pricing && n > 0 && h('div.row-sub', 'Rate each')), rate, h('span.jb-qn', String(n)), ui.stepper(n, 0, 40, v => { setQty(id, v); p.refresh(); }));
     });
+  }
+  /** Heads-up details the driver sees right after the job title (Settings → Field workflow chooses which show). */
+  function headsUp(p) {
+    const flag = (k, title) => ui.toggleRow({ title, value: !!f.flags[k], onChange: v => { f.flags[k] = v; dirty = true; } }), DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const preview = WD.workflow.titleDetails({ ...f, title: f.title, flags: f.flags });
+    return ui.section({ header: 'Heads-up for the driver', footer: (preview.length ? 'Shows after the title: “' + preview.join(' · ') + '”. ' : '') + 'Lunch, closed days and call-ahead are saved with the customer’s location; the rest apply to this visit.' },
+      ui.timeRow({ title: 'Closed for lunch from', value: f.lunchFrom, onChange: v => { f.lunchFrom = v; dirty = true; p.refresh(); } }), f.lunchFrom && ui.timeRow({ title: 'Lunch until', value: f.lunchUntil, onChange: v => { f.lunchUntil = v; dirty = true; p.refresh(); } }),
+      ui.row({ title: 'Closed on', trailing: h('div.hstack', { style: 'gap:4px' }, DAYS.map(d => h('button.jb-day' + (f.closedDays.includes(d) ? '.on' : ''), { onclick: () => { f.closedDays = f.closedDays.includes(d) ? f.closedDays.filter(x => x !== d) : DAYS.filter(x => x === d || f.closedDays.includes(x)); dirty = true; p.refresh(); } }, d[0] + (d === 'Thu' || d === 'Sat' ? d[1] : '')))) }),
+      ui.row({ title: 'Call ahead', detail: f.callAhead ? f.callAhead + ' min' : 'No', trailing: ui.stepper(f.callAhead / 5, 0, 12, v => { f.callAhead = v * 5; dirty = true; p.refresh(); }) }),
+      f.type !== 'setup' && flag('setup', 'New setup'), flag('extraBin', 'Bring an extra container'), flag('extraShred', 'Has extra to shred'), flag('early', 'Called in for early service'));
   }
   const timeRows = () => [ui.timeRow({ title: 'From', value: f.custFrom, onChange: v => { f.custFrom = v; dirty = true; } }), ui.timeRow({ title: 'Until', value: f.custUntil, onChange: v => { f.custUntil = v; dirty = true; } })];
 
@@ -361,10 +380,12 @@ function openEditor(o = {}) {
         asks('hours') && ui.section({ header: 'Office hours', footer: 'When the business is open. AutoRoute never plans a stop outside these hours.' },
           ui.timeRow({ title: 'Opens', value: f.bizOpen, onChange: v => set('bizOpen', v) }), ui.timeRow({ title: 'Closes', value: f.bizClose, onChange: v => set('bizClose', v) })),
         showWindow && ui.section({ header: 'Requested time window', footer: 'A time the customer asked for on this visit — for example a homeowner who is only home 1–3 PM. Preferred: AutoRoute fits it in when it can. Required: AutoRoute plans around it and warns if it can’t be met.' },
-          timeRows(), h('div.row', h('div.row-main', h('div.row-title', 'This window is')), h('div', { style: 'width:190px;flex:none' }, ui.segmented([{ value: false, label: 'Preferred' }, { value: true, label: 'Required' }], f.custStrict, v => { f.custStrict = v; dirty = true; })))),
+          timeRows(), h('div.row', h('div.row-main', h('div.row-title', 'Who set it')), h('div', { style: 'width:190px;flex:none' }, ui.segmented([{ value: 'customer', label: 'They asked' }, { value: 'us', label: 'We told them' }], f.windowBy, v => { f.windowBy = v; dirty = true; }))),
+          h('div.row', h('div.row-main', h('div.row-title', 'This window is')), h('div', { style: 'width:190px;flex:none' }, ui.segmented([{ value: false, label: 'Preferred' }, { value: true, label: 'Required' }], f.custStrict, v => { f.custStrict = v; dirty = true; })))),
         (asks('po') || asks('contract') || asks('signature')) && ui.section({ header: 'Billing', footer: 'PO and contract numbers print on the invoice. ' + (cust ? 'They come from the customer; changes here apply to this job only.' : 'They’re saved to the new customer.') },
           asks('po') && inp('PO number', 'po', { placeholder: 'None' }), asks('contract') && inp('Contract', 'contract', { placeholder: 'None' }),
-          asks('signature') && ui.toggleRow({ title: 'Customer signature required', subtitle: 'Asks for a signature on every invoice', value: f.sign, onChange: v => { f.sign = v; dirty = true; } })),
+          asks('signature') && ui.pickerRow({ title: 'Customer signature', value: f.sig, options: WD.SIG_POLICIES, onChange: v => { f.sig = v; dirty = true; p.refresh(); } })),
+        !f.allDay && f.type !== 'meet' && headsUp(p),
         asks('notes') && ui.section('Notes', ui.inputRow({ multiline: true, placeholder: 'Access notes, contact, what to bring', value: f.notes, onInput: v => set('notes', v) })),
         isNew && ui.section('Attachments', f.attachments.map(attachmentRow), ui.row({ title: 'Add photo or file', icon: 'paperclip', iconPlain: true, tint: true, onTap: () => addAttachment(f.attachments) })),
         h('div', { style: 'margin-top:14px' }, ui.note(type.title + ' jobs ask for these fields. ' + (WD.can('settings.manage') ? 'Change them in Settings → Job types and fields.' : 'An admin can change them in Settings.'))));
@@ -446,9 +467,12 @@ function windowNote(l) {
   if (hasHard) return h('div.jb-win.ok', icon('checkmark', 13), (l.job.custStrict ? 'Required ' : 'Open ') + winLabel(w.hard) + ' ✓' + (l.start > l.arrive + 2 ? ' · waits ' + (l.start - l.arrive) + ' min' : ''));
   return null;
 }
-async function openAutoRoute(routeId) {
-  if (!routeId) { routeId = await ui.actionSheet({ title: 'AutoRoute which route?', message: fmt.day(S.board.day, 'long'), buttons: q.visibleRoutes().map(r => ({ label: q.routeName(r), value: r.id })) }); if (!routeId) return; }
-  const day = S.board.day, route = q.route(routeId), all = q.stopList(routeId, day), todo = all.filter(j => j.status === 'scheduled' && !j.pending);
+/** o: {day, routes (ids to choose from), stay (don't jump to the board after accepting, e.g. from the map)} */
+async function openAutoRoute(routeId, o = {}) {
+  const day = o.day || S.board.day, choices = o.routes ? o.routes.map(q.route).filter(Boolean) : q.visibleRoutes();
+  if (!routeId && choices.length === 1) routeId = choices[0].id;
+  if (!routeId) { routeId = await ui.actionSheet({ title: 'AutoRoute which route?', message: fmt.day(day, 'long'), buttons: choices.map(r => ({ label: q.routeName(r), value: r.id })) }); if (!routeId) return; }
+  const route = q.route(routeId), all = q.stopList(routeId, day), todo = all.filter(j => j.status === 'scheduled' && !j.pending);
   const stops = todo.filter(j => j.located && j.x != null), unrouted = todo.filter(j => !stops.includes(j)), done = all.filter(j => j.status !== 'scheduled' && j.located).pop();
   const isToday = day === D.today(), stages = ['Driving times from Apple Maps', 'Time on site: median of each customer’s recorded visits', 'Office hours and requested windows'];
   let stage = 0, plan = null, pinnedAt = -1, view = 'after';
@@ -495,7 +519,7 @@ async function openAutoRoute(routeId) {
       if (bad.length && !(await ui.actionSheet({ title: bad.length + (bad.length === 1 ? ' stop misses' : ' stops miss') + ' a required time', message: bad.map(l => l.job.title).join(', ') + '. Accept anyway, or keep adjusting the order.', buttons: [{ label: 'Accept anyway', value: true, role: 'destructive' }], cancel: 'Keep adjusting' }))) return;
       const order = plan.order;
       api.op({ kind: 'batch', title: q.routeName(route) + ' · AutoRoute', scope: order.length + ' jobs · all or nothing', jobIds: order.map(j => j.id), apply() { newList().forEach((j, i) => { j.seq = i + 1; }); order.forEach(j => j.events.push({ at: +WD.now(), actor: S.me.name, text: 'AutoRoute: moved to stop ' + j.seq })); } });
-      p.dismiss(); ui.toast('Route accepted', 'checkmark'); guard('board', 'show', day);
+      p.dismiss(); ui.toast('Route accepted', 'checkmark'); if (!o.stay) guard('board', 'show', day);
     } }] : [],
     render(page) {
       if (!plan) return ui.list(ui.section({ header: q.routeName(route) + ' · ' + fmt.day(day), footer: 'Planning ' + stops.length + ' remaining stops' + (done ? ' from ' + done.title : ' from ' + ends().start.name) + '.' },
@@ -529,5 +553,5 @@ const firstToday = pred => data.jobs.filter(j => j.day === D.today() && !j.allDa
 WD.panel.addJump('Job details', () => { WD.nav.switchTab('board'); const j = firstToday(x => x.status === 'arrived') || firstToday(() => true); if (j) openDetails(j.id); });
 WD.panel.addJump('New job', () => { WD.nav.switchTab('board'); openEditor({ day: D.today(), routeId: 'r1' }); });
 WD.panel.addJump('Search', () => { WD.nav.switchTab('board'); openSearch(); });
-WD.panel.addJump('AutoRoute', () => { let day = D.add(D.today(), 1); while ([0, 6].includes(D.parse(day).getDay())) day = D.add(day, 1); guard('board', 'show', day); openAutoRoute('r1'); });
+WD.panel.addJump('AutoRoute', () => { let day = D.add(D.today(), 1); while ([0, 6].includes(D.parse(day).getDay())) day = D.add(day, 1); guard('board', 'show', day); openAutoRoute('r1', { day }); });
 })();

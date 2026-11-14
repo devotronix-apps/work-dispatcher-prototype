@@ -41,6 +41,20 @@ data.fieldConfig = { regular: ROUTE_FIELDS, setup: ROUTE_FIELDS, creditCard: ROU
   purge: ['contact', 'phone', 'email', 'address', 'items', 'pricing', 'window', 'signature', 'notes'], meet: ['phone', 'notes'] };
 WD.asks = (type, field) => (data.fieldConfig[type] || ROUTE_FIELDS).includes(field);
 /* Time clock: overtime rules and location stays (Settings → Time clock and overtime). */
+/* Field workflow (Settings → Field workflow): company-wide choices for how drivers move through a stop. */
+data.workflow = {
+  arrival: 'auto',          // 'auto' = infer arrival from GPS (near the stop for dwellMin), 'button' = driver taps I've arrived, 'both'
+  dwellMin: 2,              // minutes within the geofence before arrival is recorded
+  onComplete: 'billing',    // 'billing' = open the billing details, 'complete' = just mark it done, 'ask' = ask each time
+  afterBilling: 'next',     // 'next' = show the next customer, 'navigate' = show it and start directions, 'stay'
+  dimWhen: 'billed',        // completed jobs fade only once invoiced / paid–no invoice / service note ('billed'), or as soon as completed ('completed')
+  missedCheck: true,        // warn about stops with no invoice, no paid–no invoice and no skip
+  shiftCutoff: 16,          // hours after clock-in when tracking stops automatically
+  titleDetails: { on: true, hours: true, lunch: true, closed: true, setup: true, extraBin: true, extraShred: true, early: true, window: true, callAhead: true },
+  normalOpen: '08:00', normalClose: '17:00',
+};
+WD.state.prefs = { mapsApp: 'apple' };
+data.serviceNotes = [];
 data.timeRules = { daily: { on: true, hours: 10, rate: 1.5 }, weekly: { on: true, hours: 40, rate: 1.5 }, double: { on: false, hours: 12, rate: 2 }, stayMinutes: 4, unpaidBreak: 30 };
 
 data.orgs = [
@@ -87,33 +101,37 @@ data.routes = [
 data.depot = { name: 'Shop', address: '400 Industrial Way, Lakemont', x: 505, y: 520 };
 
 const C = (id, name, route, x, y, address, o = {}) => ({ id, name, kind: o.kind || 'company', route, lifecycle: o.lifecycle || 'customer', channel: o.channel || 'Referral', type: o.type || 'regular', freq: o.freq || 'Every 2 weeks',
-  contacts: o.contacts || [], locations: [{ id: id + 'l1', label: o.label || 'Main office', address: address + ', Lakemont', x, y, containers: o.containers || '2 consoles', bizOpen: o.open || '08:00', bizClose: o.close || '17:00', notes: o.notes || '' }],
+  contacts: o.contacts || [], locations: [{ id: id + 'l1', label: o.label || 'Main office', address: address + ', Lakemont', x, y, containers: o.containers || '2 consoles', bizOpen: o.open || '08:00', bizClose: o.close || '17:00', notes: o.notes || '',
+    lunchFrom: o.lunch ? o.lunch[0] : '', lunchUntil: o.lunch ? o.lunch[1] : '', closedDays: o.closed || [], callAhead: o.call || 0 }],
   owner: o.owner || 'u3', nextAction: o.next || null, notes: o.cnotes || '', tags: o.tags || [], stats: null,
-  billingEmail: o.billing || '', po: o.po || '', contract: o.contract || '', requiresSignature: !!o.sign || o.type === 'government' });
+  billingEmail: o.billing || '', po: o.po || '', contract: o.contract || '', signature: o.sig || (o.type === 'government' ? 'always' : 'optional'), billingMode: o.mode || 'invoice', documents: [], poSchedule: [] });
+/** Customer signature policy: 'always' (required on every invoice), 'optional' (driver asks if needed) or 'never' (not asked). */
+WD.sigPolicy = c => !c ? 'optional' : c.signature || (c.requiresSignature ? 'always' : 'optional');
+WD.SIG_POLICIES = [{ value: 'always', label: 'Always required' }, { value: 'optional', label: 'Optional — driver decides' }, { value: 'never', label: 'Never needed' }];
 const P = (name, role, phone, email) => ({ name, role, phone: '+1512555' + phone, email });
 data.customers = [
   C('c1', 'Harlow & Finch Law', 'r1', 520, 300, '210 Mercer St, Suite 400', { contacts: [P('Renee Harlow', 'Office manager', '0142', 'renee@harlowfinch.example'), P('Front desk', '', '0143', 'frontdesk@harlowfinch.example')], containers: '4 consoles', notes: 'Check in at reception. Service elevator is around back.', channel: 'Google Ads', freq: 'Weekly' }),
   C('c4', 'Northgate Credit Union', 'r1', 640, 180, '900 Northgate Blvd', { contacts: [P('Derek Solis', 'Branch manager', '0151', 'dsolis@northgatecu.example')], containers: '3 consoles, 1 bin (64 gal)', open: '09:00', notes: 'Not before 9. Sign in with security.', channel: 'Referral', freq: 'Weekly' }),
-  C('c6', 'Lakemont Pediatrics', 'r1', 420, 220, '55 Willow Creek Rd', { contacts: [P('Aisha Karim', 'Practice admin', '0160', 'aisha@lakemontpeds.example')], containers: '2 consoles', notes: 'Closed for lunch 12–1.', channel: 'Google Maps' }),
-  C('c9', 'Lakemont Unified School District', 'r1', 700, 330, '1200 Scholar Way', { label: 'District office', type: 'government', contacts: [P('Paul Nakamura', 'Records clerk', '0177', 'pnakamura@lusd.example')], containers: '6 bins (96 gal)', notes: 'PO number required on every invoice.', channel: 'Referral', freq: 'Every 4 weeks', po: 'PO 26-04471', billing: 'ap@lusd.example' }),
+  C('c6', 'Lakemont Pediatrics', 'r1', 420, 220, '55 Willow Creek Rd', { contacts: [P('Aisha Karim', 'Practice admin', '0160', 'aisha@lakemontpeds.example')], containers: '2 consoles', notes: 'Use the back entrance.', lunch: ['12:00', '13:00'], channel: 'Google Maps' }),
+  C('c9', 'Lakemont Unified School District', 'r1', 700, 330, '1200 Scholar Way', { label: 'Site 101 - District Office', type: 'government', contacts: [P('Paul Nakamura', 'Records clerk', '0177', 'pnakamura@lusd.example')], containers: '4 bins (64 gal)', notes: 'PO number required on every invoice. Service ticket signed by the site contact.', channel: 'Referral', freq: 'Every 4 weeks', po: 'PO 26-04471', billing: 'ap@lusd.example', mode: 'serviceNote', contract: 'LUSD 5-yr contract 2024-0193' }),
   C('c12', 'Summit Physical Therapy', 'r1', 330, 330, '18 Summit Ave', { contacts: [P('Lena Brooks', 'Owner', '0188', 'lena@summitpt.example')], containers: '1 console', type: 'creditCard', channel: 'Yelp', freq: 'Every 4 weeks' }),
   C('c15', 'Marlowe Architects', 'r1', 560, 400, '330 Foundry Ln, 2nd floor', { contacts: [P('Theo Marlowe', 'Principal', '0195', 'theo@marlowearch.example')], containers: '2 consoles', type: 'setup', lifecycle: 'scheduled', notes: 'First service — deliver 2 consoles.', channel: 'Website', freq: 'Every 4 weeks' }),
   C('c18', 'Greenway Realty', 'r1', 780, 230, '2460 Greenway Dr', { contacts: [P('Monica Reyes', 'Broker', '0203', 'monica@greenwayrealty.example')], containers: '1 console', open: '08:00', close: '09:00', notes: 'Only open 8–9 AM for pickups.', channel: 'Google Ads' }),
   C('c19', 'Kessler Chiropractic', 'r1', 460, 140, '7 Orchard Park', { contacts: [P('Dr. Alan Kessler', 'Owner', '0211', 'office@kesslerchiro.example')], containers: '1 console', type: 'creditCard', channel: 'Bing Ads', freq: 'Every 4 weeks' }),
 
-  C('c2', 'Ridgeview Family Dental', 'r2', 540, 700, '1480 Ridgeview Dr', { contacts: [P('Carmen Ortiz', 'Office manager', '0122', 'carmen@ridgeviewdental.example')], containers: '2 consoles', type: 'creditCard', notes: 'Use the side door, ring bell.', channel: 'Google Maps' }),
+  C('c2', 'Ridgeview Family Dental', 'r2', 540, 700, '1480 Ridgeview Dr', { contacts: [P('Carmen Ortiz', 'Office manager', '0122', 'carmen@ridgeviewdental.example')], containers: '2 consoles', type: 'creditCard', notes: 'Use the side door, ring bell.', channel: 'Google Maps', sig: 'never' }),
   C('c3', 'Calloway CPA Group', 'r2', 430, 640, '77 Bank St, Suite 210', { contacts: [P('Greg Calloway', 'Partner', '0131', 'greg@callowaycpa.example'), P('Nina Voss', 'Admin', '0132', 'nina@callowaycpa.example')], containers: '5 consoles', notes: 'Tax season: weekly Jan–Apr.', channel: 'Referral', freq: 'Weekly' }),
   C('c7', 'Sterling Title & Escrow', 'r2', 660, 760, '615 Harbor Rd', { contacts: [P('Joan Sterling', 'Owner', '0166', 'joan@sterlingtitle.example')], containers: '3 consoles', channel: 'Google Ads' }),
-  C('c8', 'Pinecrest Insurance Agency', 'r2', 800, 820, '3105 Pinecrest Pkwy', { contacts: [P('Marcus Pine', 'Agent', '0171', 'marcus@pinecrestins.example')], containers: '1 console', channel: 'Yelp', freq: 'Every 4 weeks' }),
+  C('c8', 'Pinecrest Insurance Agency', 'r2', 800, 820, '3105 Pinecrest Pkwy', { contacts: [P('Marcus Pine', 'Agent', '0171', 'marcus@pinecrestins.example')], containers: '1 console', channel: 'Yelp', freq: 'Every 4 weeks', sig: 'never' }),
   C('c10', 'Oakline Property Management', 'r2', 350, 800, '48 Oakline Ct', { contacts: [P('Tessa Wright', 'Operations', '0180', 'tessa@oaklinepm.example')], containers: '2 bins (64 gal)', channel: 'Website' }),
-  C('c13', 'Delgado Tax Services', 'r2', 600, 860, '912 Mission St', { contacts: [P('Rosa Delgado', 'Owner', '0190', 'rosa@delgadotax.example')], containers: '2 consoles', type: 'creditCard', channel: 'Google Maps', freq: 'Every 4 weeks' }),
-  C('c16', 'First Harbor Bank', 'r2', 740, 650, '1 Harbor Plaza', { label: 'Main branch', contacts: [P('Ian Cho', 'Facilities', '0199', 'ian.cho@firstharbor.example')], containers: '8 consoles', open: '09:00', close: '16:00', notes: 'Loading dock B. Call Ian on arrival.', channel: 'Referral', freq: 'Weekly', sign: true, billing: 'payables@firstharbor.example' }),
+  C('c13', 'Delgado Tax Services', 'r2', 600, 860, '912 Mission St', { contacts: [P('Rosa Delgado', 'Owner', '0190', 'rosa@delgadotax.example')], containers: '2 consoles', type: 'creditCard', channel: 'Google Maps', freq: 'Every 4 weeks', closed: ['Fri'] }),
+  C('c16', 'First Harbor Bank', 'r2', 740, 650, '1 Harbor Plaza', { label: 'Main branch', contacts: [P('Ian Cho', 'Facilities', '0199', 'ian.cho@firstharbor.example')], containers: '8 consoles', open: '09:00', close: '16:00', notes: 'Loading dock B. Call Ian on arrival.', channel: 'Referral', freq: 'Weekly', sig: 'always', call: 15, billing: 'payables@firstharbor.example' }),
   C('c20', 'Bayside Accounting', 'r2', 480, 880, '260 Bayside Ave', { contacts: [P('Hannah Lowe', 'Bookkeeper', '0215', 'hannah@baysideacct.example')], containers: '1 console', channel: 'Google Ads', freq: 'Every 4 weeks' }),
 
   C('c5', 'City of Lakemont', 'r3', 300, 480, '1 Civic Plaza', { label: 'Clerk’s office', type: 'government', contacts: [P('Dolores Meyer', 'City clerk', '0146', 'dmeyer@lakemont.example')], containers: '4 bins (96 gal)', close: '16:30', notes: 'Badge required — pick up at front desk.', channel: 'Referral', freq: 'Every 2 weeks', contract: 'City contract C-1182' }),
-  C('c11', 'Bright Smile Orthodontics', 'r3', 180, 420, '705 Larkspur Ln', { contacts: [P('Kim Tran', 'Office manager', '0184', 'kim@brightsmileortho.example')], containers: '1 console', type: 'creditCard', channel: 'Yelp', freq: 'Every 4 weeks' }),
+  C('c11', 'Bright Smile Orthodontics', 'r3', 180, 420, '705 Larkspur Ln', { contacts: [P('Kim Tran', 'Office manager', '0184', 'kim@brightsmileortho.example')], containers: '1 console', type: 'creditCard', channel: 'Yelp', freq: 'Every 4 weeks', call: 30 }),
   C('c14', 'Westfield Veterinary Clinic', 'r3', 120, 560, '1890 Westfield Rd', { contacts: [P('Dr. Priya Shah', 'Owner', '0193', 'office@westfieldvet.example')], containers: '2 consoles', channel: 'Google Maps' }),
-  C('c17', 'County Records Annex', 'r3', 240, 600, '22 Archive Row', { type: 'government', contacts: [P('Walt Brenner', 'Supervisor', '0201', 'wbrenner@county.example')], containers: '10 bins (96 gal)', notes: 'Dock access 7–11 only.', close: '11:00', open: '07:00', channel: 'Referral', freq: 'Weekly', po: 'PO 7731-B', contract: 'County RFP 24-019', billing: 'accountspayable@county.example' }),
+  C('c17', 'County Records Annex', 'r3', 240, 600, '22 Archive Row', { type: 'government', contacts: [P('Walt Brenner', 'Supervisor', '0201', 'wbrenner@county.example')], containers: '10 bins (96 gal)', notes: 'Dock access 7–11 only.', close: '11:00', open: '07:00', channel: 'Referral', freq: 'Weekly', po: 'PO 7731-B', contract: 'County RFP 24-019', billing: 'accountspayable@county.example', mode: 'serviceNote' }),
   C('c27', 'Larkspur Senior Living', 'r3', 90, 440, '4400 Larkspur Ln', { contacts: [P('Beth Collins', 'Administrator', '0221', 'bcollins@larkspursl.example')], containers: '3 consoles', channel: 'Website' }),
   C('c28', 'Mason & Pike Engineering', 'r3', 330, 560, 'New office by the mall', { contacts: [P('Cal Mason', 'Partner', '0226', 'cal@masonpike.example')], containers: '2 consoles', notes: 'They moved — confirm the new suite number.', channel: 'Google Ads', unlocated: true }),
   C('c29', 'Tri-County Hospice', 'r3', 200, 500, '610 Lantern St', { contacts: [P('Ruth Adeyemi', 'Compliance', '0233', 'ruth@tricountyhospice.example')], containers: '2 consoles', channel: 'Referral' }),
@@ -126,7 +144,11 @@ data.customers = [
   C('c25', 'Juniper Wealth Advisors', null, 590, 250, '4100 Juniper Blvd', { contacts: [P('Sofia Marin', 'Office manager', '0263', 'sofia@juniperwealth.example')], lifecycle: 'contacted', channel: 'Google Maps', next: -2, containers: '', cnotes: 'Wants a quote for 3 consoles, every 4 weeks.' }),
   C('c26', 'Cedar Park Storage', null, 260, 760, '975 Cedar Park Rd', { contacts: [P('Vic Dunn', 'Manager', '0269', 'vic@cedarparkstorage.example')], lifecycle: 'lost', channel: 'Yelp', containers: '', cnotes: 'Lost — went with a drop-off service.' }),
 ];
-data.customers.forEach(c => { if (c.id === 'c28') c.locations[0].located = false; c.locations.forEach(l => { l.items = WD.parseItems(l.containers); }); });
+/* Invoice header details (Account, Attn, Terms, Agreement) for the two government accounts billed by master invoice. */
+Object.assign(data.customers.find(c => c.id === 'c9'), { account: 'LUSD', attn: 'Paul Nakamura', billAddress: ['Accounts Payable', '1200 Scholar Way', 'Lakemont'], terms: 'Net 45', agreement: '24-0193', rate64: 87.75 });
+Object.assign(data.customers.find(c => c.id === 'c17'), { account: 'COUNTY REC', attn: 'Walt Brenner', billAddress: ['County Auditor', '22 Archive Row', 'Lakemont'], terms: 'Net 30', agreement: 'RFP 24-019' });
+data.orgs[0].remit = ['DISCOUNT SHRED', '400 Industrial Way', 'Lakemont']; data.orgs[0].phone = '(512) 555-0300';
+data.customers.forEach(c => { if (c.id === 'c28') c.locations[0].located = false; c.locations.forEach(l => { l.items = WD.parseItems(l.containers); if (c.rate64) l.items.forEach(i => { if (i.id === 'bin64') i.rate = c.rate64; }); }); });
 
 /* ---------- Jobs ---------- */
 let jobSeq = 0; data.jobs = [];
@@ -139,7 +161,7 @@ function makeJob(o) {
   const c = o.customerId && data.customers.find(x => x.id === o.customerId), loc = c && c.locations[0];
   const j = Object.assign({ id: 'j' + (++jobSeq), routeId: 'r1', day: today, allDay: false, seq: null, dur: 30, title: c ? c.name : 'Job', customerId: null, locationId: loc ? loc.id : null,
     address: loc ? loc.address : '', located: loc ? loc.located !== false : false, x: loc ? loc.x : null, y: loc ? loc.y : null, notes: loc ? loc.notes : '', type: c ? c.type : 'regular', containers: loc ? loc.containers : '',
-    bizOpen: loc ? loc.bizOpen : '', bizClose: loc ? loc.bizClose : '', custFrom: '', custUntil: '', custStrict: false, items: loc ? WD.copyItems(loc.items) : [], po: c ? c.po : '', contract: c ? c.contract : '', status: 'scheduled', recurring: null, version: 1, pending: false, attachments: [], events: [], invoice: null, arrivedAt: null, departedAt: null }, o);
+    bizOpen: loc ? loc.bizOpen : '', bizClose: loc ? loc.bizClose : '', custFrom: '', custUntil: '', custStrict: false, windowBy: 'customer', lunchFrom: loc ? loc.lunchFrom : '', lunchUntil: loc ? loc.lunchUntil : '', closedDays: loc ? loc.closedDays.slice() : [], callAhead: loc ? loc.callAhead : 0, flags: {}, billing: null, items: loc ? WD.copyItems(loc.items) : [], po: c ? c.po : '', contract: c ? c.contract : '', status: 'scheduled', recurring: null, version: 1, pending: false, attachments: [], events: [], invoice: null, arrivedAt: null, departedAt: null }, o);
   delete j.start; if (j.seq == null) j.seq = j.allDay ? 0 : nextSeq(j.routeId, j.day);
   data.jobs.push(j); return j;
 }
@@ -169,7 +191,11 @@ function generate() {
           const late = Math.round((rnd() - 0.4) * 14); j.status = (n < 0 && rnd() < 0.05) ? 'skipped' : 'completed'; j.arrivedAt = t + late; j.departedAt = t + late + dur + Math.round((rnd() - 0.5) * 10);
           const when = k => +new Date(D.parse(day).setHours(0, k, 0, 0));
           if (j.status === 'completed') { j.events.push({ at: when(j.arrivedAt), actor: actor(route.driverId), text: 'Arrived (geofence)' }, { at: when(j.departedAt), actor: actor(route.driverId), text: 'Completed' });
-            if (c.type === 'creditCard') j.invoice = { number: 'INV-' + (2400 + jobSeq), status: 'Paid', amount: 65, auto: true }; else if (rnd() < 0.5) j.invoice = { number: 'INV-' + (2400 + jobSeq), status: rnd() < 0.6 ? 'Paid' : 'Sent', amount: pick([65, 85, 110, 140, 220]) }; }
+            const amt = pick([65, 85, 110, 140, 220]);
+            if (c.billingMode === 'serviceNote') j.billing = { kind: 'serviceNote', number: 'SN-' + (1000 + jobSeq), amount: c.type === 'government' ? 180 : amt, at: when(j.departedAt), by: actor(route.driverId), signer: (c.contacts[0] || {}).name || '' };
+            else if (c.type === 'creditCard') j.invoice = { number: 'INV-' + (2400 + jobSeq), status: 'Paid', amount: 65, auto: true };
+            else if (n < 0 ? rnd() < 0.9 : rnd() < 0.5) j.invoice = { number: 'INV-' + (2400 + jobSeq), status: rnd() < 0.6 ? 'Paid' : 'Sent', amount: amt };
+            else if (n < 0) j.billing = { kind: 'paidNoInvoice', method: pick(['Cash', 'Check']), amount: amt, at: when(j.departedAt), by: actor(route.driverId) }; }
           else j.events.push({ at: when(t + 5), actor: actor(route.driverId), text: 'Skipped — office closed' });
         } else if (n === 0 && t <= nowM) { j.status = 'arrived'; j.arrivedAt = t + 3; j.events.push({ at: +new Date(D.parse(day).setHours(0, t + 3, 0, 0)), actor: actor(route.driverId), text: 'Arrived (geofence)' }); }
         else if (n === 0 && !data.jobs.some(x => x.routeId === rid && x.day === day && (x.status === 'arrived' || x.status === 'enroute') && x !== j) && !data.jobs.some(x => x.routeId === rid && x.day === day && x.status === 'scheduled' && x !== j)) { j.status = 'enroute'; j.events.push({ at: +new Date(D.parse(day).setHours(10, 12, 0, 0)), actor: actor(route.driverId), text: 'En route' }); }
@@ -179,16 +205,19 @@ function generate() {
     });
     /* Purge truck: one-time jobs */
     if (n === 0) { makeJob({ routeId: 'r4', day, dur: 60, customerId: 'c22', status: 'completed', arrivedAt: 9 * 60 + 4, departedAt: 10 * 60 + 2, invoice: { number: 'INV-2391', status: 'Sent', amount: 320 }, attachments: [{ id: 'a1', name: 'Before – garage.jpg', kind: 'photo', size: '2.1 MB' }, { id: 'a2', name: 'Certificate of destruction.pdf', kind: 'doc', size: '84 KB' }] });
-      makeJob({ routeId: 'r4', day, dur: 45, customerId: 'c21', custFrom: '13:00', custUntil: '17:00', custStrict: false });
+      makeJob({ routeId: 'r4', day, dur: 45, customerId: 'c21', custFrom: '13:00', custUntil: '17:00', custStrict: false, callAhead: 20 });
       makeJob({ routeId: 'r4', day, allDay: true, title: 'Truck 9 — oil change after route', type: 'regular', notes: 'Drop at Lakemont Fleet Service by 4:30.' });
       makeJob({ routeId: 'r4', day, dur: 30, title: 'Meet the truck — Dr. Alvarez', type: 'meet', notes: 'Customer brings 3 boxes to the shop. Call when 10 minutes out: (512) 555-0290.', items: [{ id: 'box', qty: 3, rate: 8 }] }); }
     else if (n > 0 && n % 2 === 1) { makeJob({ routeId: 'r4', day, dur: 90, customerId: 'c23', title: 'Vista Medical Billing — purge' }); }
     else if (n < 0 && n % 3 === 0) { const j = makeJob({ routeId: 'r4', day, dur: 60, customerId: 'c22', status: 'completed', arrivedAt: 9 * 60 + 33, departedAt: 10 * 60 + 40 }); j.title = 'Tanaka — estate boxes'; }
     if (n === 1) { makeJob({ routeId: 'r2', day, allDay: true, title: 'Tony out — Sam covers South', notes: 'Route assignment override for the day.' });
-      makeJob({ routeId: 'r4', day, dur: 40, title: 'Raj Patel — home purge', type: 'purge', address: '5 Heron Ct, Lakemont', located: true, x: 880, y: 400, items: [{ id: 'box', qty: 6, rate: 8 }], custFrom: '08:00', custUntil: '10:00', custStrict: true, notes: 'Must be done before he leaves for work at 10.' }); }
+      makeJob({ routeId: 'r4', day, dur: 40, title: 'Raj Patel — home purge', type: 'purge', address: '5 Heron Ct, Lakemont', located: true, x: 880, y: 400, items: [{ id: 'box', qty: 6, rate: 8 }], custFrom: '08:00', custUntil: '10:00', custStrict: true, windowBy: 'us', notes: 'Must be done before he leaves for work at 10.' }); }
     if (n === 2) { const j = data.jobs.find(x => x.day === day && x.routeId === 'r3' && !x.allDay); if (j) { j.status = 'canceled'; j.events.push({ at: +new Date(D.parse(today).setHours(9, 2, 0, 0)), actor: 'Colleen Abbott', text: 'Customer canceled — called the office' }); } }
     if (n === 3) { const j = data.jobs.filter(x => x.day === day && x.routeId === 'r2' && !x.allDay)[1]; if (j) { j.status = 'rescheduled'; j.rescheduledTo = D.add(day, 2); j.events.push({ at: +new Date(D.parse(today).setHours(8, 40, 0, 0)), actor: 'Colleen Abbott', text: 'Customer rescheduled to ' + WD.fmt.day(D.add(day, 2)) }); } }
   }
+  /* Heads-up details shown after job titles: one-off flags on today's and upcoming visits. */
+  const flag = (cid, f, days) => data.jobs.filter(j => j.customerId === cid && days.includes(D.diff(j.day, today))).forEach(j => Object.assign(j.flags, f));
+  flag('c1', { extraBin: true }, [0, 1, 2]); flag('c3', { extraShred: true }, [0, 1]); flag('c12', { early: true }, [0, 1, 2, 3]); flag('c7', { extraShred: true }, [1, 2]);
   const first = data.jobs.find(j => j.day === today && j.routeId === 'r1' && j.status === 'completed'); if (first) first.attachments.push({ id: 'a3', name: 'Console key tag.jpg', kind: 'photo', size: '1.4 MB' });
 }
 generate();

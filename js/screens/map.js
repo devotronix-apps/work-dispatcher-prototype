@@ -194,6 +194,15 @@ function remote(job, status, text, actor) {
   const m = WD.nowMins(); job.status = status;
   if (status === 'arrived') job.arrivedAt = m; if (status === 'completed') { job.departedAt = m; if (job.arrivedAt == null) job.arrivedAt = m - (job.dur || 20); }
   job.events.push({ at: +WD.now(), actor, text });
+  /* Other drivers bill on their own phones: most stops get an invoice, service note or paid–no invoice; now and then one is left unbilled. */
+  const c = status === 'completed' && q.customer(job.customerId);
+  if (c && !job.invoice && !job.billing && job.type !== 'creditCard' && Math.random() < 0.8) {
+    const lines = WD.screens.billing.linesForJob(job), amount = lines.reduce((s, l) => s + l.qty * l.rate, 0);
+    if (c.billingMode === 'serviceNote') { const n = WD.workflow.addServiceNote(job, { lines, po: job.po, signer: (c.contacts[0] || {}).name, by: actor }); job.billing = { kind: 'serviceNote', number: n.number, amount, at: +WD.now(), by: actor, signer: n.signer }; }
+    else if (Math.random() < 0.15) job.billing = { kind: 'paidNoInvoice', method: 'Cash', amount, at: +WD.now(), by: actor };
+    else { job.invoice = { number: 'INV-' + (2700 + Math.floor(Math.random() * 900)), status: 'Sent', amount, auto: false, lines }; if (data.invoices) data.invoices.push({ id: 'inv-r' + job.id, number: job.invoice.number, customerId: c.id, jobId: job.id, day: job.day, amount, status: 'Sent', payments: [], at: +WD.now(), auto: false, lines }); }
+    job.events.push({ at: +WD.now(), actor, text: job.billing ? (job.billing.kind === 'serviceNote' ? 'Service note ' + job.billing.number : 'Paid, no invoice · Cash') : 'Invoice ' + job.invoice.number + ' created' });
+  }
 }
 function tick() {
   if (!S.signedIn || !S.me) return;
@@ -382,7 +391,7 @@ function createMap() {
         h('button.mp-dlabel', { onclick: () => setDay(D.today()) }, dayLabel(st.day)), h('button.mp-dbtn', { 'aria-label': 'Next day', onclick: () => setDay(D.add(st.day, 1)) }, icon('chevron.right', 19))),
       routes.length > 1 && h('div.mp-chips', routes.map(r => h('button.mp-chip.mp-glass' + (st.hidden.has(r.id) ? '.off' : ''), { onclick: () => { st.hidden.has(r.id) ? st.hidden.delete(r.id) : st.hidden.add(r.id); st.sel = null; update(); } }, ui.dot(q.routeColor(r)), q.routeName(r)))));
     fill(side, 
-      h('div.mp-grp.mp-glass', btn('list.bullet', 'Stops list', openList), canLive && btn('truck', st.showTrucks ? 'Hide trucks' : 'Show trucks', () => { st.showTrucks = !st.showTrucks; ui.toast(st.showTrucks ? 'Showing live trucks' : 'Trucks hidden', 'truck', 1400); update(); }, !st.showTrucks)),
+      h('div.mp-grp.mp-glass', btn('list.bullet', 'Stops list', openList), WD.can('jobs.edit') && btn('sparkles', 'AutoRoute', autoRoute), canLive && btn('truck', st.showTrucks ? 'Hide trucks' : 'Show trucks', () => { st.showTrucks = !st.showTrucks; ui.toast(st.showTrucks ? 'Showing live trucks' : 'Trucks hidden', 'truck', 1400); update(); }, !st.showTrucks)),
       h('div.mp-grp.mp-glass', btn(S.shift ? 'location.fill' : 'location', 'Show my location', locate), btn('mp.fit', 'Show all stops', () => { stopFollow(); fit(true); })),
       h('div.mp-grp.mp-glass', btn('plus', 'Zoom in', () => zoomAt({ x: W / 2, y: H / 2 }, 1.7, true)), btn('minus', 'Zoom out', () => zoomAt({ x: W / 2, y: H / 2 }, 1 / 1.7, true))));
     const fv = st.follow && truckFor(st.follow), fveh = fv && q.vehicle(fv.vehicleId);
@@ -403,11 +412,13 @@ function createMap() {
   function stopCard(job) {
     const stx = WD.jobStatuses[job.status], n = numberOf(job);
     return h('div.mp-card.mp-glass.mp-stop',
-      h('div.mp-sh', mini(job, n), h('div', h('div.headline', job.title), h('div.footnote', job.allDay ? 'Note for the day' : stopLabel(job))), h('button.mp-x', { 'aria-label': 'Close', onclick: () => select(null) }, icon('xmark', 13))),
+      h('div.mp-sh', mini(job, n), h('div', h('div.headline', WD.workflow.titleNode(job)), h('div.footnote', job.allDay ? 'Note for the day' : stopLabel(job))), h('button.mp-x', { 'aria-label': 'Close', onclick: () => select(null) }, icon('xmark', 13))),
       h('div.mp-meta', ui.badge(stx.title, stx.color), job.pending && ui.badge('Pending sync', 'var(--orange)'), h('span', ui.dot(q.routeColor(job.routeId)), q.routeName(job.routeId)), h('span', job.address)),
-      h('div.mp-acts', ui.button('Details', { kind: 'gray', small: true, icon: 'info.circle', onTap: () => openDetails(job.id) }), ui.button('Directions', { kind: 'filled', small: true, icon: 'arrow.triangle.turn.up.right', onTap: () => ui.toast('Opening Apple Maps…', 'map') })));
+      h('div.mp-acts', ui.button('Details', { kind: 'gray', small: true, icon: 'info.circle', onTap: () => openDetails(job.id) }), ui.button('Directions', { kind: 'filled', small: true, icon: 'arrow.triangle.turn.up.right', onTap: () => WD.workflow.openDirections(job) })));
   }
   function update() { drawStops(); drawTrucks(); drawUI(); }
+  /** AutoRoute the routes shown on the map for the day on screen; stays on the map afterwards. */
+  function autoRoute() { const ids = shownRoutes().map(r => r.id); if (!ids.length) return ui.toast('Turn on a route first', 'route'); WD.screens.jobs && WD.screens.jobs.openAutoRoute(null, { day: st.day, routes: ids, stay: true }); }
 
   /* ---------- Sheets ---------- */
   function openList() {
@@ -417,7 +428,7 @@ function createMap() {
         return ui.list(h('div.footnote', { style: { padding: '2px 16px 0' } }, dayLabel(st.day) + ' · stops in board order'),
           routes.map(r => ui.section({ header: h('span.hstack', { style: { gap: '6px' } }, ui.dot(q.routeColor(r)), q.routeName(r)) },
             q.stops(r.id, st.day).map(({ job, number }) => { const sx = WD.jobStatuses[job.status];
-              return ui.row({ leading: mini(job, number), title: job.title, subtitle: (job.allDay ? 'Note for the day' : stopLabel(job)) + (job.pending ? ' · Pending sync' : ''), trailing: icon(sx.icon, 18, sx.color), onTap: () => { page.dismiss(); focusJob(job.id); } }); }),
+              return ui.row({ leading: mini(job, number), title: WD.workflow.titleNode(job), subtitle: (job.allDay ? 'Note for the day' : stopLabel(job)) + (job.pending ? ' · Pending sync' : ''), trailing: icon(sx.icon, 18, sx.color), onTap: () => { page.dismiss(); focusJob(job.id); } }); }),
             q.jobsFor(r.id, st.day).filter(j => !j.located && j.address).map(job => ui.row({ leading: h('span.mp-q', '?'), title: job.title, subtitle: 'Address not found · not on the map', chevron: true, onTap: () => openDetails(job.id) })),
             !q.jobsFor(r.id, st.day).length && ui.row({ title: 'No jobs', subtitle: 'Nothing scheduled on this route' }))));
       } }, { detent: 'medium' });
