@@ -160,7 +160,7 @@ function trackingNotice() {
   return ui.list(ui.section({ header: 'Notice from ' + org, footer: 'A copy of this notice is emailed to you when you agree.' },
     item('clock', 'var(--blue)', 'Only during a shift', 'Your iPhone records location only while you’re clocked in. It stops at clock-out, or automatically if you forget.'),
     item('location.fill', 'var(--green)', 'What is collected', 'Precise location about every 30 seconds while driving and a check-in every 5 minutes while parked, with battery level.'),
-    item('person.2', 'var(--orange)', 'Who sees it', 'Dispatchers and admins at ' + org + ' see your truck on the live map and when you arrive at and leave stops.'),
+    item('person.2', 'var(--orange)', 'Who sees it', 'Owners, dispatchers and office staff at ' + org + ' see where you are, when you arrive at and leave stops, and places you stayed longer than ' + data.timeRules.stayMinutes + ' minutes.'),
     item('calendar', 'var(--purple)', 'How long it’s kept', 'Location points are kept for 24 months, then thinned. Stop times and route summaries stay with job history.'),
     item('hand.raised', 'var(--red)', 'Your choice', 'You can withdraw consent in Settings at any time. You’ll need to agree again before your next clock-in.')));
 }
@@ -195,7 +195,7 @@ function createPage(from) {
     from2.push({ title: '', navbar: false, render: () => h('div.au-welcome', icon('checkmark.circle.fill', 76, 'var(--green)'),
       h('div.title2', { style: { marginTop: '20px' } }, 'Your 14-day trial has started'),
       h('div.au-tag', { style: { marginTop: '8px' } }, org.name + ' is ready. After the trial it’s $29 per truck per month — ' + trucks + (trucks === 1 ? ' truck' : ' trucks') + ' is $' + 29 * trucks + '. No card needed until then.'),
-      h('div.au-actions', ui.button('Get started', { onTap: () => WD.app.signIn() }),
+      h('div.au-actions', ui.button('Next: connect your tools', { onTap: p => WD.admin ? WD.admin.connectPage(from2, () => WD.app.signIn()) : WD.app.signIn() }),
         h('div.au-legal', importNow ? 'Your import report will be ready on the web dashboard in a few minutes.' : 'Add routes and invite your team from Settings.'))) });
   }
 }

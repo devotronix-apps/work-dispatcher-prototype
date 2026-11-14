@@ -33,8 +33,8 @@ WD.css(`
 const PRICE = 29, ADMIN = 'Ask an admin';
 const PALETTE = ['#D50000', '#E67C73', '#F4511E', '#F6BF26', '#33B679', '#0B8043', '#039BE5', '#3F51B5', '#7986CB', '#8E24AA', '#616161'];
 const ZONES = [['America/New_York', 'Eastern'], ['America/Chicago', 'Central'], ['America/Denver', 'Mountain'], ['America/Phoenix', 'Arizona'], ['America/Los_Angeles', 'Pacific']].map(([value, label]) => ({ value, label }));
-const ROLE_COLOR = { owner: 'var(--purple)', admin: 'var(--indigo)', dispatcher: 'var(--blue)', office: 'var(--teal)', driver: 'var(--orange)' };
-const ROLE_INFO = { owner: 'Everything, including billing and the company itself.', admin: 'Everything except transferring ownership.', dispatcher: 'Edits jobs, sees live trucks, customers and reports.', office: 'Edits jobs and customers, handles invoices and payments.', driver: 'Sees their route, runs shifts and updates stop status.' };
+const ROLE_COLOR = { owner: 'var(--purple)', admin: 'var(--indigo)', dispatcher: 'var(--blue)', office: 'var(--teal)', driver: 'var(--orange)', staff: 'var(--brown)' };
+const ROLE_INFO = { owner: 'Everything, including billing and the company itself.', admin: 'Everything except transferring ownership.', dispatcher: 'Edits jobs, sees live trucks, customers and reports.', office: 'Edits jobs and customers, handles invoices and payments.', driver: 'Sees their route, runs shifts, updates stop status and invoices on site.', staff: 'Clocks in and out for shop, office or helper work. No route.' };
 const KIND = { create: 'New job', edit: 'Edit', delete: 'Delete', reassign: 'Reassign', status: 'Status', batch: 'Several jobs' };
 const VEHICLE_KINDS = ['Shred truck', 'Box truck (purges)', 'Van'];
 const roleBadge = r => ui.badge(WD.roles[r].title, ROLE_COLOR[r]);
@@ -63,6 +63,7 @@ function root() {
       ui.section('Company',
         ui.row({ icon: 'building', iconColor: 'var(--indigo)', title: 'Company', detail: o.name, chevron: true, onTap: () => push(orgsSpec()) }),
         ui.row(gated('billing.view', { icon: 'creditcard', iconColor: 'var(--green)', title: 'Subscription', ...plan(o) })),
+        ui.row({ icon: 'lock', iconColor: 'var(--gray)', title: 'Sign-in and security', detail: (WD.signInPolicies.find(x => x.value === S.signInPolicy) || {}).label, chevron: true, onTap: () => WD.admin && push(WD.admin.signInSpec()) }),
         ui.row({ icon: 'globe', iconColor: 'var(--blue)', title: 'Open web dashboard', trailing: icon('arrow.up.right', 17, 'var(--label3)'), onTap: () => ui.toast('Analytics, CRM and billing are on the web', 'globe', 2600) })),
       ui.section({ header: 'Routes and board', footer: 'Single-route portrait view shows 1 or 3 days from the active day. Landscape always shows 7.' },
         ui.row({ icon: 'route', iconColor: 'var(--blue)', title: 'Routes', detail: q.visibleRoutes().length + ' of ' + data.routes.length + ' shown', chevron: true, onTap: () => push(routesSpec()) }),
@@ -73,7 +74,10 @@ function root() {
         ui.row(gated('settings.manage', { icon: 'calendar', iconColor: 'var(--blue)', title: 'Google Calendar mirror', badge: S.googleMirror.errors ? ui.badge(String(S.googleMirror.errors), 'var(--red)', true) : null, detail: S.googleMirror.enabled ? 'On' : 'Off', chevron: true, onTap: () => push(mirrorSpec()) })),
         ui.row(gated('users.manage', { icon: 'person.2', iconColor: 'var(--green)', title: 'Team and roles', detail: String(data.users.filter(u => u.status === 'active').length), chevron: true, onTap: () => push(teamSpec()) })),
         ui.row({ icon: 'truck', iconColor: 'var(--orange)', title: 'Vehicles', detail: String(data.vehicles.length), chevron: true, onTap: () => push(vehiclesSpec()) }),
-        ui.row(gated('settings.manage', { icon: 'link', iconColor: 'var(--purple)', title: 'Integrations', detail: INTEG.filter(connected).length + ' connected', chevron: true, onTap: () => push(integrationsSpec()) }))),
+        ui.row(gated('settings.manage', { icon: 'link', iconColor: 'var(--purple)', title: 'Integrations', detail: INTEG.filter(connected).length + ' connected', chevron: true, onTap: () => push(integrationsSpec()) })),
+        ui.row({ icon: 'tag', iconColor: 'var(--pink)', title: 'Job types and fields', chevron: true, onTap: () => WD.admin && push(WD.admin.typesSpec()) }),
+        ui.row(gated('settings.manage', { icon: 'square.and.pencil', iconColor: 'var(--teal)', title: 'Import jobs', subtitle: 'Calendar file (.ics), Excel or CSV', chevron: true, onTap: () => WD.admin && push(WD.admin.importSpec()) })),
+        ui.row({ icon: 'clock', iconColor: 'var(--orange)', title: 'Time clock and overtime', detail: WD.timeclock ? 'Over ' + data.timeRules.daily.hours + ' h/day · ' + data.timeRules.weekly.hours + ' h/wk' : '', chevron: true, onTap: () => WD.timeclock && push(WD.timeclock.rulesSpec()) })),
       ui.section('Privacy',
         ui.row({ icon: 'location.fill', iconColor: 'var(--blue)', title: 'Location tracking', detail: S.tracking.consent ? 'Agreed' : 'Not agreed', chevron: true, onTap: () => push(trackingSpec()) }),
         ui.row({ icon: 'hand.raised', iconColor: 'var(--indigo)', title: 'Privacy policy', trailing: icon('arrow.up.right', 17, 'var(--label3)'), onTap: safari }),
@@ -99,6 +103,9 @@ const accountSpec = () => ({ title: 'Account', render: () => { const me = S.me; 
     ui.inputRow({ label: 'Name', value: me.name, caps: 'words', onInput: v => { if (v.trim()) { me.name = v.trim(); WD.changed(); } } }),
     ui.inputRow({ label: 'Phone', type: 'tel', inputmode: 'tel', placeholder: 'Optional', value: fmt.phone(me.phone), onInput: v => { me.phone = v; } }),
     ui.row({ title: 'Email', detail: me.email })),
+  ui.section({ header: 'Signature on file', footer: 'Printed on invoices you create, under “Shredding Service Representative Signature”.' },
+    me.signature && WD.screens.billing ? h('div.bi-sig', h('div.bi-ink', WD.screens.billing.sigView(me.signature))) : null,
+    ui.row({ icon: 'signature', iconPlain: true, title: me.signature ? 'Replace signature' : 'Add signature', tint: true, onTap: async () => { const r = WD.screens.billing && await WD.screens.billing.signaturePad({ title: 'Your signature', subtitle: 'Sign the way you sign invoices.' }); if (r) { me.signature = r.image; WD.changed(); ui.toast('Signature saved', 'checkmark'); } } })),
   ui.section({ footer: 'Sign in with Apple and email links work without a password.' }, ui.row({ icon: 'key', iconColor: 'var(--gray)', title: 'Change password', chevron: true, onTap: passwordSheet })),
   ui.section({ header: 'Notifications', footer: 'Sent to this iPhone only.' }, NOTIFY.map(([k, title]) => ui.toggleRow({ title, value: notify[k], onChange: v => { notify[k] = v; } })))); } });
 function passwordSheet() {
@@ -280,17 +287,31 @@ function inviteSheet() {
 /* ---------- Vehicles ---------- */
 const vehiclesSpec = () => ({ title: 'Vehicles', trailing: () => WD.can('settings.manage') ? { icon: 'plus', label: 'Add vehicle', onTap: () => vehicleSheet() } : null,
   render: () => { const edit = WD.can('settings.manage'); return ui.list(ui.section({ footer: edit ? 'Each route has a default vehicle. Drivers confirm the vehicle when they clock in.' : ADMIN + ' to add or change vehicles.' },
-    data.vehicles.map(v => { const r = data.routes.find(x => x.vehicleId === v.id); return ui.row({ icon: 'truck', iconColor: 'var(--orange)', title: v.name, subtitle: [v.kind, v.plate, r && q.routeName(r)].filter(Boolean).join(' · '), chevron: edit, onTap: edit ? () => vehicleSheet(v) : null }); }))); } });
+    data.vehicles.map(v => { const r = data.routes.find(x => x.vehicleId === v.id); return ui.row({ icon: 'truck', iconColor: 'var(--orange)', title: v.name, subtitle: [v.kind, r && q.routeName(r), 'Starts ' + q.place(v.startId).name + (v.endId !== v.startId ? ' · ends ' + q.place(v.endId).name : '')].filter(Boolean).join(' · '), chevron: edit, onTap: edit ? () => vehicleSheet(v) : null }); })),
+    ui.section({ header: 'Places', footer: 'Where trucks are kept overnight. Each truck has its own start and end, and drivers can change them for the day when they clock in.' },
+      data.places.map(p => ui.row({ icon: p.id === 'p1' ? 'building' : 'house', iconColor: 'var(--gray)', title: p.name, subtitle: p.address })),
+      edit && ui.row({ icon: 'plus.circle.fill', iconPlain: true, iconColor: 'var(--green)', title: 'Add place', tint: true, onTap: addPlace }))); } });
+async function addPlace() {
+  const r = await ui.alert({ title: 'New place', message: 'For example a driver’s house or a storage lot.', input: { placeholder: 'Name, e.g. East yard' }, buttons: [{ label: 'Cancel', value: null }, { label: 'Next', value: true, bold: true }] }); if (!r || !r.value || !r.text.trim()) return;
+  const a = await ui.alert({ title: 'Address', input: { placeholder: 'Street, city' }, buttons: [{ label: 'Cancel', value: null }, { label: 'Add', value: true, bold: true }] }); if (!a || !a.value || !a.text.trim()) return;
+  await ui.run('Adding place…', () => { data.places.push({ id: uid('p'), name: r.text.trim(), address: a.text.trim(), x: 150 + Math.round(Math.random() * 700), y: 150 + Math.round(Math.random() * 700) }); }, { done: 'Added' });
+}
 function vehicleSheet(v) {
-  let name = v ? v.name : '', plate = v ? v.plate : '', kind = v ? v.kind : VEHICLE_KINDS[0], save;
+  let name = v ? v.name : '', plate = v ? v.plate : '', kind = v ? v.kind : VEHICLE_KINDS[0], startId = v ? v.startId : 'p1', endId = v ? v.endId : 'p1', save;
+  const places = data.places.map(p => ({ value: p.id, label: p.name })), gps = INTEG.find(x => x.id === 'onestep');
   const ok = () => !!(name.trim() && plate.trim()), sync = () => { save.disabled = !ok(); };
   const sheet = ui.sheet({ title: v ? 'Edit vehicle' : 'New vehicle', leading: { label: 'Cancel', onTap: p => p.dismiss() }, trailing: () => (save = navBtn(v ? 'Save' : 'Add', submit, ok())),
     render: page => ui.list(ui.section(
       ui.inputRow({ label: 'Name', placeholder: 'Truck 15', caps: 'words', value: name, autofocus: !v, onInput: x => { name = x; sync(); } }),
       ui.inputRow({ label: 'Plate', placeholder: 'ABC-1234', caps: 'characters', value: plate, onInput: x => { plate = x; sync(); } }),
-      ui.pickerRow({ title: 'Kind', options: VEHICLE_KINDS.includes(kind) ? VEHICLE_KINDS : [kind, ...VEHICLE_KINDS], value: kind, onChange: x => { kind = x; page.refresh(); } }))) }, { detent: 'medium' });
+      ui.pickerRow({ title: 'Kind', options: VEHICLE_KINDS.includes(kind) ? VEHICLE_KINDS : [kind, ...VEHICLE_KINDS], value: kind, onChange: x => { kind = x; page.refresh(); } })),
+      ui.section({ header: 'Start and end of the day', footer: 'AutoRoute plans from the start and back to the end. Drivers can change them for one day when they clock in, if trucks get switched around.' },
+        ui.pickerRow({ title: 'Starts at', icon: 'play.fill', iconColor: 'var(--green)', value: startId, options: places, onChange: x => { startId = x; page.refresh(); } }),
+        ui.pickerRow({ title: 'Ends at', icon: 'flag', iconColor: 'var(--red)', value: endId, options: places, onChange: x => { endId = x; page.refresh(); } })),
+      ui.section({ header: 'GPS tracker', footer: gps && gps.connected ? 'OneStep GPS reports this truck’s position even when the driver’s phone is off, and the spot it parked overnight can set its start automatically.' : 'Connect OneStep GPS in Settings → Integrations to link trackers.' },
+        ui.row({ icon: 'location.fill', iconColor: 'var(--orange)', title: 'OneStep GPS device', detail: gps && gps.connected ? (v && v.gps) || 'Not linked' : 'Not connected' }))) }, { detent: 'large' });
   async function submit() {
-    const rec = { name: name.trim(), plate: plate.trim().toUpperCase(), kind };
+    const rec = { name: name.trim(), plate: plate.trim().toUpperCase(), kind, startId, endId };
     if (await ui.run(v ? 'Saving…' : 'Adding vehicle…', () => { if (v) Object.assign(v, rec); else data.vehicles.push({ id: uid('v'), ...rec }); }, { done: v ? 'Saved' : 'Vehicle added' })) sheet.close();
   }
 }
@@ -326,16 +347,19 @@ function trackingSpec() {
 }
 
 /* ---------- Integrations ---------- */
-const INTEG = [
-  { id: 'ninja', name: 'Invoice Ninja', icon: 'doc.text', color: 'var(--green)', connected: true, lastSync: +WD.now() - 18 * 60000, fields: [['URL', 'billing.discountshred.example'], ['API token', '•••• •••• 3f9a']],
+const INTEG = WD.integrations = [
+  { id: 'onestep', name: 'OneStep GPS', icon: 'location.fill', color: 'var(--orange)', connected: true, lastSync: +WD.now() - 2 * 60000, fields: [['API key', '•••• •••• 7c21'], ['Trackers', '3 of 4 trucks linked']], pitch: 'Truck locations, mileage and idle time',
+    about: 'Live positions, ignition, idle time and odometer from the OneStep trackers. Fills in the live map when a driver’s phone is off, sets each truck’s start from where it parked overnight, and feeds mileage reports.', off: 'Trucks only show on the map while a driver’s phone is tracking.',
+    steps: ['In OneStep GPS, open Settings → API and create an API key.', 'Paste the key here and tap Connect.', 'Match each tracker to a vehicle in Settings → Vehicles.'] },
+  { id: 'ninja', name: 'Invoice Ninja', icon: 'doc.text', color: 'var(--green)', connected: true, pitch: 'Invoices and payments', steps: ['In Invoice Ninja, open Settings → Account management → API tokens.', 'Create a token and copy your Invoice Ninja URL.', 'Paste both here and tap Connect.'], lastSync: +WD.now() - 18 * 60000, fields: [['URL', 'billing.discountshred.example'], ['API token', '•••• •••• 3f9a']],
     about: 'Customers sync to clients and completed jobs become invoices. A scheduled sync catches anything a webhook missed.', off: 'New invoices stop being created. Existing invoices stay in Invoice Ninja.' },
   { id: 'stripe', name: 'Stripe', icon: 'creditcard', color: 'var(--indigo)', via: 'Invoice Ninja', fields: [['Gateway', 'Set up in Invoice Ninja'], ['Auto-billing', 'Credit card on file jobs']],
     about: 'Stripe is the payment gateway inside Invoice Ninja. Cards on file are charged when those jobs are completed.' },
-  { id: 'quo', name: 'Quo phone', icon: 'phone.fill', color: 'var(--blue)', connected: true, fields: [['Main line', '(512) 555-0100'], ['Ads line', '(512) 555-0177']],
+  { id: 'quo', name: 'Quo phone', icon: 'phone.fill', color: 'var(--blue)', connected: true, pitch: 'Calls and texts on customer timelines', steps: ['Sign in to Quo when asked.', 'Choose which numbers to connect.'], fields: [['Main line', '(512) 555-0100'], ['Ads line', '(512) 555-0177']],
     about: 'Calls and texts on these numbers appear on the customer timeline.', off: 'Calls and texts stop appearing on customer timelines.' },
-  { id: 'gmail', name: 'Gmail', icon: 'envelope', color: 'var(--red)', connected: true, lastSync: +WD.now() - 6 * 60000, fields: [['Mailbox', 'office@discountshred.example']],
+  { id: 'gmail', name: 'Gmail', icon: 'envelope', color: 'var(--red)', connected: true, pitch: 'Customer email on timelines', steps: ['Sign in with the Google account for the shared mailbox.', 'Allow read-only access to mail.'], lastSync: +WD.now() - 6 * 60000, fields: [['Mailbox', 'office@discountshred.example']],
     about: 'Email with customers appears on their timeline. One mailbox is connected.', off: 'New email stops appearing on customer timelines. Past email stays.' },
-  { id: 'sheet', name: 'Leads sheet', icon: 'list.bullet', color: 'var(--teal)', connected: false, fields: [['Sheet', 'Website leads']],
+  { id: 'sheet', name: 'Leads sheet', icon: 'list.bullet', color: 'var(--teal)', connected: false, pitch: 'New rows become leads', steps: ['Sign in with Google.', 'Pick the spreadsheet and the tab with leads.'], fields: [['Sheet', 'Website leads']],
     about: 'New rows in the sheet become leads in the pipeline, matched to existing customers when possible.', off: 'New rows stop becoming leads.' },
 ];
 const connected = x => x.via ? INTEG[0].connected : x.connected;
@@ -347,6 +371,7 @@ function integrationSpec(x) {
   return { title: x.name, render: page => ui.list(
     h('div.st-member', h('div.row-icon.st-big', { style: { background: x.color } }, icon(x.icon, 34)), h('div.title2', x.name), integBadge(x)),
     ui.section({ footer: x.about }, x.fields.map(([k, v]) => ui.row({ title: k, detail: v })), x.connected && x.lastSync && ui.row({ title: 'Last sync', detail: fmt.rel(x.lastSync) })),
+    x.steps && ui.section({ header: 'How to connect' }, h('ol.ad-steps', x.steps.map(t => h('li', t)))),
     x.via ? ui.section(ui.row({ title: 'Open ' + x.via, tint: true, chevron: true, onTap: () => page.push(integrationSpec(INTEG[0])) }))
       : ui.section(
         x.connected && ui.row({ title: 'Sync now', tint: true, onTap: () => ui.run('Syncing ' + x.name + '…', () => { x.lastSync = +WD.now(); }, { done: 'Up to date' }) }),

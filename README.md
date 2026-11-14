@@ -10,7 +10,7 @@ Double-click `index.html` (any modern browser), or serve the folder:
 python3 -m http.server 8765 --directory Prototype
 ```
 
-Then open <http://localhost:8765>. Add `?skip` to the address to start past the sign-in screens.
+Then open <http://localhost:8765>. Add `?skip` to the address to start past the sign-in screens. After you sign in once, the browser remembers it for the company's sign-in policy (Settings → Sign-in and security, default every 30 days), so reloading goes straight to the board. Signing out (Settings or the Sign-in jump) brings the sign-in screens back.
 
 The panel beside the phone (a **Controls** button on narrower windows) drives the prototype:
 
@@ -19,6 +19,8 @@ The panel beside the phone (a **Controls** button on narrower windows) drives th
 - **Next job change hits a conflict** makes the next saved change come back as a conflict to resolve under Settings → Pending changes.
 - **Simulate** triggers things that would come from elsewhere: a dispatcher moving a job, an incoming call, a driver arriving at a stop.
 - **Jump to** opens a specific screen directly.
+
+Board and map colors: the job type fills each card and pin (purge yellow, government indigo, card-on-file blue, setup red, meet-the-truck pink, route service graphite) and the route's calendar color rims it. Skipped, canceled, rescheduled and postponed jobs stay on the list with a line through the title and a label.
 
 Jobs have no scheduled times: each route's day is an ordered list, and stop 1 is done first. On the board, drag a job up or down to reorder it or into another column to reassign it, and tap a column's empty space (or **Add stop**) to add a job at the end. Notes for the day sit above the list. The prototype clock starts at 10:24 AM; other drivers' trucks move and complete their stops on their own, faster than real life, so the board and map change while you watch.
 
@@ -35,7 +37,10 @@ Jobs have no scheduled times: each route's day is an ordered list, and stop 1 is
 | `js/screens/map.js` | Day map with stops and live trucks |
 | `js/screens/customers.js` | Customer lookup, record and timeline, leads, tasks |
 | `js/screens/shift.js` | Driver clock in/out, stop statuses, GPS tracking state |
-| `js/screens/settings.js` | Routes, pending changes, Google mirror, team and roles, tracking consent, account |
+| `js/screens/settings.js` | Routes, pending changes, Google mirror, team and roles, vehicles and their start/end places, integrations (incl. OneStep GPS), signature on file, tracking consent, account |
+| `js/screens/billing.js` | Invoice editor (rates, quantities, add/delete lines, PO and contract), paid on site (cash, check, card), signature pad, invoice preview |
+| `js/screens/team.js` | Overtime rules (daily, weekly, double time), timesheets, team locations map with stays over N minutes |
+| `js/screens/admin.js` | Sign-in policy, job types and the fields each asks for, import from .ics or Excel/CSV, new-company “connect your tools” step |
 
 ## Screen-module contract
 
@@ -89,7 +94,8 @@ A page is a spec object:
 - `WD.can('jobs.edit' | 'tracking.view_live' | 'crm.view' | 'crm.edit' | 'analytics.view' | 'billing.view' | 'billing.manage' | 'users.manage' | 'settings.manage')`. `WD.roles`, `WD.permissionList`.
 - `WD.now()` / `WD.nowMins()` — the prototype clock (today, starting 10:24 AM). `WD.date.today() / add(key, n) / key(Date) / parse(key)`; day keys are `YYYY-MM-DD`. Jobs carry no scheduled time: `job.seq` is the 1-based place in its route's day list (`allDay` marks a day note, not a stop), `dur` is typical minutes on site, and `arrivedAt`/`departedAt` are recorded minutes since midnight. Reorder with `WD.placeJob(job, routeId, day, index)`; `WD.renumber(routeId, day)` tidies a list.
 - `WD.fmt.day(key, 'short'|'long'|'rel'|'md'|'weekday')`, `time(mins)`, `dur(mins)`, `rel(Date)`, `money(n)`, `phone(str)`, `clock(Date)`.
-- `WD.data`: `orgs users vehicles routes customers jobs depot`. `WD.q`: `routes() visibleRoutes() route(id) routeName(id) routeColor(id) job(id) customer(id) user(id) vehicle(id) jobType(id) jobsFor(routeId, day) stopList(routeId, day) position(job) order(a, b) jobsOn(day) stops(routeId, day) jobsForCustomer(id) driverFor(routeId) searchCustomers(text) searchJobs(text, routeIds)`. `WD.jobTypes`, `WD.jobStatuses`, `WD.lifecycle`.
+- `WD.data`: `orgs users vehicles routes customers jobs depot places vehicleDays priceBook fieldConfig timeRules punches stays`. Jobs and customer locations carry `items` (`[{id: 'console'|'bin64'|'bin96'|'box', qty, rate}]`); `WD.itemsLabel(items, purge)` formats them. Customers carry `billingEmail po contract requiresSignature`; jobs copy `po contract` and can change them. Requested windows are `custFrom`/`custUntil` with `custStrict` (true = required, false = preferred). `WD.asks(type, field)` says whether the editor shows a field for a job type. `WD.closed[status]` / `WD.struck[status]` cover completed/skipped/canceled/rescheduled/postponed.
+- `q.routeEnds(routeId, day)` / `q.vehicleEnds(vehicleId, day)` → `{start, end}` places (per-day overrides in `data.vehicleDays`). `q.visitStats(job)` → `{median, mean, n}` minutes on site; AutoRoute uses the median. `WD.q`: `routes() visibleRoutes() route(id) routeName(id) routeColor(id) job(id) customer(id) user(id) vehicle(id) jobType(id) jobsFor(routeId, day) stopList(routeId, day) position(job) order(a, b) jobsOn(day) stops(routeId, day) jobsForCustomer(id) driverFor(routeId) searchCustomers(text) searchJobs(text, routeIds)`. `WD.jobTypes`, `WD.jobStatuses`, `WD.lifecycle`.
 - Map space for `x`/`y` on jobs, locations and the depot is 1000 × 1000.
 
 ### Cross-screen entry points
@@ -100,6 +106,10 @@ A page is a spec object:
 | `WD.screens.jobs.openDetails(jobId)`, `WD.screens.jobs.openEditor({jobId} \| {day, routeId, pos, customerId})` | jobs.js |
 | `WD.screens.customers.openDetail(customerId)` | customers.js |
 | `WD.screens.settings.openPending()` | settings.js |
+| `WD.screens.billing.openEditor(jobId, {pay, lines, note})`, `.openInvoice(jobId)`, `.signaturePad(o)` | billing.js |
+| `WD.timeclock.week(userId)`, `.teamMapSpec()`, `.rulesSpec()`, `.timesheetsSpec()` | team.js |
+| `WD.admin.signInSpec()`, `.typesSpec()`, `.importSpec()`, `.connectPage(from, done)` | admin.js |
+| `WD.miniMap({points, lines, aspect})`, `WD.pinStyle(job)` | map.js |
 | `WD.screens.map.root()`, `WD.screens.shift.root()` | map.js, shift.js |
 
 Always guard calls into another module (`WD.screens.jobs && WD.screens.jobs.openDetails && ...`).

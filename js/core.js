@@ -177,20 +177,24 @@ const I = WD.icons = {
 WD.icon = (name, size = 22, color) => h('span.ic', { style: { width: size + 'px', height: size + 'px', color }, 'data-icon': name,
   html: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">' + (I[name] || I.circle) + '</svg>' });
 WD.addIcons = map => Object.assign(I, map);
+/** Readable text color (#fff or near-black) on a hex background, e.g. dark text on the yellow purge color. */
+WD.textOn = hex => { const m = /^#?([0-9a-f]{6})$/i.exec(hex || ''); if (!m) return '#fff'; const n = parseInt(m[1], 16), c = [n >> 16, n >> 8 & 255, n & 255].map(v => { v /= 255; return v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); }); return .2126 * c[0] + .7152 * c[1] + .0722 * c[2] > .4 ? '#1C1C1E' : '#fff'; };
 
 /* ================= State and permissions ================= */
-const ALL = ['analytics.view', 'tracking.view_live', 'crm.view', 'crm.edit', 'billing.view', 'billing.manage', 'jobs.edit', 'users.manage', 'settings.manage'];
+const ALL = ['analytics.view', 'tracking.view_live', 'team.locations', 'crm.view', 'crm.edit', 'billing.view', 'billing.field', 'billing.manage', 'jobs.edit', 'users.manage', 'settings.manage'];
 WD.roles = {
   owner: { title: 'Owner', perms: ALL }, admin: { title: 'Admin', perms: ALL },
-  dispatcher: { title: 'Dispatcher', perms: ['jobs.edit', 'tracking.view_live', 'crm.view', 'crm.edit', 'analytics.view'] },
-  office: { title: 'Office', perms: ['jobs.edit', 'crm.view', 'crm.edit', 'billing.view', 'billing.manage'] },
-  driver: { title: 'Driver', perms: [] },
+  dispatcher: { title: 'Dispatcher', perms: ['jobs.edit', 'tracking.view_live', 'team.locations', 'crm.view', 'crm.edit', 'analytics.view', 'billing.field'] },
+  office: { title: 'Office', perms: ['jobs.edit', 'team.locations', 'crm.view', 'crm.edit', 'billing.view', 'billing.field', 'billing.manage'] },
+  driver: { title: 'Driver', perms: ['billing.field'] },
+  staff: { title: 'Staff', perms: [] },
 };
 WD.permissionList = [
   ['jobs.edit', 'Edit jobs', 'Create, move, reassign and delete jobs'], ['tracking.view_live', 'Live truck map', 'See where trucks are right now'],
+  ['team.locations', 'Team locations', 'See where clocked-in employees are and where they stopped'],
   ['crm.view', 'View customers', 'Customer records and history'], ['crm.edit', 'Edit customers', 'Change customers, notes and follow-ups'],
   ['analytics.view', 'Analytics', 'Driver, stop and route reports'], ['billing.view', 'View billing', 'Invoices and payments'],
-  ['billing.manage', 'Manage billing', 'Create invoices and charge cards'], ['users.manage', 'Manage team', 'Invite people and change roles'], ['settings.manage', 'Company settings', 'Integrations and the Google mirror'],
+  ['billing.field', 'Field invoicing', 'Edit job charges, collect signatures and payment on site'], ['billing.manage', 'Manage billing', 'Create invoices and charge cards'], ['users.manage', 'Manage team', 'Invite people and change roles'], ['settings.manage', 'Company settings', 'Integrations and the Google mirror'],
 ];
 const S = WD.state = {
   signedIn: false, role: 'owner', me: null, org: null,
@@ -220,6 +224,7 @@ ui.progress = fraction => h('div.progress', h('i', { style: { width: Math.round(
 ui.badge = (text, color, solid) => h('span.badge' + (solid ? '.solid' : ''), { style: { '--c': color } }, text);
 ui.dot = color => h('span.dot', { style: { background: color } });
 const AVATAR = ['#FF9500', '#34C759', '#007AFF', '#AF52DE', '#FF2D55', '#30B0C7', '#5856D6', '#A2845E'];
+ui.avatarColor = name => { let n = 0; for (const c of String(name)) n = (n * 31 + c.charCodeAt(0)) >>> 0; return AVATAR[n % AVATAR.length]; };
 ui.avatar = (name, o = {}) => { const size = o.size || 40; let n = 0; for (const c of String(name)) n = (n * 31 + c.charCodeAt(0)) >>> 0;
   return h('div.avatar', { style: { width: size + 'px', height: size + 'px', fontSize: Math.round(size * 0.4) + 'px', '--c': o.color || AVATAR[n % AVATAR.length] } }, o.icon ? WD.icon(o.icon, size * 0.55) : F.initials(name)); };
 ui.empty = o => h('div.empty', o.icon && WD.icon(o.icon, 52), h('h3', o.title), o.text && h('p', o.text), o.action);
@@ -475,8 +480,15 @@ app.showMain = tabId => {
 };
 WD.on('change', () => tabState && tabState.badges());
 /** Finish signing in and show the tabs. */
-app.signIn = () => { S.signedIn = true; app.showMain(); syncPanel(); };
-app.signOut = () => { S.signedIn = false; S.shift = null; ui.closeAllSheets(); if (WD.screens.auth && WD.screens.auth.show) WD.screens.auth.show(); else app.showMain(); syncPanel(); };
+/* Sign-in policy: an admin chooses per company how often people must sign in again (Settings → Sign-in and security).
+   The prototype remembers the last sign-in and the policy in this browser so reloading doesn't always show the sign-in screens. */
+const store = { get: k => { try { return localStorage.getItem(k); } catch (e) { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* private mode */ } } };
+WD.signInPolicies = [{ value: 'launch', label: 'Every time the app opens', ms: 0 }, { value: '1d', label: 'Every day', ms: 864e5 }, { value: '7d', label: 'Every week', ms: 7 * 864e5 }, { value: '30d', label: 'Every 30 days', ms: 30 * 864e5 }, { value: 'never', label: 'Only after signing out', ms: Infinity }];
+S.signInPolicy = store.get('wd.signInPolicy') || '30d'; S.faceId = store.get('wd.faceId') === '1';
+WD.setSignInPolicy = (v, faceId) => { if (v) { S.signInPolicy = v; store.set('wd.signInPolicy', v); } if (faceId != null) { S.faceId = faceId; store.set('wd.faceId', faceId ? '1' : '0'); } };
+const stillSignedIn = () => { const last = +store.get('wd.lastSignIn'), pol = WD.signInPolicies.find(p => p.value === S.signInPolicy) || WD.signInPolicies[3]; return !!last && store.get('wd.signedOut') !== '1' && Date.now() - last < pol.ms; };
+app.signIn = () => { S.signedIn = true; store.set('wd.lastSignIn', String(Date.now())); store.set('wd.signedOut', '0'); app.showMain(); syncPanel(); };
+app.signOut = () => { store.set('wd.signedOut', '1'); S.signedIn = false; S.shift = null; ui.closeAllSheets(); if (WD.screens.auth && WD.screens.auth.show) WD.screens.auth.show(); else app.showMain(); syncPanel(); };
 app.setRole = role => { S.role = role; S.me = (WD.data.users || []).find(u => u.role === role && u.status !== 'invited') || S.me; if (S.signedIn) app.showMain(); syncPanel(); WD.emit('role', role); };
 app.setTheme = t => { S.theme = t; screen().dataset.theme = t; syncPanel(); };
 app.setOffline = off => { S.offline = off; $('.statusbar').classList.toggle('offline', off); S.pending.forEach(op => { if (op.status === 'queued') op.message = off ? 'Waiting for a connection' : 'Waiting to sync'; }); syncPanel(); WD.changed(); if (!off) WD.api.flush(); WD.emit('network', !off); };
@@ -500,7 +512,7 @@ const api = WD.api = {
   },
   /** Driver status change (en route / arrived / completed / skipped), queued offline the same way. */
   setStatus(jobId, status, note) {
-    const j = WD.q.job(jobId), label = { enroute: 'En route', arrived: 'Arrived', completed: 'Completed', skipped: 'Skipped', scheduled: 'Reopened' }[status];
+    const j = WD.q.job(jobId), label = { enroute: 'En route', arrived: 'Arrived', completed: 'Completed', skipped: 'Skipped', canceled: 'Customer canceled', rescheduled: 'Rescheduled', postponed: 'Postponed', scheduled: 'Reopened' }[status];
     return api.op({ kind: 'status', title: j.title, scope: label, jobIds: [jobId], apply() {
       j.status = status; const t = WD.nowMins();
       if (status === 'arrived') j.arrivedAt = t; if (status === 'completed') { j.departedAt = t; if (j.arrivedAt == null) j.arrivedAt = t - (j.dur || 20); }
@@ -551,7 +563,7 @@ function syncPanel() {
     h('label.pcheck', h('input', { type: 'checkbox', checked: S.sim.conflictNext, onchange: e => { S.sim.conflictNext = e.target.checked; } }), 'Next job change hits a conflict'),
     h('h2', 'Simulate'), panel.actions.map(a => h('button.pbtn', { onclick: ready(a.fn) }, a.label)),
     h('h2', 'Jump to'), h('div.jumps', h('button', { onclick: () => app.signOut() }, 'Sign-in'), panel.jumps.map(j => h('button', { onclick: ready(j.fn) }, j.label))),
-    h('p.foot', 'Tip: drag a job on the board to move or reassign it. Pinch or ⌘-scroll to zoom the timeline.')]);
+    h('p.foot', 'Tip: drag a job on the board to reorder or reassign it. Sign-in is remembered in this browser for the company’s sign-in policy (Settings → Sign-in and security).')]);
 }
 
 /* ================= Boot ================= */
@@ -571,7 +583,9 @@ app.start = () => {
   $('.device-area').addEventListener('click', () => document.body.classList.remove('panel-open'));
   setInterval(() => WD.emit('minute'), 30000);
   WD.on('change', () => $('.statusbar').classList.toggle('tracking', !!S.shift));
-  if (WD.screens.auth && WD.screens.auth.show && !/[?&]skip/.test(location.search)) WD.screens.auth.show(); else app.signIn();
+  if (WD.screens.auth && WD.screens.auth.show && !/[?&]skip/.test(location.search) && !stillSignedIn()) WD.screens.auth.show();
+  else if (S.faceId && !/[?&]skip/.test(location.search)) { app.signIn(); const hud = ui.hud('Face ID', { icon: 'lock' }); setTimeout(() => { hud.set('Unlocked', 'checkmark'); setTimeout(hud.close, 500); }, 900); }
+  else app.signIn();
   syncPanel();
 };
 })();

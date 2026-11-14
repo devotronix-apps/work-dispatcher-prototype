@@ -2,7 +2,7 @@
 (function () {
 'use strict';
 const WD = window.WD, { h, ui, icon, state: S, data, q, fmt, date: D, nav } = WD;
-const MI = 0.03, DONE = { completed: 1, skipped: 1 }, CUTOFF_HRS = 14;
+const MI = 0.03, DONE = WD.closed, CUTOFF_HRS = 14;
 let inst = null, locationAuth = null, geofenceTimer = 0, uploading = 0, lastCompleted = null;
 const mine = [];   // shifts finished in this session, newest first
 
@@ -24,7 +24,7 @@ WD.css(`
 .sh-kicker { font-size: 13px; font-weight: 600; color: var(--label2); text-transform: uppercase; letter-spacing: -.08px; }
 .sh-next .sh-top { display: flex; gap: 12px; align-items: flex-start; margin-top: 8px; }
 .sh-next .sh-top > div { flex: 1; min-width: 0; }
-.sh-num { width: 34px; height: 34px; border-radius: 50%; background: var(--c); border: 3px solid var(--ring); color: #fff; font-weight: 700; font-size: 15px; display: grid; place-items: center; flex: none; letter-spacing: 0; }
+.sh-num { width: 34px; height: 34px; border-radius: 50%; background: var(--c); border: 3px solid var(--ring); color: var(--fg, #fff); font-weight: 700; font-size: 15px; display: grid; place-items: center; flex: none; letter-spacing: 0; }
 .sh-num.small { width: 26px; height: 26px; font-size: 11.5px; border-width: 2.5px; }
 .sh-num.none { background: var(--fill); border-color: transparent; color: var(--label2); }
 .sh-num.q { background: none; border: 2px solid var(--red); color: var(--red); font-weight: 900; }
@@ -42,6 +42,8 @@ WD.css(`
 .sh-notice p { margin: 0 0 12px; font-size: 16px; line-height: 22px; letter-spacing: -.3px; }
 .sh-notice b { font-weight: 600; }
 .sh-pend { color: var(--orange); }
+.sh-struck .row-title { text-decoration: line-through; color: var(--label2); }
+.sh-kind { margin: 12px 0 0; }
 `);
 
 /* ---------- Helpers ---------- */
@@ -51,7 +53,7 @@ const routeOf = () => S.shift && q.route(S.shift.routeId);
 const todayJobs = routeId => q.jobsFor(routeId, D.today()).filter(j => !j.allDay);
 const remaining = routeId => todayJobs(routeId).filter(j => !DONE[j.status]);
 const openDetails = id => { if (WD.screens.jobs && WD.screens.jobs.openDetails) WD.screens.jobs.openDetails(id); else ui.toast('Job details aren’t available', 'info.circle'); };
-const numFor = (job, n, small) => n ? h('span.sh-num' + (small ? '.small' : ''), { style: { '--c': q.routeColor(job.routeId), '--ring': q.jobType(job.type).color || '#fff' } }, n)
+const numFor = (job, n, small) => n ? h('span.sh-num' + (small ? '.small' : ''), { style: WD.pinStyle ? WD.pinStyle(job) : { '--c': q.routeColor(job.routeId) } }, n)
   : h('span.sh-num.small' + (!job.located && job.address ? '.q' : '.none'), !job.located && job.address ? '?' : '–');
 const defaultRoute = () => (q.routes().find(r => r.driverId === (S.me && S.me.id)) || q.routes()[0]);
 /** What the truck is doing right now, from the route's job statuses (works with location off too). */
@@ -129,7 +131,7 @@ function openNotice() {
     h('div.sh-card.sh-notice',
       h('p', h('b', 'When. '), 'Work Dispatcher records this iPhone’s location only while you’re clocked in to a shift. It stops when you clock out, or automatically 14 hours after clock-in.'),
       h('p', h('b', 'What. '), 'Position, speed and heading about every 30 seconds while moving, a check-in every 5 minutes while parked, stop arrival and departure times, and phone battery level.'),
-      h('p', h('b', 'Who sees it. '), 'Owners, admins and dispatchers with the Live truck map permission. It is used for routing, customer arrival windows and service records.'),
+      h('p', h('b', 'Who sees it. '), 'Owners, admins, dispatchers and office staff. They see where you are and the places you stayed longer than ' + data.timeRules.stayMinutes + ' minutes. It is used for routing, customer arrival windows, timesheets and service records.'),
       h('p', h('b', 'How long. '), 'Raw points are kept for 24 months and then thinned. Stop visits stay with the job history.'),
       h('p', { style: { marginBottom: 0 } }, 'You can review this notice any time in Settings.')),
     h('div.sh-cta', ui.button('I understand and agree', { onTap: () => { S.tracking = { consent: true, consentAt: +WD.now() }; WD.changed(); p.dismiss(); ui.toast('Notice accepted', 'checkmark'); } }))) });
@@ -140,10 +142,11 @@ async function askLocation() {
     buttons: [{ label: 'Allow While Using App', value: 'whenInUse' }, { label: 'Allow Always', value: 'always' }, { label: 'Don’t Allow', value: 'denied' }] });
   return (locationAuth = v);
 }
-async function clockIn(routeId, vehicleId) {
-  const loc = await askLocation();
+async function clockIn(routeId, vehicleId, m) {
+  const loc = await askLocation(), general = m && m.kind === 'general';
+  if (!general && m && (m.startId || m.endId)) { const v = q.vehicle(vehicleId); if (v) data.vehicleDays[v.id + '|' + D.today()] = { startId: m.startId || v.startId, endId: m.endId || v.endId }; }
   const ok = await ui.run('Clocking in…', () => {
-    S.shift = { routeId, vehicleId, startedAt: +WD.now(), onBreak: false, breakStartedAt: null, breakMs: 0, pointsQueued: 0, pointsSent: 0, lastUpload: null, lastFix: null, miles: 0,
+    S.shift = { kind: general ? 'general' : 'route', work: m && m.work, routeId: general ? null : routeId, vehicleId: general ? null : vehicleId, startedAt: +WD.now(), onBreak: false, breakStartedAt: null, breakMs: 0, pointsQueued: 0, pointsSent: 0, lastUpload: null, lastFix: null, miles: 0,
       location: loc, lowPower: false, battery: 78, driveSec: 0, serviceSec: 0, idleSec: 0, tick: 0, lx: null, ly: null };
   }, { offlineOK: true, done: 'On shift' });
   if (ok && S.offline) ui.toast('Clock-in syncs when you’re back online', 'wifi.slash', 2600);
@@ -172,11 +175,8 @@ function armGeofence(job) {
   geofenceTimer = setTimeout(() => { const j = q.job(job.id); if (!S.shift || !j || j.status !== 'enroute') return;
     setStatus(j.id, 'arrived', 'detected by geofence'); ui.banner({ title: 'Work Dispatcher', text: 'Arrived at ' + j.title + ' — detected by geofence', icon: 'mappin', color: 'var(--orange)' }); }, 6000);
 }
-async function skip(job) {
-  let why = await ui.actionSheet({ title: 'Skip this stop?', message: 'Dispatch sees the reason on the job.', buttons: ['Office closed', 'No access', 'Customer asked to skip', 'Other'].map(label => ({ label })) });
-  if (why === 'Other') { const r = await ui.alert({ title: 'Why are you skipping?', input: { placeholder: 'Reason' }, buttons: [{ label: 'Cancel', value: null }, { label: 'Skip', value: true, bold: true }] }); why = r && r.value ? (r.text.trim() || 'Other') : null; }
-  if (why) { clearTimeout(geofenceTimer); setStatus(job.id, 'skipped', why); ui.toast('Stop skipped', 'xmark.circle.fill'); }
-}
+/** Skip with three choices: no charge, charge the customer, or reschedule (jobs.js). */
+async function skip(job) { if (WD.screens.jobs && WD.screens.jobs.skipFlow && await WD.screens.jobs.skipFlow(job)) clearTimeout(geofenceTimer); }
 function openCamera(job) {
   let shot = false, note = '', sending = false;
   ui.sheet({ title: 'Add photo or note', leading: [{ label: 'Cancel', onTap: p => p.dismiss() }], render(p) {
@@ -202,19 +202,25 @@ function openCamera(job) {
 
 /* ---------- Page ---------- */
 function offShift(m) {
-  const routes = q.routes(), r = q.route(m.routeId) || defaultRoute(), consent = S.tracking && S.tracking.consent;
-  if (!r) return ui.empty({ icon: 'truck', title: 'No routes', text: 'Ask the office to add a route.' });
-  const veh = m.vehicleId || r.vehicleId;
+  const routes = q.routes(), r = q.route(m.routeId) || defaultRoute(), consent = S.tracking && S.tracking.consent, general = m.kind === 'general', re = () => inst.page && inst.page.refresh();
+  if (!r && !general) return ui.empty({ icon: 'truck', title: 'No routes', text: 'Ask the office to add a route.' });
+  const veh = m.vehicleId || (r && r.vehicleId), v = q.vehicle(veh), places = data.places.map(p => ({ value: p.id, label: p.name }));
   return ui.list(
-    h('div.sh-card.sh-intro', icon('location', 30), h('div', h('div.headline', 'Clock in to start your route'), h('div.footnote', { style: { marginTop: '3px' } }, 'Your location is shared with dispatch only while you’re on a shift. Tracking stops when you clock out.'))),
-    ui.section('Route and vehicle',
-      ui.pickerRow({ title: 'Route', icon: 'route', iconColor: q.routeColor(r), value: r.id, options: routes.map(x => ({ value: x.id, label: q.routeName(x) })), onChange: v => { m.routeId = v; m.vehicleId = null; inst.page && inst.page.refresh(); } }),
-      ui.pickerRow({ title: 'Vehicle', icon: 'truck', iconColor: 'var(--gray)', value: veh, options: data.vehicles.map(v => ({ value: v.id, label: v.name })), onChange: v => { m.vehicleId = v; inst.page && inst.page.refresh(); } })),
+    h('div.sh-card.sh-intro', icon('location', 30), h('div', h('div.headline', general ? 'Clock in for your shift' : 'Clock in to start your route'), h('div.footnote', { style: { marginTop: '3px' } }, 'Your location is shared with the office only while you’re on a shift. Tracking stops when you clock out.'))),
+    h('div.sh-kind', ui.segmented([{ value: 'route', label: 'Driving a route' }, { value: 'general', label: 'Other work' }], general ? 'general' : 'route', k => { m.kind = k; re(); })),
+    general ? ui.section({ header: 'Work', footer: 'For office, shop, helpers and anyone who doesn’t drive a route. Hours count toward overtime the same way.' },
+      ui.pickerRow({ title: 'Working on', icon: 'briefcase', iconColor: 'var(--brown)', value: m.work || 'Shop', options: ['Shop', 'Office', 'Helper on a truck', 'Deliveries', 'Other'], onChange: x => { m.work = x; re(); } }))
+    : ui.section({ header: 'Route and vehicle', footer: 'Trucks get switched around: change where this one starts or ends today and AutoRoute plans from there.' },
+      ui.pickerRow({ title: 'Route', icon: 'route', iconColor: q.routeColor(r), value: r.id, options: routes.map(x => ({ value: x.id, label: q.routeName(x) })), onChange: x => { m.routeId = x; m.vehicleId = null; m.startId = m.endId = null; re(); } }),
+      ui.pickerRow({ title: 'Vehicle', icon: 'truck', iconColor: 'var(--gray)', value: veh, options: data.vehicles.map(x => ({ value: x.id, label: x.name })), onChange: x => { m.vehicleId = x; m.startId = m.endId = null; re(); } }),
+      v && ui.pickerRow({ title: 'Starting from', icon: 'play.fill', iconColor: 'var(--green)', value: m.startId || q.vehicleEnds(v.id, D.today()).start.id, options: places, onChange: x => { m.startId = x; re(); } }),
+      v && ui.pickerRow({ title: 'Ending at', icon: 'flag', iconColor: 'var(--red)', value: m.endId || q.vehicleEnds(v.id, D.today()).end.id, options: places, onChange: x => { m.endId = x; re(); } })),
     consent ? ui.section({ footer: 'You agreed to the location tracking notice on ' + fmt.day(D.key(new Date(S.tracking.consentAt || +WD.now())), 'md') + '.' }, ui.row({ title: 'Location tracking notice', icon: 'checkmark.circle.fill', iconPlain: true, iconColor: 'var(--green)', chevron: true, onTap: openNotice }))
       : ui.section({ footer: 'You need to agree before your first shift.' }, ui.row({ title: 'Location tracking notice', subtitle: 'Review and agree', icon: 'hand.raised', iconColor: 'var(--orange)', chevron: true, onTap: openNotice })),
-    h('div.sh-cta', ui.button('Clock in', { icon: 'play.fill', disabled: !consent, onTap: () => clockIn(r.id, veh) })),
+    h('div.sh-cta', ui.button('Clock in', { icon: 'play.fill', disabled: !consent, onTap: () => clockIn(r && r.id, veh, m) })),
     locationAuth === 'denied' && h('div', { style: { marginTop: '10px' } }, ui.note('Location is off for Work Dispatcher. You can still clock in and report stops with the buttons; geofence arrivals and the live map won’t work.')),
-    ui.section('Recent shifts', history().map(s => ui.row({ title: fmt.day(s.day, 'rel'), subtitle: q.routeName(s.routeId) + ' · ' + s.completed + ' stops · ' + s.miles.toFixed(1) + ' mi', detail: hm(s.end - s.start), chevron: true, onTap: () => nav.push(shiftDetail(s)) }))));
+    weekSection(), teamSection(),
+    !general && ui.section('Recent shifts', history().map(s => ui.row({ title: fmt.day(s.day, 'rel'), subtitle: q.routeName(s.routeId) + ' · ' + s.completed + ' stops · ' + s.miles.toFixed(1) + ' mi', detail: hm(s.end - s.start), chevron: true, onTap: () => nav.push(shiftDetail(s)) }))));
 }
 function nextCard(r) {
   const stop = q.stops(r.id, D.today()).find(s => !DONE[s.job.status]);
@@ -240,11 +246,13 @@ function onShift() {
         sh.onBreak ? h('span.sh-live.brk', h('i'), 'On break') : denied ? h('span.sh-live.off', h('i'), 'Location off') : h('span.sh-live', h('i'), 'Tracking active')),
       h('div.sh-timer' + (sh.onBreak ? '.paused' : ''), { 'data-sh': 'timer' }, v.timer),
       h('div.subhead', ui.dot(q.routeColor(r)), ' ', q.routeName(r), h('span.secondary', ' · ' + (veh ? veh.name : 'No vehicle') + ' · ', span('miles')))),
-    done && h('div.sh-card.sh-done', icon('checkmark.circle.fill', 30, 'var(--green)'), h('div', h('div.headline', done.title), h('div.footnote', 'Completed ' + (done.departedAt != null ? fmt.time(done.departedAt) : ''))),
-      ui.button('Add photo or note', { kind: 'tinted', small: true, block: false, icon: 'camera', onTap: () => openCamera(done) })),
+    done && h('div.sh-card', h('div.sh-done', icon('checkmark.circle.fill', 30, 'var(--green)'), h('div', h('div.headline', done.title), h('div.footnote', 'Completed ' + (done.departedAt != null ? fmt.time(done.departedAt) : '') + (done.invoice ? ' · ' + done.invoice.number + ' ' + done.invoice.status.toLowerCase() : '')))),
+      h('div.sh-acts', { style: { marginTop: '10px' } }, !done.invoice && WD.screens.billing && WD.screens.billing.canInvoice() && done.type !== 'creditCard' && ui.button('Invoice', { kind: 'tinted', small: true, block: false, icon: 'doc.text', onTap: () => WD.screens.billing.openEditor(done.id) }),
+        !done.invoice && WD.screens.billing && WD.screens.billing.canInvoice() && done.type !== 'creditCard' && ui.button('Paid on site', { kind: 'tinted', small: true, block: false, icon: 'dollarsign.circle', onTap: () => WD.screens.billing.openEditor(done.id, { pay: 'cash' }) }),
+        ui.button('Photo or note', { kind: 'gray', small: true, block: false, icon: 'camera', onTap: () => openCamera(done) }))),
     nextCard(r),
     ui.section('Today · ' + q.routeName(r), q.jobsFor(r.id, D.today()).map(j => { const sx = WD.jobStatuses[j.status];
-      return ui.row({ leading: numFor(j, numbers.get(j.id), true), title: j.title, subtitle: (j.allDay ? 'Note for the day' : 'Stop ' + q.position(j).n) + (!j.located && j.address ? ' · address not found' : '') + (j.pending ? ' · waiting to sync' : ''),
+      return ui.row({ class: WD.struck[j.status] ? 'sh-struck' : null, leading: numFor(j, numbers.get(j.id), true), title: j.title, subtitle: (j.allDay ? 'Note for the day' : 'Stop ' + q.position(j).n) + (WD.struck[j.status] ? ' · ' + sx.title + (j.rescheduledTo ? ' to ' + fmt.day(j.rescheduledTo, 'md') : '') : '') + (!j.located && j.address ? ' · address not found' : '') + (j.pending ? ' · waiting to sync' : ''),
         trailing: h('span.hstack', { style: { gap: '6px' } }, j.pending && icon('sync', 16, 'var(--orange)'), j.allDay ? null : icon(sx.icon, 18, sx.color)), onTap: () => openDetails(j.id) }); })),
     ui.section({ header: 'Tracking', footer: denied ? 'Location isn’t allowed, so nothing is recorded. Use the status buttons to report stops.' : 'Points are thinned to one every 30 seconds and upload in small batches. Without a connection they wait on this iPhone.' },
       ui.row({ title: 'Last location', detail: span('lastFix'), icon: 'location.fill', iconColor: 'var(--blue)' }), ui.row({ title: 'Accuracy', detail: span('accuracy'), icon: 'scope', iconColor: 'var(--teal)' }),
@@ -255,16 +263,41 @@ function onShift() {
       ui.toggleRow({ title: 'Low Power Mode', icon: 'bolt.fill', iconColor: 'var(--yellow)', value: sh.lowPower, onChange: on => { sh.lowPower = on; WD.changed(); } })),
     ui.section(null, ui.toggleRow({ title: 'Take a break', subtitle: 'Pauses your shift time', icon: 'sh.cup', iconColor: 'var(--orange)', value: sh.onBreak, onChange: on => {
       const now = +WD.now(); if (on) sh.breakStartedAt = now; else { sh.breakMs += now - sh.breakStartedAt; sh.breakStartedAt = null; } sh.onBreak = on; WD.changed(); } })),
+    weekSection(), teamSection(),
     h('div.sh-cta', ui.button('Clock out', { kind: 'destructive', icon: 'stop.fill', onTap: clockOut })),
     h('div', { style: { marginTop: '10px' } }, ui.note('Tracking stops automatically ' + CUTOFF_HRS + ' hours after clock-in.')));
 }
+/** Everyone who clocks in sees their hours this week; owners, dispatch and office also get the team rows. */
+function weekSection() {
+  const tc = WD.timeclock; if (!tc || !S.me) return null; const w = tc.week(S.me.id);
+  return ui.section({ header: 'This week', footer: 'Overtime on hours ' + tc.ruleText() + '.' }, ui.row({ icon: 'clock', iconColor: 'var(--orange)', title: 'My timesheet', subtitle: tc.hrs(w.total) + ' worked' + (w.ot ? ' · ' + tc.hrs(w.ot) + ' overtime' : ''), chevron: true, onTap: () => nav.push(tc.timesheetSpec(S.me.id)) }));
+}
+function teamSection() {
+  const tc = WD.timeclock, map = WD.can('team.locations'), sheets = WD.can('users.manage') || WD.can('billing.manage'); if (!tc || (!map && !sheets)) return null;
+  return ui.section({ header: 'Team', footer: map ? 'Where clocked-in employees are now, and every place they stayed longer than ' + data.timeRules.stayMinutes + ' minutes today.' : null },
+    map && ui.row({ icon: 'map', iconColor: 'var(--blue)', title: 'Team locations', subtitle: data.punches.filter(p => p.day === D.today() && p.end == null && p.userId !== S.me.id).length + ' clocked in', chevron: true, onTap: () => nav.push(tc.teamMapSpec()) }),
+    sheets && ui.row({ icon: 'list.bullet', iconColor: 'var(--green)', title: 'Timesheets and overtime', chevron: true, onTap: () => nav.push(tc.timesheetsSpec()) }));
+}
+function generalShift() {
+  const sh = S.shift, v = liveVals(), denied = sh.location === 'denied';
+  return ui.list(
+    h('div.sh-card.sh-head', { style: { '--c': 'var(--brown)' } },
+      h('div.hstack', h('span.sh-kicker', 'On shift since ' + fmt.clock(new Date(sh.startedAt))), h('span.spacer'), sh.onBreak ? h('span.sh-live.brk', h('i'), 'On break') : denied ? h('span.sh-live.off', h('i'), 'Location off') : h('span.sh-live', h('i'), 'Location shared')),
+      h('div.sh-timer' + (sh.onBreak ? '.paused' : ''), { 'data-sh': 'timer' }, v.timer), h('div.subhead', icon('briefcase', 15), ' ', sh.work || 'Shop')),
+    ui.section(null, ui.toggleRow({ title: 'Take a break', subtitle: 'Pauses your shift time', icon: 'sh.cup', iconColor: 'var(--orange)', value: sh.onBreak, onChange: on => {
+      const now = +WD.now(); if (on) sh.breakStartedAt = now; else { sh.breakMs += now - sh.breakStartedAt; sh.breakStartedAt = null; } sh.onBreak = on; WD.changed(); } })),
+    weekSection(), teamSection(),
+    h('div.sh-cta', ui.button('Clock out', { kind: 'destructive', icon: 'stop.fill', onTap: async () => {
+      if (!await ui.actionSheet({ title: 'Clock out?', message: 'Location sharing stops when you clock out.', buttons: [{ label: 'Clock out', value: true, role: 'destructive' }] })) return;
+      await ui.run('Clocking out…', () => { S.shift = null; }, { offlineOK: true, done: 'Clocked out' }); } })));
+}
 function root() {
-  const r = defaultRoute(), m = inst = { routeId: r && r.id, vehicleId: null, page: null };
+  const r = defaultRoute(), m = inst = { routeId: r && r.id, vehicleId: null, page: null, kind: S.me && S.me.role !== 'driver' ? 'general' : 'route' };
   m.paint = () => {
     const p = m.page; if (!p || !p.el.isConnected || nav.activeTab() !== 'shift' || !S.shift) return;
     const v = liveVals(); p.body.querySelectorAll('[data-sh]').forEach(e => { const val = v[e.dataset.sh]; if (val != null && e.textContent !== val) e.textContent = val; });
   };
-  return { title: 'Shift', large: true, render: page => { m.page = page; return S.shift ? onShift() : offShift(m); } };
+  return { title: 'Shift', large: true, render: page => { m.page = page; return S.shift ? (S.shift.kind === 'general' ? generalShift() : onShift()) : offShift(m); } };
 }
 WD.screens.shift = { root };
 

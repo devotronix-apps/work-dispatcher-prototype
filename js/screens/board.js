@@ -39,26 +39,27 @@ WD.css(`
 .bd-col:first-child { border-left: 0; }
 .bd-col.past { background: color-mix(in srgb, var(--fill3) 45%, transparent); }
 .bd-job { position: relative; margin-bottom: 5px; cursor: pointer; touch-action: pan-y; }
-.bd-job-in { border-radius: 9px; background: var(--c); color: #fff; padding: 6px 6px 6px 7px; overflow: hidden; position: relative; display: flex; gap: 6px; align-items: flex-start; font-size: 12.500px; line-height: 15px; letter-spacing: -.1px; box-shadow: inset 4px 0 0 var(--ring, rgba(255,255,255,.28)); transition: opacity .2s; }
-.bd-num { flex: none; width: 20px; height: 20px; margin-left: 2px; border-radius: 50%; background: rgba(255,255,255,.95); color: var(--c); font-size: 11.500px; font-weight: 800; display: grid; place-items: center; letter-spacing: 0; }
+.bd-job-in { border-radius: 9px; background: var(--c); color: var(--fg, #fff); padding: 4px 4px 4px 4px; overflow: hidden; position: relative; display: flex; gap: 6px; align-items: flex-start; font-size: 12.500px; line-height: 15px; letter-spacing: -.1px; border: 3px solid var(--ring); transition: opacity .2s; }
+.bd-num { flex: none; width: 20px; height: 20px; border-radius: 50%; background: var(--ring); color: #fff; font-size: 11.500px; font-weight: 800; display: grid; place-items: center; letter-spacing: 0; box-shadow: 0 0 0 1.5px rgba(255,255,255,.9); }
 .bd-job-main { min-width: 0; flex: 1; }
 .bd-job-title { font-weight: 600; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; word-break: break-word; }
 .bd-job-title .ic { margin: -2px 2px 0 0; }
 .bd-job-sub { font-size: 11px; line-height: 14px; opacity: .9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: 0; margin-top: 1px; }
 .bd-q { display: inline-block; background: #fff; color: #FF3B30; font-weight: 800; border-radius: 4px; padding: 0 4px; margin-right: 3px; font-size: 11px; line-height: 13px; }
-.bd-job.completed .bd-job-in, .bd-job.skipped .bd-job-in { opacity: .5; }
-.bd-job.skipped .bd-job-title { text-decoration: line-through; }
+.bd-job.completed .bd-job-in, .bd-job.struck .bd-job-in { opacity: .55; }
+.bd-job.struck .bd-job-title { text-decoration: line-through; text-decoration-thickness: 2px; }
+.bd-tag { display: inline-block; font-size: 10px; line-height: 13px; font-weight: 800; letter-spacing: .2px; text-transform: uppercase; border-radius: 4px; padding: 0 4px; background: rgba(0,0,0,.28); color: #fff; margin-top: 2px; }
 .bd-job.arrived .bd-job-in { outline: 2px solid var(--label); outline-offset: -2px; }
 .bd-job.pending .bd-job-in { background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.2) 0 6px, transparent 6px 12px); }
 .bd-job.dragging { opacity: .25; }
 .bd-job.flash .bd-job-in { animation: bd-flash 1.800s ease-out; }
-@keyframes bd-flash { 0%, 40% { box-shadow: 0 0 0 4px var(--yellow), inset 4px 0 0 var(--ring, rgba(255,255,255,.28)); transform: scale(1.04); } 100% { transform: none; } }
+@keyframes bd-flash { 0%, 40% { box-shadow: 0 0 0 4px var(--yellow); transform: scale(1.04); } 100% { transform: none; } }
 .bd-add { display: flex; align-items: center; justify-content: center; gap: 4px; height: 34px; border-radius: 9px; border: 1px dashed var(--sep); color: var(--label3); font-size: 12px; cursor: pointer; letter-spacing: 0; }
 .bd-empty { text-align: center; color: var(--label3); font-size: 12px; padding: 14px 4px 10px; letter-spacing: 0; }
 .bd-ins { position: absolute; height: 3px; border-radius: 2px; background: var(--tint); z-index: 9; pointer-events: none; }
 .bd-ins::before { content: ''; position: absolute; left: -3px; top: -3px; width: 9px; height: 9px; border-radius: 50%; background: var(--tint); }
 .bd-ghost { position: absolute; z-index: 10; pointer-events: none; margin: 0; }
-.bd-ghost .bd-job-in { box-shadow: 0 10px 26px rgba(0,0,0,.35), inset 4px 0 0 var(--ring, rgba(255,255,255,.28)); transform: scale(1.03); opacity: .95; }
+.bd-ghost .bd-job-in { box-shadow: 0 10px 26px rgba(0,0,0,.35); transform: scale(1.03); opacity: .95; }
 .bd-month { flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--cell); border-top: .5px solid var(--sep); }
 .bd-mhead { display: grid; grid-template-columns: repeat(7, 1fr); font-size: 11px; color: var(--label2); text-align: center; padding: 4px 0; flex: none; letter-spacing: 0; }
 .bd-week { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(7, 1fr); border-top: .5px solid var(--sep); }
@@ -67,7 +68,8 @@ WD.css(`
 .bd-mday.sel { background: var(--fill3); }
 .bd-mnum { width: 22px; height: 22px; margin: 0 auto 1px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; letter-spacing: 0; }
 .bd-mday.today .bd-mnum { background: var(--red); color: #fff; font-weight: 600; }
-.bd-mev { font-size: 9px; line-height: 12px; letter-spacing: 0; white-space: nowrap; overflow: hidden; border-radius: 3px; padding: 0 2px; margin-top: 1px; background: color-mix(in srgb, var(--c) 24%, var(--cell)); border-left: 2px solid var(--c); }
+.bd-mev { font-size: 9px; line-height: 12px; letter-spacing: 0; white-space: nowrap; overflow: hidden; border-radius: 3px; padding: 0 2px; margin-top: 1px; background: color-mix(in srgb, var(--c) 30%, var(--cell)); border-left: 3px solid var(--ring); }
+.bd-mev.struck { text-decoration: line-through; opacity: .6; }
 .bd-more { font-size: 9px; line-height: 12px; color: var(--label2); padding-left: 3px; letter-spacing: 0; }
 .bd-cal { padding: 0 14px 12px; }
 .bd-cal-top { display: flex; align-items: center; justify-content: space-between; padding: 0 4px 6px; font-weight: 600; }
@@ -140,13 +142,16 @@ function statusStrip() {
 }
 
 /* ---------- Ordered lists ---------- */
+/* Colors: the job type fills the card and the route (calendar) color rims it. */
+const cardStyle = job => { const c = q.jobType(job.type).color; return { '--c': c, '--ring': q.routeColor(job.routeId), '--fg': WD.textOn(c) }; };
 function cell(job, number) {
-  const type = q.jobType(job.type), st = { enroute: 'truck', arrived: 'mappin', completed: 'checkmark', skipped: 'xmark' }[job.status];
-  return h('div.bd-job.' + job.status + (job.pending ? '.pending' : '') + (drag && drag.job.id === job.id ? '.dragging' : '') + (flashId === job.id ? '.flash' : ''),
-    { 'data-job': job.id, style: { '--c': q.routeColor(job.routeId), '--ring': type.color } },
+  const type = q.jobType(job.type), st = { enroute: 'truck', arrived: 'mappin', completed: 'checkmark', skipped: 'xmark', canceled: 'xmark', rescheduled: 'calendar', postponed: 'clock' }[job.status], struck = WD.struck[job.status];
+  const tag = { skipped: 'Skipped', canceled: 'Canceled', rescheduled: 'Rescheduled', postponed: 'Postponed' }[job.status];
+  return h('div.bd-job.' + job.status + (struck ? '.struck' : '') + (job.pending ? '.pending' : '') + (drag && drag.job.id === job.id ? '.dragging' : '') + (flashId === job.id ? '.flash' : ''),
+    { 'data-job': job.id, style: cardStyle(job) },
     h('div.bd-job-in', h('span.bd-num', number),
       h('div.bd-job-main', h('div.bd-job-title', !job.located && job.address && job.type !== 'meet' ? h('span.bd-q', '?') : null, st && icon(st, 12), job.pending && icon('sync', 11), job.title, job.recurring ? h('span', { style: 'opacity:.8;font-weight:400' }, ' ↻') : null),
-        h('div.bd-job-sub', job.address ? job.address.split(',')[0] : type.title))));
+        tag ? h('div.bd-tag', tag + (job.rescheduledTo ? ' · ' + fmt.day(job.rescheduledTo, 'md') : '')) : h('div.bd-job-sub', job.address ? job.address.split(',')[0] : type.title))));
 }
 function grid() {
   const b = S.board, cols = columns(), W = page.body.clientWidth || 393;
@@ -219,7 +224,7 @@ function dragMove(ev) {
   const y = index < cards.length ? cards[index].offsetTop - 3 : cards.length ? cards[cards.length - 1].offsetTop + cards[cards.length - 1].offsetHeight + 1 : colEl.querySelector('.bd-chip:last-of-type') ? colEl.querySelector('.bd-chip:last-of-type').offsetTop + colEl.querySelector('.bd-chip:last-of-type').offsetHeight + 2 : PAD - 2;
   Object.assign(drag.ins.style, { left: i * colW + 8 + 'px', width: colW - 14 + 'px', top: y + 'px' });
   Object.assign(drag.ghost.style, { left: i * colW + 4 + 'px', width: colW - 8 + 'px', top: p.y - drag.grabY + 'px' });
-  drag.ghost.style.setProperty('--c', q.routeColor(cols[i].routeId));
+  drag.ghost.style.setProperty('--ring', q.routeColor(cols[i].routeId));
   const num = drag.ghost.querySelector('.bd-num'); if (num) num.textContent = index + 1;
 }
 function autoScroll() {
@@ -277,7 +282,7 @@ function monthView() {
   return h('div.bd-month', h('div.bd-mhead', ['S', 'M', 'T', 'W', 'T', 'F', 'S'].map(x => h('span', x))), weeks.map(days => h('div.bd-week', days.map(day => {
     const jobs = q.jobsOn(day).filter(j => routes.includes(j.routeId)).sort(boardSort);
     return h('div.bd-mday' + (D.parse(day).getMonth() !== month ? '.other' : '') + (day === today ? '.today' : ''), { onclick: () => { b.day = day; b.mode = 'routes'; keep(null, 0); refresh(); } },
-      h('div.bd-mnum', D.parse(day).getDate()), jobs.slice(0, 4).map(j => h('div.bd-mev', { style: { '--c': q.routeColor(j.routeId) } }, j.title)), jobs.length > 4 && h('div.bd-more', '+' + (jobs.length - 4) + ' more'));
+      h('div.bd-mnum', D.parse(day).getDate()), jobs.slice(0, 4).map(j => h('div.bd-mev' + (WD.struck[j.status] ? '.struck' : ''), { style: { '--c': j.allDay ? q.routeColor(j.routeId) : q.jobType(j.type).color, '--ring': q.routeColor(j.routeId) } }, j.title)), jobs.length > 4 && h('div.bd-more', '+' + (jobs.length - 4) + ' more'));
   }))));
 }
 function pickDate() {
