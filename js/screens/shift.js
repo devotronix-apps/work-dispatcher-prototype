@@ -284,10 +284,10 @@ function weekSection() {
   return ui.section({ header: 'This week', footer: 'Overtime on hours ' + tc.ruleText() + '.' }, ui.row({ icon: 'clock', iconColor: 'var(--orange)', title: 'My timesheet', subtitle: tc.hrs(w.total) + ' worked' + (w.ot ? ' · ' + tc.hrs(w.ot) + ' overtime' : ''), chevron: true, onTap: () => nav.push(tc.timesheetSpec(S.me.id)) }));
 }
 function teamSection() {
-  const tc = WD.timeclock, map = WD.can('team.locations'), sheets = WD.can('users.manage') || WD.can('billing.manage'); if (!tc || (!map && !sheets)) return null;
+  const tc = WD.timeclock, map = WD.can('team.locations'), sheets = WD.can('hr.manage') || WD.can('users.manage') || WD.can('billing.manage'); if (!tc || (!map && !sheets)) return null;
   return ui.section({ header: 'Team', footer: map ? 'Where clocked-in employees are now, and every place they stayed longer than ' + data.timeRules.stayMinutes + ' minutes today.' : null },
     map && ui.row({ icon: 'map', iconColor: 'var(--blue)', title: 'Team locations', subtitle: data.punches.filter(p => p.day === D.today() && p.end == null && p.userId !== S.me.id).length + ' clocked in', chevron: true, onTap: () => nav.push(tc.teamMapSpec()) }),
-    sheets && ui.row({ icon: 'list.bullet', iconColor: 'var(--green)', title: 'Timesheets and overtime', chevron: true, onTap: () => nav.push(tc.timesheetsSpec()) }));
+    sheets && ui.row({ icon: 'list.bullet', iconColor: 'var(--green)', title: 'Hours and overtime', subtitle: (n => WD.can('hr.manage') && n ? n + (n === 1 ? ' shift needs' : ' shifts need') + ' a clock-out' : 'Pay periods, months or any dates' + (WD.can('hr.manage') ? ' · fix times' : ''))(data.punches.filter(p => p.end == null && p.day !== D.today()).length), chevron: true, onTap: () => nav.push(tc.timesheetsSpec()) }));
 }
 function generalShift() {
   const sh = S.shift, v = liveVals(), denied = sh.location === 'denied';

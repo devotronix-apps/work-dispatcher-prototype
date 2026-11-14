@@ -36,6 +36,8 @@ WD.css(`
 .jb-pin { font-size: 11px; font-weight: 700; color: var(--tint); margin-left: 6px; }
 .jb-maps { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 10px 12px 12px; }
 .jb-maps .cap { font-size: 12px; color: var(--label2); text-align: center; margin-top: 4px; letter-spacing: 0; }
+.jb-depart { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--tint); }
+.jb-est { background: color-mix(in srgb, var(--yellow) 12%, var(--cell)); }
 .jb-ends { display: flex; gap: 8px; align-items: center; padding: 0 16px 12px; font-size: 13px; color: var(--label2); flex-wrap: wrap; }
 .jb-ends button { border: 0; background: var(--fill3); color: var(--tint); border-radius: 14px; padding: 4px 10px; font-size: 13px; cursor: pointer; }
 .row.jb-item { gap: 10px; }
@@ -116,7 +118,9 @@ function details(job, p) {
       job.lunchFrom && ui.row({ title: 'Closed for lunch', detail: fmt.time(fmt.fromHHMM(job.lunchFrom)) + ' – ' + fmt.time(fmt.fromHHMM(job.lunchUntil)) }),
       job.closedDays && job.closedDays.length > 0 && ui.row({ title: 'Closed', detail: job.closedDays.join(', ') }),
       (job.custFrom || job.custUntil) && ui.row({ title: job.windowBy === 'us' ? 'Window we gave them' : 'Window they asked for', subtitle: job.custStrict ? 'Required — must be done in this window' : 'Preferred — fit it in if possible', detail: windowText(job) }),
-      job.callAhead > 0 && ui.row({ title: 'Call ahead', detail: job.callAhead + ' min before arriving' }),
+      job.needsWindow && !job.custFrom && ui.row({ title: 'Time window', subtitle: 'They want one but don’t mind when. AutoRoute gives them one when the route is finalized.', detail: h('span', { style: 'color:var(--orange);font-weight:600' }, 'Needs window') }),
+      job.callAhead > 0 && ui.row({ title: 'Call ahead', detail: (job.callAhead === 60 ? '1 hour' : job.callAhead + ' min') + ' before arriving' }),
+      job.type === 'purge' && job.purge && (e => e.boxes > 0 && ui.row({ title: 'Estimated time on site', subtitle: WD.PURGE_UNITS.filter(([id]) => job.purge[id]).map(([id, t]) => job.purge[id] + ' ' + t.toLowerCase()).join(', ') + (job.purge.stairs && job.purge.stairs !== 'none' ? ' · stairs ' + job.purge.stairs : '') + (job.purge.haul ? ' · haul away empties' : '') + (e.guess ? ' · rough count' : ''), detail: e.guess ? e.low + '–' + e.high + ' min' : e.minutes + ' min' }))(WD.purgeEstimate(job.purge)),
       (job.po || (cust && cust.poSchedule && cust.poSchedule.length)) && ui.row({ title: 'PO number', subtitle: cust && cust.poSchedule && cust.poSchedule.length ? 'From the PO schedule for ' + fmt.day(job.day, 'md') : null, detail: job.po || 'None' }),
       cust && wf.poAlert(cust, job.day) && wf.alertRow(wf.poAlert(cust, job.day)), job.contract && ui.row({ title: 'Contract', detail: job.contract })),
     job.notes && ui.section('Notes', h('div.jb-notes', job.notes)),
@@ -247,9 +251,11 @@ function addressSuggestions(text) {
 }
 function openEditor(o = {}) {
   const job = o.jobId ? q.job(o.jobId) : null, isNew = !job;
-  const f = job ? { title: job.title, address: job.address, notes: job.notes, routeId: job.routeId, day: job.day, allDay: job.allDay, pos: (p => p.n < p.of ? p.n : 0)(q.position(job)), dur: job.dur, type: job.type, items: WD.copyItems(job.items), bizOpen: job.bizOpen, bizClose: job.bizClose, custFrom: job.custFrom, custUntil: job.custUntil, custStrict: !!job.custStrict, customerId: job.customerId, located: job.located, x: job.x, y: job.y, po: job.po || '', contract: job.contract || '', contact: job.contactName || '', phone: job.phone ? fmt.phone(job.phone) : '', email: '', billingEmail: '', sig: WD.sigPolicy(q.customer(job.customerId)), windowBy: job.windowBy || 'customer', lunchFrom: job.lunchFrom || '', lunchUntil: job.lunchUntil || '', closedDays: (job.closedDays || []).slice(), callAhead: job.callAhead || 0, flags: { ...(job.flags || {}) }, ...parseRule(job.recurring && job.recurring.rule) }
-    : { title: '', address: '', notes: '', routeId: o.routeId || (q.visibleRoutes()[0] || q.routes()[0]).id, day: o.day || S.board.day, allDay: false, pos: o.pos || 0, dur: 30, type: o.type || 'purge', items: (o.type || 'purge') === 'purge' ? [{ id: 'box', qty: 0, rate: 8 }] : [], bizOpen: '', bizClose: '', custFrom: '', custUntil: '', custStrict: false, customerId: null, located: false, x: null, y: null, po: '', contract: '', contact: '', phone: '', email: '', billingEmail: '', sig: 'optional', windowBy: 'customer', lunchFrom: '', lunchUntil: '', closedDays: [], callAhead: 0, flags: {}, repeat: 'none', interval: 1 };
+  const f = job ? { title: job.title, address: job.address, notes: job.notes, routeId: job.routeId, day: job.day, allDay: job.allDay, pos: (p => p.n < p.of ? p.n : 0)(q.position(job)), dur: job.dur, type: job.type, items: WD.copyItems(job.items), bizOpen: job.bizOpen, bizClose: job.bizClose, custFrom: job.custFrom, custUntil: job.custUntil, custStrict: !!job.custStrict, customerId: job.customerId, located: job.located, x: job.x, y: job.y, po: job.po || '', contract: job.contract || '', contact: job.contactName || '', phone: job.phone ? fmt.phone(job.phone) : '', email: '', billingEmail: '', sig: WD.sigPolicy(q.customer(job.customerId)), windowBy: job.windowBy || 'customer', lunchFrom: job.lunchFrom || '', lunchUntil: job.lunchUntil || '', closedDays: (job.closedDays || []).slice(), callAhead: job.callAhead || 0, needsWindow: !!job.needsWindow, purge: job.purge ? { ...job.purge } : null, flags: { ...(job.flags || {}) }, ...parseRule(job.recurring && job.recurring.rule) }
+    : { title: '', address: '', notes: '', routeId: o.routeId || (q.visibleRoutes()[0] || q.routes()[0]).id, day: o.day || S.board.day, allDay: false, pos: o.pos || 0, dur: 30, type: o.type || 'purge', items: (o.type || 'purge') === 'purge' ? [{ id: 'box', qty: 0, rate: 8 }] : [], bizOpen: '', bizClose: '', custFrom: '', custUntil: '', custStrict: false, customerId: null, located: false, x: null, y: null, po: '', contract: '', contact: '', phone: '', email: '', billingEmail: '', sig: 'optional', windowBy: 'customer', lunchFrom: '', lunchUntil: '', closedDays: [], callAhead: 0, needsWindow: false, purge: null, flags: {}, repeat: 'none', interval: 1 };
   Object.assign(f, { ends: 'never', count: 10, until: D.add(f.day, 90), attachments: [] });
+  if (f.type === 'purge' && !f.purge) { const b = (f.items.find(i => i.id === 'box') || {}).qty || 0; f.purge = { std: b, stairs: 'none', haul: false }; }
+  let customCall = ![0, 15, 30, 60].includes(f.callAhead);
   const wasRecurring = f.repeat !== 'none';
   let page = null, matchBox = null, suggestBox = null, recBox = null, timer = null, dirty = false;
   const fill = c => { const l = c.locations[0], p = c.contacts[0] || {}; Object.assign(f, { customerId: c.id, title: c.name, address: l.address, notes: l.notes, type: c.type, items: WD.copyItems(l.items), bizOpen: l.bizOpen, bizClose: l.bizClose, located: l.located !== false, x: l.x, y: l.y, po: WD.workflow.poFor(c, f.day).po, contract: c.contract || '', sig: WD.sigPolicy(c), lunchFrom: l.lunchFrom || '', lunchUntil: l.lunchUntil || '', closedDays: (l.closedDays || []).slice(), callAhead: l.callAhead || 0, contact: p.name || '', phone: p.phone ? fmt.phone(p.phone) : '', email: p.email || '', billingEmail: c.billingEmail || '' }); dirty = true; };
@@ -286,6 +292,10 @@ function openEditor(o = {}) {
   }
   async function save(p) {
     if (!f.title.trim()) return;
+    if (isNew && !f.customerId && !f.allDay && asks('phone') && f.phone.replace(/\D/g, '').length < 10) return ui.toast('A phone number is required for a new customer', 'phone', 2400);
+    if (f.type === 'purge' && f.purge) { const e = WD.purgeEstimate(f.purge); if (e.minutes) f.dur = e.minutes;
+      const box = f.items.find(i => i.id === 'box'), rate = box ? box.rate : data.priceBook.find(x => x.id === 'box').rate;
+      f.items = f.items.filter(i => !['box', 'stairsDown', 'stairsUp', 'haul'].includes(i.id)).concat(e.billable ? [{ id: 'box', qty: e.billable, rate }] : [], WD.purgeExtras(f.purge, e.billable)); }
     let scope = 'This job';
     if (job && job.recurring) { scope = await ui.actionSheet({ title: 'Save changes to a recurring job', message: 'Changing “this and following” ends the old series and starts a new one in a single step.', buttons: SCOPES.map(l => ({ label: l })) }); if (!scope) return; }
     if (!f.address.trim()) f.located = false; else if (f.x == null) { f.located = /\d/.test(f.address); if (f.located) { f.x = 150 + Math.random() * 700; f.y = 150 + Math.random() * 700; } }
@@ -298,14 +308,14 @@ function openEditor(o = {}) {
       data.customers.push(newCustomer); f.customerId = newCustomer.id;
     } else if (f.customerId && q.customer(f.customerId) && asks('signature')) q.customer(f.customerId).signature = f.sig;
     if (f.customerId && q.customer(f.customerId)) { const l = q.customer(f.customerId).locations[0]; if (l) Object.assign(l, { lunchFrom: f.lunchFrom, lunchUntil: f.lunchUntil, closedDays: f.closedDays.slice(), callAhead: f.callAhead }); }
-    const fields = { title: f.title.trim(), address: f.address.trim(), notes: f.notes, routeId: f.routeId, day: f.day, allDay: f.allDay, dur: f.dur, type: f.type, containers, items: WD.copyItems(f.items), bizOpen: f.bizOpen, bizClose: f.bizClose, custFrom: f.custFrom, custUntil: f.custUntil, custStrict: f.custStrict, customerId: f.customerId, locationId: null, located: f.located, x: f.x, y: f.y, po: f.po.trim(), contract: f.contract.trim(), phone: f.customerId ? '' : phone, contactName: f.customerId ? '' : f.contact.trim(), windowBy: f.windowBy, lunchFrom: f.lunchFrom, lunchUntil: f.lunchUntil, closedDays: f.closedDays.slice(), callAhead: f.callAhead, flags: { ...f.flags } };
+    const fields = { title: f.title.trim(), address: f.address.trim(), notes: f.notes, routeId: f.routeId, day: f.day, allDay: f.allDay, dur: f.dur, type: f.type, containers, items: WD.copyItems(f.items), bizOpen: f.bizOpen, bizClose: f.bizClose, custFrom: f.custFrom, custUntil: f.custUntil, custStrict: f.custStrict, customerId: f.customerId, locationId: null, located: f.located, x: f.x, y: f.y, po: f.po.trim(), contract: f.contract.trim(), phone: f.customerId ? '' : phone, contactName: f.customerId ? '' : f.contact.trim(), windowBy: f.windowBy, needsWindow: f.needsWindow && !(f.custFrom || f.custUntil), purge: f.type === 'purge' && f.purge ? { ...f.purge } : null, lunchFrom: f.lunchFrom, lunchUntil: f.lunchUntil, closedDays: f.closedDays.slice(), callAhead: f.callAhead, flags: { ...f.flags } };
     const series = job ? seriesJobs(job, scope) : [], me = S.me.name;
     api.op({ kind: isNew ? 'create' : 'edit', title: fields.title, scope: isNew ? (f.repeat === 'none' ? 'New job' : 'New recurring job') : scope, jobIds: job ? [job.id, ...series.map(j => j.id)] : [], apply() {
       const recurring = f.repeat === 'none' ? null : { rule: ruleLabel(f), seriesId: job && job.recurring && scope === 'All jobs' ? job.recurring.seriesId : 's-' + Date.now() };
       if (job) {
         const from = { routeId: job.routeId, day: job.day }; Object.assign(job, from, fields, { routeId: from.routeId, day: from.day, recurring: wasRecurring && scope === 'This job' ? job.recurring : recurring });
         if (fields.allDay) { job.routeId = fields.routeId; job.day = fields.day; job.seq = 0; WD.renumber(from.routeId, from.day); } else WD.placeJob(job, fields.routeId, fields.day, f.pos ? f.pos - 1 : Infinity); job.events.push({ at: +WD.now(), actor: me, text: 'Edited' + (scope !== 'This job' ? ' (' + scope.toLowerCase() + ')' : '') });
-        series.forEach(j => Object.assign(j, { title: fields.title, address: fields.address, notes: fields.notes, dur: fields.dur, allDay: fields.allDay, type: fields.type, containers: fields.containers, items: WD.copyItems(fields.items), po: fields.po, contract: fields.contract, recurring: recurring || j.recurring })); series.forEach(j => { if (j.routeId !== fields.routeId) WD.placeJob(j, fields.routeId, j.day, Infinity); });
+        series.forEach(j => Object.assign(j, { title: fields.title, address: fields.address, notes: fields.notes, dur: fields.dur, allDay: fields.allDay, type: fields.type, containers: fields.containers, items: WD.copyItems(fields.items), purge: fields.purge, needsWindow: fields.needsWindow, po: fields.po, contract: fields.contract, recurring: recurring || j.recurring })); series.forEach(j => { if (j.routeId !== fields.routeId) WD.placeJob(j, fields.routeId, j.day, Infinity); });
       } else {
         const make = (day, pos) => { const j = WD.makeJob({ ...fields, items: WD.copyItems(fields.items), day, recurring, seq: fields.allDay ? 0 : null, attachments: f.attachments.slice(), events: [{ at: +WD.now(), actor: me, text: 'Created' }] }); if (pos && !j.allDay) WD.placeJob(j, j.routeId, day, pos - 1); }; make(f.day, f.pos);
         if (recurring) { const stepDays = { daily: 1, weekly: 7, monthly: 28 }[f.repeat] * f.interval, max = f.ends === 'count' ? f.count : 60; for (let i = 1; i < max && i * stepDays <= 548; i++) { const day = D.add(f.day, i * stepDays); if (f.ends === 'until' && day > f.until) break; make(day); } }
@@ -321,22 +331,36 @@ function openEditor(o = {}) {
     const get = id => f.items.find(i => i.id === id), setQty = (id, n) => { let it = get(id); if (!it) f.items.push(it = { id, qty: 0, rate: data.priceBook.find(x => x.id === id).rate }); it.qty = Math.max(0, n); f.items = f.items.filter(i => i.qty > 0 || !WD.CONTAINERS.includes(i.id)); dirty = true; };
     return ids.map(id => { const it = get(id), n = it ? it.qty : 0, pb = data.priceBook.find(x => x.id === id);
       const rate = pricing && n > 0 && h('input.jb-rate', { type: 'text', inputmode: 'decimal', 'aria-label': ITEM_LABEL[id] + ' rate', value: '$' + (it.rate != null ? it.rate : pb.rate), oninput: e => { const v = parseFloat(e.target.value.replace(/[^0-9.]/g, '')); it.rate = isNaN(v) ? 0 : v; dirty = true; } });
-      if (purge) return h('div.row.jb-item', h('div.row-main', h('div.row-title', 'Estimated boxes'), pricing && h('div.row-sub', 'Per-box rate')), rate,
-        h('input.jb-count', { type: 'text', inputmode: 'numeric', 'aria-label': 'Estimated boxes', value: n ? String(n) : '', placeholder: '0', oninput: e => { setQty('box', parseInt(e.target.value.replace(/\D/g, ''), 10) || 0); }, onchange: () => p.refresh() }));
+      if (purge) return purgeRows(p, it, rate);
       return h('div.row.jb-item', h('div.row-main', h('div.row-title', ITEM_LABEL[id]), pricing && n > 0 && h('div.row-sub', 'Rate each')), rate, h('span.jb-qn', String(n)), ui.stepper(n, 0, 40, v => { setQty(id, v); p.refresh(); }));
     });
+  }
+  /** Purge: what the customer has (any mix of box sizes, bins, pallets, gaylords, cabinets), stairs and haul-away, and the time and price estimate they add up to. */
+  function purgeRows(p, it, rate) {
+    const P = data.purgeRules, pd = f.purge = f.purge || { std: 0, stairs: 'none', haul: false }, e = WD.purgeEstimate(pd), pb = id => data.priceBook.find(x => x.id === id).rate;
+    const count = ([id, title, sub, k]) => h('div.row.jb-item', h('div.row-main', h('div.row-title', title), h('div.row-sub', typeof k === 'string' && ['pallet', 'gaylord', 'cabinet'].includes(k) ? '≈ ' + P[k] + ' boxes each' : sub)),
+      h('input.jb-count', { type: 'text', inputmode: 'numeric', 'aria-label': title, value: pd[id] ? String(pd[id]) : '', placeholder: '0', oninput: ev => { pd[id] = parseInt(ev.target.value.replace(/\D/g, ''), 10) || 0; dirty = true; }, onchange: () => p.refresh() }));
+    const boxRate = it ? it.rate : pb('box'), extras = WD.purgeExtras(pd, e.billable), price = e.billable * boxRate + extras.reduce((s2, x) => s2 + x.qty * x.rate, 0);
+    return [WD.PURGE_UNITS.map(count),
+      h('div.row', h('div.row-main', h('div.row-title', 'Stairs'), h('div.row-sub', 'Takes 2–3× as long · +$' + pb('stairsDown') + '/box down, +$' + pb('stairsUp') + '/box up')), h('div', { style: 'width:170px;flex:none' }, ui.segmented([{ value: 'none', label: 'None' }, { value: 'down', label: 'Down' }, { value: 'up', label: 'Up' }], pd.stairs || 'none', v => { pd.stairs = v; dirty = true; p.refresh(); }))),
+      ui.toggleRow({ title: 'Haul away the empty boxes', subtitle: '+$' + pb('haul') + '/box · about doubles the time', value: !!pd.haul, onChange: v => { pd.haul = v; dirty = true; p.refresh(); } }),
+      h('div.row.jb-est', h('div.row-main', h('div.row-title', e.boxes ? '≈ ' + e.billable + ' boxes · ' + (e.guess ? e.low + '–' + e.high + ' min' : e.minutes + ' min') + ' on site' : 'Enter what they have'),
+        e.boxes > 0 && h('div.row-sub', e.guess ? h('span', { style: 'color:var(--orange);font-weight:600' }, 'Rough count (' + e.why + '). Planned at ' + e.minutes + ' min; confirm the count on site.') : 'Exact counts are usually close. Planned at ' + e.minutes + ' min.'),
+        e.boxes > 0 && asks('pricing') && h('div.row-sub', 'Estimated ' + fmt.money(price) + ' · ' + e.billable + ' × ' + fmt.money(boxRate) + (extras.length ? ' + ' + extras.map(x => ({ stairsDown: 'stairs down', stairsUp: 'stairs up', haul: 'haul-away' })[x.id]).join(' + ') : ''))), rate)];
   }
   /** Heads-up details the driver sees right after the job title (Settings → Field workflow chooses which show). */
   function headsUp(p) {
     const flag = (k, title) => ui.toggleRow({ title, value: !!f.flags[k], onChange: v => { f.flags[k] = v; dirty = true; } }), DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const preview = WD.workflow.titleDetails({ ...f, title: f.title, flags: f.flags });
     return ui.section({ header: 'Heads-up for the driver', footer: (preview.length ? 'Shows after the title: “' + preview.join(' · ') + '”. ' : '') + 'Lunch, closed days and call-ahead are saved with the customer’s location; the rest apply to this visit.' },
-      ui.timeRow({ title: 'Closed for lunch from', value: f.lunchFrom, onChange: v => { f.lunchFrom = v; dirty = true; p.refresh(); } }), f.lunchFrom && ui.timeRow({ title: 'Lunch until', value: f.lunchUntil, onChange: v => { f.lunchUntil = v; dirty = true; p.refresh(); } }),
+      ui.quarterRow({ title: 'Closed for lunch from', value: f.lunchFrom, onChange: v => { f.lunchFrom = v; dirty = true; p.refresh(); } }), f.lunchFrom && ui.quarterRow({ title: 'Lunch until', value: f.lunchUntil, onChange: v => { f.lunchUntil = v; dirty = true; p.refresh(); } }),
       ui.row({ title: 'Closed on', trailing: h('div.hstack', { style: 'gap:4px' }, DAYS.map(d => h('button.jb-day' + (f.closedDays.includes(d) ? '.on' : ''), { onclick: () => { f.closedDays = f.closedDays.includes(d) ? f.closedDays.filter(x => x !== d) : DAYS.filter(x => x === d || f.closedDays.includes(x)); dirty = true; p.refresh(); } }, d[0] + (d === 'Thu' || d === 'Sat' ? d[1] : '')))) }),
-      ui.row({ title: 'Call ahead', detail: f.callAhead ? f.callAhead + ' min' : 'No', trailing: ui.stepper(f.callAhead / 5, 0, 12, v => { f.callAhead = v * 5; dirty = true; p.refresh(); }) }),
+      ui.pickerRow({ title: 'Call ahead', value: customCall ? 'custom' : f.callAhead, options: [{ value: 0, label: 'No' }, { value: 15, label: '15 minutes' }, { value: 30, label: '30 minutes' }, { value: 60, label: '1 hour' }, { value: 'custom', label: 'Custom…' }],
+        onChange: v => { customCall = v === 'custom'; if (!customCall) f.callAhead = v; else if ([0, 15, 30, 60].includes(f.callAhead)) f.callAhead = 0; dirty = true; p.refresh(); } }),
+      customCall && ui.inputRow({ label: 'Minutes', type: 'text', inputmode: 'numeric', placeholder: 'How many minutes ahead they want a call', value: f.callAhead ? String(f.callAhead) : '', autofocus: !f.callAhead, onInput: v => { f.callAhead = Math.min(600, parseInt(v.replace(/\D/g, ''), 10) || 0); dirty = true; } }),
       f.type !== 'setup' && flag('setup', 'New setup'), flag('extraBin', 'Bring an extra container'), flag('extraShred', 'Has extra to shred'), flag('early', 'Called in for early service'));
   }
-  const timeRows = () => [ui.timeRow({ title: 'From', value: f.custFrom, onChange: v => { f.custFrom = v; dirty = true; } }), ui.timeRow({ title: 'Until', value: f.custUntil, onChange: v => { f.custUntil = v; dirty = true; } })];
+  const timeRows = () => [ui.quarterRow({ title: 'From', value: f.custFrom, onChange: v => { f.custFrom = v; dirty = true; } }), ui.quarterRow({ title: 'Until', value: f.custUntil, onChange: v => { f.custUntil = v; dirty = true; } })];
 
   ui.sheet({ title: isNew ? 'New job' : 'Edit job',
     leading: [{ label: 'Cancel', onTap: async p => { if (dirty && !(await ui.actionSheet({ buttons: [{ label: 'Discard changes', role: 'destructive' }], cancel: 'Keep editing' }))) return; p.dismiss(); } }],
@@ -345,7 +369,7 @@ function openEditor(o = {}) {
     render(p) {
       page = p; matchBox = h('div.jb-match'); suggestBox = h('div'); recBox = h('div');
       const cust = q.customer(f.customerId), set = (k, v, re) => { f[k] = v; dirty = true; if (re) p.refresh(); };
-      const unit = { daily: 'day', weekly: 'week', monthly: 'month' }[f.repeat], type = q.jobType(f.type), showWindow = asks('window') || f.custFrom || f.custUntil;
+      const unit = { daily: 'day', weekly: 'week', monthly: 'month' }[f.repeat], type = q.jobType(f.type), showWindow = asks('window') || f.custFrom || f.custUntil || f.needsWindow;
       function positionRow() {
         const list = q.stopList(f.routeId, f.day).filter(j => j !== job); if (f.pos > list.length) f.pos = 0;
         const options = [{ value: 0, label: 'End of list (stop ' + (list.length + 1) + ')' }, ...list.map((j, i) => ({ value: i + 1, label: 'Stop ' + (i + 1) + ' · before ' + j.title }))];
@@ -355,13 +379,13 @@ function openEditor(o = {}) {
       setTimeout(drawRecs, 0);
       return ui.list(
         ui.section({ header: 'Job', footer: cust ? null : 'Type a name, phone, email or address to find an existing customer.' },
-          ui.pickerRow({ title: 'Job type', value: f.type, icon: 'tag', iconColor: type.color, options: WD.jobTypes.map(t => ({ value: t.id, label: t.title })), onChange: v => { if (v === 'purge' && !f.items.some(i => i.id === 'box')) f.items = [{ id: 'box', qty: 0, rate: 8 }]; set('type', v, true); } }),
+          ui.pickerRow({ title: 'Job type', value: f.type, icon: 'tag', iconColor: type.color, options: WD.jobTypes.map(t => ({ value: t.id, label: t.title })), onChange: v => { if (v === 'purge' && !f.items.some(i => i.id === 'box')) f.items = [{ id: 'box', qty: 0, rate: 8 }]; if (v === 'purge' && !f.purge) f.purge = { std: (f.items.find(i => i.id === 'box') || {}).qty || 0, stairs: 'none', haul: false }; set('type', v, true); } }),
           ui.inputRow({ placeholder: f.type === 'meet' ? 'Customer name' : 'Customer or job title', value: f.title, caps: 'words', autofocus: isNew && !f.title, onInput: v => { f.title = v; dirty = true; syncSave(); lookup(v); } }),
           cust && ui.row({ leading: ui.avatar(cust.name, { size: 34 }), title: cust.name, subtitle: 'Linked customer' + (cust.contacts[0] ? ' · ' + cust.contacts[0].name + ' · ' + fmt.phone(cust.contacts[0].phone) : ''), trailing: h('button', { style: 'border:0;background:none;color:var(--tint);font-size:15px;cursor:pointer', onclick: e => { e.stopPropagation(); f.customerId = null; dirty = true; p.refresh(); } }, 'Unlink') })),
         matchBox,
-        !cust && (asks('contact') || asks('phone') || asks('email') || asks('billingEmail')) && ui.section({ header: f.type === 'meet' ? 'Contact' : 'New customer', footer: f.type === 'meet' ? null : isNew ? 'Saving creates the customer with these details.' : null },
-          asks('contact') && inp('Contact', 'contact', { placeholder: 'Name', caps: 'words' }), asks('phone') && inp('Phone', 'phone', { type: 'tel', inputmode: 'tel', placeholder: '(559) 555-0100' }),
-          asks('email') && inp('Email', 'email', { type: 'email', caps: 'off', placeholder: 'name@company.com' }), asks('billingEmail') && inp('Billing', 'billingEmail', { type: 'email', caps: 'off', placeholder: 'Billing email, if different' })),
+        !cust && (asks('contact') || asks('phone') || asks('email') || asks('billingEmail')) && ui.section({ header: f.type === 'meet' ? 'Contact' : 'New customer', footer: f.type === 'meet' ? 'Phone is required.' : isNew ? 'Saving creates the customer with these details. Phone is required; email is strongly recommended for invoices and receipts.' : null },
+          asks('contact') && inp('Contact', 'contact', { placeholder: 'Name', caps: 'words' }), asks('phone') && inp('Phone', 'phone', { type: 'tel', inputmode: 'tel', placeholder: '(559) 555-0100', required: !f.allDay }),
+          asks('email') && inp('Email', 'email', { type: 'email', caps: 'off', placeholder: 'Recommended', suggested: true }), asks('billingEmail') && inp('Billing', 'billingEmail', { type: 'email', caps: 'off', placeholder: 'Billing email, if different' })),
         asks('address') && ui.section({ header: 'Address', footer: f.located && f.x != null ? null : f.address ? 'Pick a suggestion to put the stop on the map, or keep the text as typed.' : null },
           ui.inputRow({ icon: 'mappin', iconColor: f.located && f.x != null ? 'var(--red)' : null, placeholder: 'Street address, city', value: f.address, onInput: v => { f.address = v; f.x = null; f.located = false; dirty = true; suggest(v); if (!f.title.trim()) lookup(v); } })),
         suggestBox, recBox,
@@ -378,10 +402,11 @@ function openEditor(o = {}) {
           f.repeat !== 'none' && f.ends === 'until' && ui.dateRow({ title: 'Last visit by', value: f.until, onChange: v => set('until', v) })),
         asks('items') && ui.section({ header: f.type === 'purge' ? 'Boxes' : 'Containers', footer: f.type === 'creditCard' ? 'Card-on-file jobs are charged automatically when the stop is completed.' : asks('pricing') ? 'Rates start from ' + (cust ? cust.name + '’s pricing' : 'the price book') + ' and print on the invoice. Changes here apply to this job.' : null }, itemsRows(p)),
         asks('hours') && ui.section({ header: 'Office hours', footer: 'When the business is open. AutoRoute never plans a stop outside these hours.' },
-          ui.timeRow({ title: 'Opens', value: f.bizOpen, onChange: v => set('bizOpen', v) }), ui.timeRow({ title: 'Closes', value: f.bizClose, onChange: v => set('bizClose', v) })),
-        showWindow && ui.section({ header: 'Requested time window', footer: 'A time the customer asked for on this visit — for example a homeowner who is only home 1–3 PM. Preferred: AutoRoute fits it in when it can. Required: AutoRoute plans around it and warns if it can’t be met.' },
-          timeRows(), h('div.row', h('div.row-main', h('div.row-title', 'Who set it')), h('div', { style: 'width:190px;flex:none' }, ui.segmented([{ value: 'customer', label: 'They asked' }, { value: 'us', label: 'We told them' }], f.windowBy, v => { f.windowBy = v; dirty = true; }))),
-          h('div.row', h('div.row-main', h('div.row-title', 'This window is')), h('div', { style: 'width:190px;flex:none' }, ui.segmented([{ value: false, label: 'Preferred' }, { value: true, label: 'Required' }], f.custStrict, v => { f.custStrict = v; dirty = true; })))),
+          ui.quarterRow({ title: 'Opens', value: f.bizOpen, onChange: v => set('bizOpen', v) }), ui.quarterRow({ title: 'Closes', value: f.bizClose, onChange: v => set('bizClose', v) })),
+        showWindow && ui.section({ header: 'Requested time window', footer: f.needsWindow ? 'They want a window but don’t mind when. When the route is finalized (usually the day before), AutoRoute gives them one around the planned arrival — 2 hours before 10 AM, 3 hours from 10 to 1, 4 hours after 1 — and reminds you to let them know.' : 'A time the customer asked for on this visit — for example a homeowner who is only home 1–3 PM. Preferred: AutoRoute fits it in when it can. Required: AutoRoute plans around it and warns if it can’t be met.' },
+          ui.toggleRow({ title: 'Needs a window', subtitle: 'Time chosen when the route is finalized', value: f.needsWindow, onChange: v => { f.needsWindow = v; if (v) { f.custFrom = ''; f.custUntil = ''; } dirty = true; p.refresh(); } }),
+          !f.needsWindow && [timeRows(), h('div.row', h('div.row-main', h('div.row-title', 'Who set it')), h('div', { style: 'width:190px;flex:none' }, ui.segmented([{ value: 'customer', label: 'They asked' }, { value: 'us', label: 'We told them' }], f.windowBy, v => { f.windowBy = v; dirty = true; }))),
+          h('div.row', h('div.row-main', h('div.row-title', 'This window is')), h('div', { style: 'width:190px;flex:none' }, ui.segmented([{ value: false, label: 'Preferred' }, { value: true, label: 'Required' }], f.custStrict, v => { f.custStrict = v; dirty = true; })))]),
         (asks('po') || asks('contract') || asks('signature')) && ui.section({ header: 'Billing', footer: 'PO and contract numbers print on the invoice. ' + (cust ? 'They come from the customer; changes here apply to this job only.' : 'They’re saved to the new customer.') },
           asks('po') && inp('PO number', 'po', { placeholder: 'None' }), asks('contract') && inp('Contract', 'contract', { placeholder: 'None' }),
           asks('signature') && ui.pickerRow({ title: 'Customer signature', value: f.sig, options: WD.SIG_POLICIES, onChange: v => { f.sig = v; dirty = true; p.refresh(); } })),
@@ -430,12 +455,12 @@ function windowsOf(j) {
 function simulate(order, from, end) {
   let at = from.at, t = from.t, drive = 0, cost = 0; const legs = [];
   order.forEach(j => {
-    const d = driveMin(at, j), w = windowsOf(j), svc = q.visitStats(j).median, arrive = t + d;
+    const d = driveMin(at, j), w = windowsOf(j), est = j.type === 'purge' && j.purge && WD.purgeEstimate(j.purge), svc = est && est.minutes ? est.minutes : q.visitStats(j).median, arrive = t + d;
     const start = Math.max(arrive, w.hard.from), latest = w.hard.until - Math.min(svc, 15);
     const hardLate = Math.max(0, start - latest); let softOff = 0;
     if (w.soft) softOff = start < w.soft.from ? w.soft.from - start : start > w.soft.until ? start - w.soft.until : 0;
     drive += d; cost += d + (start - arrive) * 0.35 + (hardLate ? 600 + hardLate * 20 : 0) + softOff * (start > (w.soft ? w.soft.until : 0) ? 1.4 : 0.6);
-    legs.push({ job: j, drive: d, arrive, start, svc, w, hardLate, softOff, stats: q.visitStats(j) });
+    legs.push({ job: j, drive: d, arrive, start, svc, w, hardLate, softOff, stats: q.visitStats(j), est: est && est.minutes ? est : null });
     t = start + svc; at = j;
   });
   const back = driveMin(at, end); drive += back; cost += back;
@@ -459,8 +484,10 @@ function optimize(list, from, end) {
   return best.order;
 }
 const winLabel = w => fmt.time(w.from).replace(':00', '') + '–' + fmt.time(w.until).replace(':00', '');
+const hhmm = m => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
 function windowNote(l) {
   const w = l.w, hasHard = w.hard.from > 0 || w.hard.until < 24 * 60;
+  if (l.job.needsWindow && !l.job.custFrom && !l.job.custUntil) return h('div.jb-win.soft', icon('clock', 13), 'Needs a window → they’ll be told ' + winLabel(WD.etaWindow(l.start)));
   if (l.hardLate) return h('div.jb-win.bad', icon('exclamationmark.triangle', 13), (l.job.custStrict ? 'Required ' : 'Open ') + winLabel(w.hard) + ' — can’t make it (ETA ' + fmt.time(l.start) + ')');
   if (w.soft && l.softOff) return h('div.jb-win.soft', icon('clock', 13), 'Prefers ' + winLabel(w.soft) + ' — ETA ' + fmt.time(l.start) + (l.start < w.soft.from ? ', early' : ', late') + '. Preference, not a requirement');
   if (w.soft) return h('div.jb-win.ok', icon('checkmark', 13), 'Prefers ' + winLabel(w.soft) + ' ✓');
@@ -473,15 +500,36 @@ async function openAutoRoute(routeId, o = {}) {
   if (!routeId && choices.length === 1) routeId = choices[0].id;
   if (!routeId) { routeId = await ui.actionSheet({ title: 'AutoRoute which route?', message: fmt.day(day, 'long'), buttons: choices.map(r => ({ label: q.routeName(r), value: r.id })) }); if (!routeId) return; }
   const route = q.route(routeId), all = q.stopList(routeId, day), todo = all.filter(j => j.status === 'scheduled' && !j.pending);
-  const stops = todo.filter(j => j.located && j.x != null), unrouted = todo.filter(j => !stops.includes(j)), done = all.filter(j => j.status !== 'scheduled' && j.located).pop();
+  const stops = todo.filter(j => j.located && j.x != null), unrouted = todo.filter(j => !stops.includes(j)), done = all.filter(j => ['enroute', 'arrived', 'completed', 'skipped'].includes(j.status) && j.located).pop();   // canceled / rescheduled / postponed stops were never visited
   const isToday = day === D.today(), stages = ['Driving times from Apple Maps', 'Time on site: median of each customer’s recorded visits', 'Office hours and requested windows'];
   let stage = 0, plan = null, pinnedAt = -1, view = 'after';
-  const ends = () => q.routeEnds(routeId, day), from = () => ({ at: done || ends().start, t: isToday ? Math.max(WD.nowMins(), DAY_START) : DAY_START });
+  /* Start time: for a day that hasn't started, AutoRoute recommends when to leave where the truck is parked so it reaches the first stop as it opens.
+     The dispatcher accepts it or picks their own time; either is saved with the route's day. */
+  const dayKey = routeId + '|' + day, pretrip = data.workflow.pretripMin, plansDepart = !done && !isToday;
+  let depart = plansDepart ? (data.routeDays[dayKey] ? { ...data.routeDays[dayKey] } : { depart: DAY_START, manual: false }) : null;
+  const ends = () => q.routeEnds(routeId, day), from = () => ({ at: done || ends().start, t: isToday ? Math.max(WD.nowMins(), DAY_START) : depart ? depart.depart + pretrip : DAY_START });
+  /** Latest departure that still reaches the first stop when it opens (or at the usual opening time when it has no hours), after the pre-trip time. */
+  function recommendDepart(order) {
+    if (!order.length) return DAY_START;
+    const l = simulate(order, { at: ends().start, t: 3 * 60 }, ends().end).legs[0], opens = l.w.hard.from > 0 ? l.w.hard.from : fmt.fromHHMM(data.workflow.normalOpen);
+    return { t: Math.max(3 * 60, Math.floor((opens - l.drive - pretrip) / 15) * 15), opens, drive: l.drive, job: l.job };
+  }
   function build(order, pinned) {
     const e = ends(), f = from(), sim = simulate(order, f, e.end), cur = simulate(stops, f, e.end);
-    plan = { order, sim, cur, pinned: pinned == null ? -1 : pinned }; pinnedAt = plan.pinned;
+    plan = { order, sim, cur, pinned: pinned == null ? -1 : pinned, rec: plansDepart && order.length ? recommendDepart(order) : null }; pinnedAt = plan.pinned;
   }
-  const optimizeAll = () => build(optimize(stops, from(), ends().end));
+  const optimizeAll = () => {
+    if (plansDepart && !depart.manual) for (let k = 0; k < 3; k++) { const r = recommendDepart(optimize(stops, from(), ends().end)); if (!r.t || r.t === depart.depart) break; depart.depart = r.t; }
+    build(optimize(stops, from(), ends().end));
+  };
+  function startSection(page) {
+    if (!plansDepart || !plan.rec) return null;
+    const r = plan.rec, e = ends(), late = depart.manual && depart.depart > r.t, early = depart.manual && depart.depart < r.t;
+    return ui.section({ header: 'Start time', footer: 'Recommended: leave ' + e.start.name + ' in time to reach ' + r.job.title + ' when it opens at ' + fmt.time(r.opens) + ' — ' + fmt.dur(r.drive) + ' of driving plus ' + pretrip + ' minutes to get rolling. ' + (late ? 'Leaving later pushes every stop back; check the ETAs below.' : early ? 'Leaving earlier means waiting at the first stop until it opens.' : 'Choose your own time if the driver needs to leave earlier or later.') },
+      h('div.row', h('div.row-main', h('div.row-title', 'Leave ' + e.start.name), h('div.row-sub', depart.manual ? 'Your time · recommended ' + fmt.time(r.t) : 'Recommended')), h('div.jb-depart', fmt.time(depart.manual ? depart.depart : r.t))),
+      h('div.row', h('div', { style: 'flex:1' }, ui.segmented([{ value: 'rec', label: 'Use recommended' }, { value: 'manual', label: 'Choose my own' }], depart.manual ? 'manual' : 'rec', v => { depart.manual = v === 'manual'; if (!depart.manual) depart.depart = r.t; optimizeAll(); page.refresh(); }))),
+      depart.manual && ui.quarterRow({ title: 'Leave at', optional: false, value: hhmm(depart.depart), onChange: v => { depart.depart = fmt.fromHHMM(v); optimizeAll(); page.refresh(); } }));
+  }
   /** Drag result: keep everything up to the moved stop as placed, re-optimize the stops after it. */
   function moveStop(i, to) {
     const order = plan.order.slice(), [j] = order.splice(i, 1); order.splice(to, 0, j);
@@ -517,9 +565,13 @@ async function openAutoRoute(routeId, o = {}) {
     trailing: () => plan && plan.order.length ? [{ label: 'Accept', bold: true, onTap: async p => {
       const bad = plan.sim.legs.filter(l => l.hardLate);
       if (bad.length && !(await ui.actionSheet({ title: bad.length + (bad.length === 1 ? ' stop misses' : ' stops miss') + ' a required time', message: bad.map(l => l.job.title).join(', ') + '. Accept anyway, or keep adjusting the order.', buttons: [{ label: 'Accept anyway', value: true, role: 'destructive' }], cancel: 'Keep adjusting' }))) return;
-      const order = plan.order;
-      api.op({ kind: 'batch', title: q.routeName(route) + ' · AutoRoute', scope: order.length + ' jobs · all or nothing', jobIds: order.map(j => j.id), apply() { newList().forEach((j, i) => { j.seq = i + 1; }); order.forEach(j => j.events.push({ at: +WD.now(), actor: S.me.name, text: 'AutoRoute: moved to stop ' + j.seq })); } });
-      p.dismiss(); ui.toast('Route accepted', 'checkmark'); if (!o.stay) guard('board', 'show', day);
+      const order = plan.order, give = plan.sim.legs.filter(l => l.job.needsWindow && !l.job.custFrom && !l.job.custUntil).map(l => ({ j: l.job, w: WD.etaWindow(l.start) })), dep = depart && { depart: depart.depart, manual: depart.manual }, me = S.me.name;
+      api.op({ kind: 'batch', title: q.routeName(route) + ' · AutoRoute', scope: order.length + ' jobs · all or nothing', jobIds: order.map(j => j.id), apply() { newList().forEach((j, i) => { j.seq = i + 1; }); order.forEach(j => j.events.push({ at: +WD.now(), actor: me, text: 'AutoRoute: moved to stop ' + j.seq }));
+        if (dep) data.routeDays[dayKey] = dep;
+        give.forEach(({ j, w }) => { Object.assign(j, { custFrom: hhmm(w.from), custUntil: hhmm(w.until), windowBy: 'us', custStrict: false, needsWindow: false, windowToSend: true }); j.events.push({ at: +WD.now(), actor: me, text: 'Window set by AutoRoute: ' + winLabel(w) }); }); } });
+      p.dismiss(); ui.toast('Route accepted' + (dep ? ' · leave ' + fmt.time(dep.depart) : ''), 'checkmark', 2200); if (!o.stay) guard('board', 'show', day);
+      if (give.length) setTimeout(async () => { const v = await ui.actionSheet({ title: give.length + (give.length === 1 ? ' customer gets a window' : ' customers get a window'), message: give.map(x => x.j.title + ' · ' + winLabel(x.w)).join('\n'), buttons: [{ label: 'Text them their window now', value: true }], cancel: 'Later' });
+        if (v) { give.forEach(x => { x.j.windowToSend = false; }); ui.toast('Texts sent · ' + give.length, 'message'); WD.changed(); } }, 700);
     } }] : [],
     render(page) {
       if (!plan) return ui.list(ui.section({ header: q.routeName(route) + ' · ' + fmt.day(day), footer: 'Planning ' + stops.length + ' remaining stops' + (done ? ' from ' + done.title : ' from ' + ends().start.name) + '.' },
@@ -530,14 +582,15 @@ async function openAutoRoute(routeId, o = {}) {
         ui.section(null, h('div.jb-plan', h('div.caption', q.routeName(route) + ' · ' + fmt.day(day, 'long')), h('div.big', fmt.dur(plan.sim.drive) + ' driving'),
           h('div.subhead', saved > 0 ? h('span.save', 'Saves ' + fmt.dur(saved)) : h('span.secondary', saved < 0 ? fmt.dur(-saved) + ' more driving, to meet time windows' : 'Same driving as now'), h('span.secondary', ' · ' + plan.order.length + ' stops · ~' + fmt.dur(onSite) + ' on site · back about ' + fmt.time(plan.sim.finish))),
           misses ? h('div.jb-win.bad', { style: 'margin-top:6px' }, icon('exclamationmark.triangle', 14), misses + (misses === 1 ? ' required time can’t be met' : ' required times can’t be met')) : curMiss ? h('div.jb-win.ok', { style: 'margin-top:6px' }, icon('checkmark', 14), 'Fixes ' + curMiss + (curMiss === 1 ? ' stop' : ' stops') + ' the current order would reach outside its hours') : null),
-          h('div.jb-ends', icon('truck', 15), h('span', 'Starts ' + (done ? 'after ' + done.title : 'at ' + e.start.name) + ' · ends at ' + e.end.name), h('button', { onclick: ev => changeEnds(ev.currentTarget, page) }, 'Change')),
+          h('div.jb-ends', icon('truck', 15), h('span', 'Starts ' + (done ? 'after ' + done.title : 'at ' + e.start.name + (depart ? ' · leaves ' + fmt.time(depart.depart) : '')) + ' · ends at ' + e.end.name), h('button', { onclick: ev => changeEnds(ev.currentTarget, page) }, 'Change')),
           maps()),
+        startSection(page),
         ui.section({ header: h('div.cu-sechead', h('span', 'Proposed order'), pinnedAt >= 0 && h('button.cu-link', { onclick: () => { optimizeAll(); page.refresh(); } }, 'Re-optimize all')),
           footer: 'Drag ≡ to move a stop. Stops before it stay as you placed them and everything after it is re-optimized. Time on site is the median of recorded visits, so one unusually long visit doesn’t skew it. Office hours and required windows are never broken on purpose; preferred windows are met when possible. Accepting reorders every job together or none of them.' },
           plan.sim.legs.map((l, i) => { const j = l.job, n = base + i + 1, was = q.position(j).n, label = WD.itemsLabel(j.items, j.type === 'purge');
             const row = ui.row({ class: 'jb-ar', leading: h('div.jb-num', { style: WD.pinStyle(j) }, n),
               title: h('span', j.title, label && h('span.jb-qty', label), i <= pinnedAt && i === pinnedAt ? h('span.jb-pin', 'MOVED') : null),
-              subtitle: h('div', h('div', ['ETA ' + fmt.time(l.start), n !== was ? 'was stop ' + was : 'same place', l.drive + ' min drive', '~' + l.svc + ' min on site (median of ' + l.stats.n + ')'].join(' · ')), windowNote(l)),
+              subtitle: h('div', h('div', ['ETA ' + fmt.time(l.start), n !== was ? 'was stop ' + was : 'same place', l.drive + ' min drive', l.est ? '~' + l.svc + ' min on site (' + l.est.billable + ' boxes' + (l.est.guess ? ', rough count' : '') + ')' : '~' + l.svc + ' min on site (median of ' + l.stats.n + ')'].join(' · ')), windowNote(l)),
               trailing: h('span.jb-grip', { 'aria-label': 'Reorder', onpointerdown: ev => startDrag(ev, i, page) }, icon('line.3', 20)) });
             return row; })),
         unrouted.length > 0 && ui.section({ header: 'Not routed', footer: 'These move to the end of the list. Stops without a confirmed address never get routing coordinates.' },
@@ -548,6 +601,7 @@ async function openAutoRoute(routeId, o = {}) {
   optimizeAll(); if (page.el.isConnected) page.refresh();
 }
 
+WD.addressSuggestions = addressSuggestions;
 WD.screens.jobs = { openDetails, openEditor, openReassign, openSearch, openAutoRoute, skipFlow, callOff };
 const firstToday = pred => data.jobs.filter(j => j.day === D.today() && !j.allDay && pred(j)).sort(q.order)[0];
 WD.panel.addJump('Job details', () => { WD.nav.switchTab('board'); const j = firstToday(x => x.status === 'arrived') || firstToday(() => true); if (j) openDetails(j.id); });

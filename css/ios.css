@@ -159,6 +159,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .row textarea.field { resize: none; min-height: 88px; line-height: 22px; font-family: inherit; }
 .row input.field::placeholder, .row textarea.field::placeholder { color: var(--label3); }
 .row .field-label { flex: none; width: 96px; }
+.row .field-label.req.missing { color: var(--red); font-weight: 700; } .row .field-label.sugg { font-weight: 600; }
+.qt { display: flex; gap: 6px; flex: none; } .qt select { -webkit-appearance: none; appearance: none; cursor: pointer; text-align: center; } .qt select:disabled { opacity: .45; }
 .row input.field.right { text-align: right; }
 .pill-input { border: 0; outline: 0; background: var(--fill3); border-radius: 8px; padding: 6px 10px; font-size: 17px; color: var(--label); letter-spacing: -.41px; flex: none; }
 .picker-value { display: inline-flex; align-items: center; gap: 4px; color: var(--label2); flex: none; max-width: 62%; cursor: pointer; }

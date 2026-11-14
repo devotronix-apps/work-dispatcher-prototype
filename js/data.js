@@ -21,7 +21,33 @@ WD.struck = { skipped: 1, canceled: 1, rescheduled: 1, postponed: 1 };
 data.priceBook = [
   { id: 'console', name: 'Console service', unit: 'console', rate: 30 }, { id: 'bin64', name: 'Bin service (64 gal)', unit: 'bin (64 gal)', rate: 45 }, { id: 'bin96', name: 'Bin service (96 gal)', unit: 'bin (96 gal)', rate: 60 },
   { id: 'box', name: 'Purge, per box', unit: 'box', rate: 8 }, { id: 'trip', name: 'Trip charge', unit: 'trip', rate: 25 }, { id: 'cod', name: 'Certificate of destruction', unit: 'certificate', rate: 0 },
+  { id: 'stairsDown', name: 'Stairs — carried down, per box', unit: 'box', rate: 3 }, { id: 'stairsUp', name: 'Stairs — carried up, per box', unit: 'box', rate: 4 }, { id: 'haul', name: 'Haul away empty boxes, per box', unit: 'box', rate: 2 },
 ];
+/** Purge estimating (Settings → Purge estimates). Box sizes count as standard banker boxes (10×12×15"); bins, pallets, gaylords and cabinets convert to boxes.
+    Time on site: a 10-minute minimum covers up to 10 boxes, then 100 boxes an hour. Stairs take 2–3× as long; hauling the empties away doubles the time.
+    pallet / gaylord / cabinet are starting guesses to be confirmed by the owner. learned: completed purges with recorded times, used to tune the estimate. */
+data.purgeRules = { minMin: 10, minBoxes: 10, perHour: 100, legal: 1.65, xl: 2, bin65: 8, pallet: 40, gaylord: 35, cabinet: 6, stairsFactor: 2.5, haulFactor: 2, learned: 0 };
+WD.PURGE_UNITS = [['std', 'Standard boxes', '10×12×15" bankers box', 1], ['legal', 'Legal boxes', '10×12×24" · counts 1.65', 'legal'], ['xl', 'Extra-large boxes', '10×15×24" · counts 2', 'xl'],
+  ['bin65', '65-gallon bins', '8 boxes per bin', 'bin65'], ['pallet', 'Pallets', '≈ boxes per pallet', 'pallet'], ['gaylord', 'Gaylords', '≈ boxes per gaylord', 'gaylord'], ['cabinet', 'File cabinets', '≈ boxes per 4-drawer cabinet', 'cabinet']];
+/** p: {std, legal, xl, bin65, pallet, gaylord, cabinet, stairs: 'none'|'down'|'up', haul} → {boxes (standard-box equivalents), minutes, low, high, guess, why}.
+    Exact counts (62) are usually close; round numbers (20, 50, 100, 150…) and pallets, gaylords or cabinets are guesses, so those get a range. */
+WD.purgeEstimate = p => {
+  const P = data.purgeRules; p = p || {};
+  const per = k => typeof k === 'number' ? k : P[k], boxes = WD.PURGE_UNITS.reduce((s, [id, , , k]) => s + (+p[id] || 0) * per(k), 0);
+  const counts = WD.PURGE_UNITS.map(([id]) => +p[id] || 0).filter(n => n > 0), rough = ['pallet', 'gaylord', 'cabinet'].some(id => +p[id] > 0);
+  const roundNum = counts.some(n => n >= 20 && n % 10 === 0), guess = rough || roundNum;
+  const time = b => { let m = P.minMin + Math.max(0, b - P.minBoxes) / P.perHour * 60; if (p.stairs && p.stairs !== 'none') m *= P.stairsFactor; if (p.haul) m *= P.haulFactor; return Math.round(m); };
+  const minutes = boxes > 0 ? time(boxes) : 0;
+  return { boxes: Math.round(boxes * 10) / 10, billable: Math.ceil(boxes), minutes, low: guess ? time(boxes * 0.5) : minutes, high: guess ? time(boxes * 1.5) : minutes, guess, why: rough ? 'counted by pallets, gaylords or cabinets' : roundNum ? 'round numbers are usually guesses' : '' };
+};
+/** Extra charges a purge's details add to its billing lines: stairs per box (down or up) and hauling away the empty boxes. */
+WD.purgeExtras = (p, boxes) => { const out = [], pb = id => data.priceBook.find(x => x.id === id);
+  if (p && p.stairs === 'down') out.push({ id: 'stairsDown', qty: boxes, rate: pb('stairsDown').rate }); if (p && p.stairs === 'up') out.push({ id: 'stairsUp', qty: boxes, rate: pb('stairsUp').rate });
+  if (p && p.haul) out.push({ id: 'haul', qty: boxes, rate: pb('haul').rate }); return out; };
+/** ETA windows given to customers who asked for one: 2 hours before 10 AM, 3 hours from 10 to 1, 4 hours after 1 PM. */
+WD.etaWindow = eta => { const len = eta < 10 * 60 ? 120 : eta < 13 * 60 ? 180 : 240, from = Math.max(6 * 60, Math.round((eta - len / 2) / 30) * 30); return { from, until: from + len }; };
+/** Planned departure per route and day: key routeId + '|' + day → { depart (minutes), manual }. */
+data.routeDays = {};
 WD.CONTAINERS = ['console', 'bin64', 'bin96', 'box'];
 const plural = (n, w) => n + ' ' + (n === 1 ? w : w.replace(/^(\w+)/, m => m === 'box' ? 'boxes' : m + 's'));
 WD.parseItems = str => { const out = []; String(str || '').split(',').forEach(part => { const m = /(\d+)\s*(.*)/.exec(part.trim()); if (!m) return; const n = +m[1], t = m[2].toLowerCase();
@@ -36,8 +62,8 @@ WD.fieldDefs = [
   ['items', 'Containers and quantities'], ['pricing', 'Pricing'], ['freq', 'Frequency of service'], ['po', 'PO number'], ['contract', 'Contract number'],
   ['window', 'Requested time window'], ['signature', 'Customer signature required'], ['notes', 'Notes'],
 ];
-const ROUTE_FIELDS = ['contact', 'phone', 'email', 'billingEmail', 'address', 'hours', 'items', 'pricing', 'freq', 'po', 'contract', 'signature', 'notes'];
-data.fieldConfig = { regular: ROUTE_FIELDS, setup: ROUTE_FIELDS, creditCard: ROUTE_FIELDS.filter(f => f !== 'po' && f !== 'contract'), government: ROUTE_FIELDS.concat(['window']),
+const ROUTE_FIELDS = ['contact', 'phone', 'email', 'billingEmail', 'address', 'hours', 'items', 'pricing', 'freq', 'po', 'contract', 'window', 'signature', 'notes'];
+data.fieldConfig = { regular: ROUTE_FIELDS, setup: ROUTE_FIELDS, creditCard: ROUTE_FIELDS.filter(f => f !== 'po' && f !== 'contract'), government: ROUTE_FIELDS,
   purge: ['contact', 'phone', 'email', 'address', 'items', 'pricing', 'window', 'signature', 'notes'], meet: ['phone', 'notes'] };
 WD.asks = (type, field) => (data.fieldConfig[type] || ROUTE_FIELDS).includes(field);
 /* Time clock: overtime rules and location stays (Settings → Time clock and overtime). */
@@ -52,6 +78,7 @@ data.workflow = {
   shiftCutoff: 16,          // hours after clock-in when tracking stops automatically
   titleDetails: { on: true, hours: true, lunch: true, closed: true, setup: true, extraBin: true, extraShred: true, early: true, window: true, callAhead: true },
   normalOpen: '08:00', normalClose: '17:00',
+  pretripMin: 15,           // minutes for the pre-trip check and loading, added before the recommended departure
 };
 WD.state.prefs = { mapsApp: 'apple' };
 data.serviceNotes = [];
@@ -161,7 +188,8 @@ function makeJob(o) {
   const c = o.customerId && data.customers.find(x => x.id === o.customerId), loc = c && c.locations[0];
   const j = Object.assign({ id: 'j' + (++jobSeq), routeId: 'r1', day: today, allDay: false, seq: null, dur: 30, title: c ? c.name : 'Job', customerId: null, locationId: loc ? loc.id : null,
     address: loc ? loc.address : '', located: loc ? loc.located !== false : false, x: loc ? loc.x : null, y: loc ? loc.y : null, notes: loc ? loc.notes : '', type: c ? c.type : 'regular', containers: loc ? loc.containers : '',
-    bizOpen: loc ? loc.bizOpen : '', bizClose: loc ? loc.bizClose : '', custFrom: '', custUntil: '', custStrict: false, windowBy: 'customer', lunchFrom: loc ? loc.lunchFrom : '', lunchUntil: loc ? loc.lunchUntil : '', closedDays: loc ? loc.closedDays.slice() : [], callAhead: loc ? loc.callAhead : 0, flags: {}, billing: null, items: loc ? WD.copyItems(loc.items) : [], po: c ? c.po : '', contract: c ? c.contract : '', status: 'scheduled', recurring: null, version: 1, pending: false, attachments: [], events: [], invoice: null, arrivedAt: null, departedAt: null }, o);
+    bizOpen: loc ? loc.bizOpen : '', bizClose: loc ? loc.bizClose : '', custFrom: '', custUntil: '', custStrict: false, windowBy: 'customer', needsWindow: false, purge: null, lunchFrom: loc ? loc.lunchFrom : '', lunchUntil: loc ? loc.lunchUntil : '', closedDays: loc ? loc.closedDays.slice() : [], callAhead: loc ? loc.callAhead : 0, flags: {}, billing: null, items: loc ? WD.copyItems(loc.items) : [], po: c ? c.po : '', contract: c ? c.contract : '', status: 'scheduled', recurring: null, version: 1, pending: false, attachments: [], events: [], invoice: null, arrivedAt: null, departedAt: null }, o);
+  if (j.purge && j.type === 'purge') j.dur = WD.purgeEstimate(j.purge).minutes || j.dur;
   delete j.start; if (j.seq == null) j.seq = j.allDay ? 0 : nextSeq(j.routeId, j.day);
   data.jobs.push(j); return j;
 }
@@ -205,19 +233,20 @@ function generate() {
     });
     /* Purge truck: one-time jobs */
     if (n === 0) { makeJob({ routeId: 'r4', day, dur: 60, customerId: 'c22', status: 'completed', arrivedAt: 9 * 60 + 4, departedAt: 10 * 60 + 2, invoice: { number: 'INV-2391', status: 'Sent', amount: 320 }, attachments: [{ id: 'a1', name: 'Before – garage.jpg', kind: 'photo', size: '2.1 MB' }, { id: 'a2', name: 'Certificate of destruction.pdf', kind: 'doc', size: '84 KB' }] });
-      makeJob({ routeId: 'r4', day, dur: 45, customerId: 'c21', custFrom: '13:00', custUntil: '17:00', custStrict: false, callAhead: 20 });
+      makeJob({ routeId: 'r4', day, dur: 13, customerId: 'c21', custFrom: '13:00', custUntil: '17:00', custStrict: false, callAhead: 30, purge: { std: 9, legal: 3 }, items: [{ id: 'box', qty: 14, rate: 8 }] });
       makeJob({ routeId: 'r4', day, allDay: true, title: 'Truck 9 — oil change after route', type: 'regular', notes: 'Drop at Lakemont Fleet Service by 4:30.' });
       makeJob({ routeId: 'r4', day, dur: 30, title: 'Meet the truck — Dr. Alvarez', type: 'meet', notes: 'Customer brings 3 boxes to the shop. Call when 10 minutes out: (512) 555-0290.', items: [{ id: 'box', qty: 3, rate: 8 }] }); }
-    else if (n > 0 && n % 2 === 1) { makeJob({ routeId: 'r4', day, dur: 90, customerId: 'c23', title: 'Vista Medical Billing — purge' }); }
+    else if (n > 0 && n % 2 === 1) { const pd = { std: 40, stairs: 'down', haul: false }, e = WD.purgeEstimate(pd); makeJob({ routeId: 'r4', day, dur: e.minutes, customerId: 'c23', title: 'Vista Medical Billing — purge', purge: pd, needsWindow: true, items: [{ id: 'box', qty: e.billable, rate: 8 }, ...WD.purgeExtras(pd, e.billable)], notes: 'Boxes are in the upstairs storage room. Said “about 40” — confirm the count on site.' }); }
     else if (n < 0 && n % 3 === 0) { const j = makeJob({ routeId: 'r4', day, dur: 60, customerId: 'c22', status: 'completed', arrivedAt: 9 * 60 + 33, departedAt: 10 * 60 + 40 }); j.title = 'Tanaka — estate boxes'; }
     if (n === 1) { makeJob({ routeId: 'r2', day, allDay: true, title: 'Tony out — Sam covers South', notes: 'Route assignment override for the day.' });
-      makeJob({ routeId: 'r4', day, dur: 40, title: 'Raj Patel — home purge', type: 'purge', address: '5 Heron Ct, Lakemont', located: true, x: 880, y: 400, items: [{ id: 'box', qty: 6, rate: 8 }], custFrom: '08:00', custUntil: '10:00', custStrict: true, windowBy: 'us', notes: 'Must be done before he leaves for work at 10.' }); }
+      makeJob({ routeId: 'r4', day, dur: 10, title: 'Raj Patel — home purge', type: 'purge', address: '5 Heron Ct, Lakemont', located: true, x: 880, y: 400, items: [{ id: 'box', qty: 6, rate: 8 }], purge: { std: 6 }, custFrom: '08:00', custUntil: '10:00', custStrict: true, windowBy: 'us', notes: 'Must be done before he leaves for work at 10.' }); }
     if (n === 2) { const j = data.jobs.find(x => x.day === day && x.routeId === 'r3' && !x.allDay); if (j) { j.status = 'canceled'; j.events.push({ at: +new Date(D.parse(today).setHours(9, 2, 0, 0)), actor: 'Colleen Abbott', text: 'Customer canceled — called the office' }); } }
     if (n === 3) { const j = data.jobs.filter(x => x.day === day && x.routeId === 'r2' && !x.allDay)[1]; if (j) { j.status = 'rescheduled'; j.rescheduledTo = D.add(day, 2); j.events.push({ at: +new Date(D.parse(today).setHours(8, 40, 0, 0)), actor: 'Colleen Abbott', text: 'Customer rescheduled to ' + WD.fmt.day(D.add(day, 2)) }); } }
   }
   /* Heads-up details shown after job titles: one-off flags on today's and upcoming visits. */
   const flag = (cid, f, days) => data.jobs.filter(j => j.customerId === cid && days.includes(D.diff(j.day, today))).forEach(j => Object.assign(j.flags, f));
   flag('c1', { extraBin: true }, [0, 1, 2]); flag('c3', { extraShred: true }, [0, 1]); flag('c12', { early: true }, [0, 1, 2, 3]); flag('c7', { extraShred: true }, [1, 2]);
+  data.jobs.filter(j => ['c14', 'c27', 'c10'].includes(j.customerId) && D.diff(j.day, today) > 0 && D.diff(j.day, today) <= 3).forEach(j => { j.needsWindow = true; });
   const first = data.jobs.find(j => j.day === today && j.routeId === 'r1' && j.status === 'completed'); if (first) first.attachments.push({ id: 'a3', name: 'Console key tag.jpg', kind: 'photo', size: '1.4 MB' });
 }
 generate();
@@ -235,10 +264,19 @@ data.customers.forEach(c => {
 /* Hours per day this week (Mon → today) for each employee who clocks in. Drivers run long days, so daily and weekly overtime both show up. */
 data.punches = []; data.stays = [];
 (function () {
+  /* This week's hours are fixed (so daily and weekly overtime show up); the eight weeks before vary a little around them, for pay-period and monthly reports. */
   const dow = D.parse(today).getDay(), monday = D.add(today, -((dow + 6) % 7)), hours = { u4: [10.6, 9.4, 11.2, 10.1, 9.8, 4], u5: [9.1, 10.4, 8.6, 9.9, 10.7, 0], u6: [8.4, 8.9, 9.2, 8.7, 9.5, 5.2], u3: [8, 8.2, 7.9, 8.1, 8.4, 0], u8: [6.5, 7, 0, 7.5, 8, 4.5], u2: [8.5, 9, 8.7, 9.1, 8.8, 0] };
-  Object.entries(hours).forEach(([uid, hs]) => hs.forEach((hrs, i) => { const day = D.add(monday, i); if (day > today || !hrs) return;
-    const start = (uid === 'u3' || uid === 'u2' ? 8 * 60 : 7 * 60 + 15) + (i % 3) * 5, live = day === today;
-    data.punches.push({ userId: uid, day, start, end: live ? null : Math.round(start + hrs * 60 + 30), breakMin: live ? 0 : 30 }); }));
+  let n = 0;
+  for (let w = 8; w >= 0; w--) { const mon = D.add(monday, -7 * w);
+    Object.entries(hours).forEach(([uid, hs]) => hs.forEach((base, i) => { const day = D.add(mon, i); if (day > today) return;
+      const hrs = w === 0 ? base : base ? Math.max(5, Math.round((base + (rnd() - 0.5) * 1.8) * 10) / 10) : (i === 5 && rnd() < 0.25 ? 4.5 : 0); if (!hrs) return;
+      const start = (uid === 'u3' || uid === 'u2' ? 8 * 60 : 7 * 60 + 15) + (i % 3) * 5, live = day === today;
+      data.punches.push({ id: 'pu' + (++n), userId: uid, day, start, end: live ? null : Math.round(start + hrs * 60 + 30), breakMin: live ? 0 : 30, edits: [] }); })); }
+  /* Sam forgot to clock out yesterday, and Luis forgot to clock in one day last week (no punch at all) — HR fixes both. */
+  const y = data.punches.find(p => p.userId === 'u6' && p.day === D.add(today, -1)); if (y) y.end = null;
+  const miss = data.punches.findIndex(p => p.userId === 'u8' && p.day === D.add(monday, -6)); if (miss >= 0) data.punches.splice(miss, 1);
+  /* Pay periods are two weeks, Monday through the second Sunday; the current one started last Monday. */
+  data.timeRules.payDays = 14; data.timeRules.payAnchor = D.add(monday, -7);
 })();
 /* Places each clocked-in employee stayed today, from their phone's location. Short stops are kept too, so the "log stays over N minutes" setting can filter them. */
 const stay = (userId, label, x, y, from, to, kind) => data.stays.push({ userId, label, x, y, from, to, kind: kind || 'stop' });

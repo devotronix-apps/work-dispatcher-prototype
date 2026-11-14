@@ -19,7 +19,7 @@ WD.css(`
 .wf-alert { display: flex; gap: 10px; align-items: flex-start; padding: 11px 16px; font-size: 15px; line-height: 20px; letter-spacing: -.2px; }
 .wf-alert .ic { flex: none; margin-top: 1px; }
 .wf-alert.bad .ic { color: var(--red); } .wf-alert.warn .ic { color: var(--orange); }
-.wf-inv-seg { padding: 2px 16px 0; }
+.wf-inv-seg { padding: 2px 16px 0; } .wf-inv-seg + .wf-inv-seg { padding-top: 8px; }
 .wf-sum { display: flex; justify-content: space-between; padding: 12px 16px; font-size: 17px; font-weight: 600; }
 .wf-dbnote { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--label2); padding: 0 16px 10px; }
 `);
@@ -51,7 +51,8 @@ function titleDetails(j) {
   if (t.extraShred && f.extraShred) out.push('Extra to shred');
   if (t.early && f.early) out.push('Early service');
   if (t.window && (j.custFrom || j.custUntil)) out.push((j.windowBy === 'us' ? 'Told ' : 'Asked ') + (j.custFrom && j.custUntil ? span(m(j.custFrom), m(j.custUntil)) : j.custFrom ? 'after ' + short(m(j.custFrom)) : 'by ' + short(m(j.custUntil))) + (j.custStrict ? '!' : ''));
-  if (t.callAhead && j.callAhead) out.push('Call ' + j.callAhead + 'm ahead');
+  if (t.window && j.needsWindow && !j.custFrom && !j.custUntil) out.push('Needs window');
+  if (t.callAhead && j.callAhead) out.push('Call ' + (j.callAhead === 60 ? '1h' : j.callAhead + 'm') + ' ahead');
   return out;
 }
 /** Title plus heads-up details, as nodes: "Harlow & Finch Law · Bring extra bin · Call 15m ahead". */
@@ -228,13 +229,25 @@ function invoiceActionRows(rec, job, o = {}) {
 
 /* ================= Invoices list ================= */
 const INV_COLOR = { Paid: 'var(--green)', Sent: 'var(--blue)', Overdue: 'var(--red)', Draft: 'var(--gray)' };
-const IV = { scope: 'mine', routeId: null, query: '', limit: 40 };
+const IV = { scope: 'mine', routeId: null, query: '', limit: 40, kind: 'invoices' };
 const myRoute = () => (S.shift && S.shift.routeId) || ((q.routes().find(r => r.driverId === (S.me && S.me.id)) || {}).id) || IV.routeId || (q.visibleRoutes()[0] || q.routes()[0]).id;
 const recRoute = rec => { const j = rec.jobId && q.job(rec.jobId); if (j) return j.routeId; const c = q.customer(rec.customerId); return c && c.route; };
+/** Service notes (signed per visit, for master-invoice customers), newest first, with the same route scope and search as invoices. */
+function notesList(page, s) {
+  const route = myRoute(); let list = data.serviceNotes.slice().sort((a, b) => b.at - a.at);
+  if (IV.scope === 'mine') list = list.filter(n => recRoute(n) === route);
+  if (s) list = list.filter(n => { const c = q.customer(n.customerId); return n.number.toLowerCase().replace(/\s+/g, '').includes(s) || (c && c.name.toLowerCase().includes(IV.query.toLowerCase())) || (n.location || '').toLowerCase().includes(IV.query.toLowerCase()); });
+  const waiting = list.filter(n => !n.masterId).length;
+  return list.length ? ui.section({ header: (s ? list.length + (list.length === 1 ? ' match' : ' matches') : 'Newest first') + (waiting ? ' · ' + waiting + ' waiting for a master invoice' : ''), footer: 'Signed service notes from each visit. Each month they’re combined into the customer’s master invoice.' },
+    list.slice(0, IV.limit).map(n => { const c = q.customer(n.customerId), mi = n.masterId && (data.masterInvoices || []).find(m => m.id === n.masterId);
+      return ui.row({ icon: 'signature', iconColor: 'var(--brown)', title: n.number + ' · ' + (n.location || ''), subtitle: (c ? c.name : '') + ' · ' + fmt.day(n.day, 'md') + (n.signer ? ' · signed by ' + n.signer : ''), badge: ui.badge(mi ? mi.number : 'Waiting', mi ? 'var(--green)' : 'var(--orange)'), detail: fmt.money(n.amount), chevron: true, onTap: () => page.push(noteSpec(n)) }); }),
+    list.length > IV.limit && ui.row({ title: 'Show more', tint: true, center: true, onTap: () => { IV.limit += 60; page.refresh(); } }))
+    : ui.empty({ icon: 'signature', title: s ? 'No service notes match' : 'No service notes', text: IV.scope === 'mine' ? 'None on this route. Try All routes.' : 'Service notes appear here as drivers collect them.' });
+}
 function invoicesSpec() {
   IV.limit = 40;
   return { title: 'Invoices', large: true,
-    search: { placeholder: 'Invoice number or customer', onInput: (v, p) => { IV.query = v.trim(); IV.limit = 40; p.refresh(); } },
+    search: { placeholder: 'Number, customer or location', onInput: (v, p) => { IV.query = v.trim(); IV.limit = 40; p.refresh(); } },
     render: page => {
       if (!canSeeBilling()) return ui.empty({ icon: 'lock', title: 'Billing is hidden', text: 'You need billing access to see invoices.' });
       const route = myRoute(), s = IV.query.toLowerCase().replace(/\s+/g, ''), digits = s.replace(/\D/g, '');
@@ -243,12 +256,14 @@ function invoicesSpec() {
       if (s) list = list.filter(r => { const num = r.number.toLowerCase().replace(/\s+/g, ''), c = q.customer(r.customerId); return num.includes(s) || (digits.length >= 2 && num.replace(/\D/g, '').includes(digits)) || (c && c.name.toLowerCase().includes(IV.query.toLowerCase())); });
       const open = list.filter(r => r.status !== 'Paid').reduce((t, r) => t + r.amount, 0), alerts = WD.can('billing.view') && !s ? poAlerts() : [];
       const ownRoute = S.shift || q.routes().some(r => r.driverId === (S.me && S.me.id));
-      return [h('div.wf-inv-seg', ui.segmented([{ value: 'mine', label: ownRoute ? 'My route' : 'One route' }, { value: 'all', label: 'All routes' }], IV.scope, v => { IV.scope = v; IV.limit = 40; page.refresh(); })),
+      return [h('div.wf-inv-seg', ui.segmented([{ value: 'invoices', label: 'Invoices' }, { value: 'notes', label: 'Service notes' }], IV.kind, v => { IV.kind = v; IV.limit = 40; page.refresh(); })),
+        h('div.wf-inv-seg', ui.segmented([{ value: 'mine', label: ownRoute ? 'My route' : 'One route' }, { value: 'all', label: 'All routes' }], IV.scope, v => { IV.scope = v; IV.limit = 40; page.refresh(); })),
         ui.list(
           IV.scope === 'mine' && ui.section(null, ownRoute ? ui.row({ leading: ui.dot(q.routeColor(route)), title: q.routeName(route), subtitle: S.shift ? 'The route you’re clocked in on' : 'Your route' })
             : ui.pickerRow({ title: 'Route', icon: 'route', iconColor: q.routeColor(route), value: route, options: q.routes().map(r => ({ value: r.id, label: q.routeName(r) })), onChange: v => { IV.routeId = v; page.refresh(); } })),
-          alerts.length > 0 && ui.section('Purchase orders', alerts.map(x => h('div', h('div.footnote', { style: 'padding:10px 16px 0;font-weight:600' }, x.c.name), alertRow(x.a, () => guard('customers', 'openDetail', x.c.id))))),
-          list.length ? ui.section({ header: (s ? list.length + (list.length === 1 ? ' match' : ' matches') : 'Newest first') + (open ? ' · ' + fmt.money(open) + ' open' : ''), footer: 'Every invoice created, from Invoice Ninja, newest first. Search by invoice number (“2417” finds INV-2417) or customer.' },
+          IV.kind === 'notes' && notesList(page, s),
+          IV.kind === 'invoices' && alerts.length > 0 && ui.section('Purchase orders', alerts.map(x => h('div', h('div.footnote', { style: 'padding:10px 16px 0;font-weight:600' }, x.c.name), alertRow(x.a, () => guard('customers', 'openDetail', x.c.id))))),
+          IV.kind !== 'invoices' ? null : list.length ? ui.section({ header: (s ? list.length + (list.length === 1 ? ' match' : ' matches') : 'Newest first') + (open ? ' · ' + fmt.money(open) + ' open' : ''), footer: 'Every invoice created, from Invoice Ninja, newest first. Search by invoice number (“2417” finds INV-2417) or customer.' },
             list.slice(0, IV.limit).map(r => { const c = q.customer(r.customerId), rt = recRoute(r);
               return ui.row({ icon: r.master ? 'tray' : 'doc.text', iconColor: r.master ? 'var(--brown)' : 'var(--indigo)', title: r.number, subtitle: h('span', (c ? c.name : '') + ' · ' + fmt.day(r.day, 'md') + (IV.scope === 'all' && rt ? ' · ' : ''), IV.scope === 'all' && rt ? h('span.cu-route', ui.dot(q.routeColor(rt)), q.routeName(rt)) : null),
                 badge: ui.badge(r.status, INV_COLOR[r.status] || 'var(--orange)'), detail: fmt.money(r.amount), chevron: true, onTap: () => openInvoiceRec(r) }); }),
@@ -375,7 +390,8 @@ const api2 = { billed, dimmed, needsAction, missed, billingLabel, titleDetails, 
   addServiceNote, masterSpec, invoicesSpec, invoiceActionRows, markPaid, invRecFor, openInvoiceRec, openDirections, mapsName, completeStop, afterBilling, paidNoInvoice, missedSheet, workflowSpec, nextStop };
 WD.workflow = WD.screens.workflow = api2;
 
-WD.panel.addJump('Invoices', () => WD.nav.push(invoicesSpec()));
+WD.screens.invoices = { root: invoicesSpec };
+WD.panel.addJump('Invoices', () => WD.nav.switchTab('invoices'));
 WD.panel.addJump('Field workflow', () => { WD.nav.switchTab('settings'); WD.nav.push(workflowSpec()); });
 WD.panel.addJump('Master invoice', () => { WD.nav.switchTab(WD.can('crm.view') ? 'customers' : 'board'); WD.nav.push(masterSpec('c9')); });
 WD.panel.addAction('Driver leaves a stop without billing', () => {

@@ -230,7 +230,7 @@ function root() {
       R.seg === 'customers' ? customersView() : R.seg === 'leads' ? leadsView() : tasksView()] };
 }
 function filterMenu(el, page) {
-  ui.menu(el, [{ header: 'Show' }, ...[['all', 'All customers', 'person.2'], ['balance', 'Balance due', 'dollarsign.circle'], ['route', 'By route', 'route'], ['household', 'Households', 'house']]
+  ui.menu(el, [{ header: 'Show' }, ...[['all', 'All customers', 'person.2'], ['balance', 'Balance due', 'dollarsign.circle'], ['route', 'By route', 'route'], ['household', 'Residential', 'house']]
     .map(([v, label, ic]) => ({ label, icon: ic, checked: R.filter === v, onTap: () => { R.filter = v; page.refresh(); } }))]);
 }
 function searchView() {
@@ -250,7 +250,7 @@ function customersView() {
   const keys = [...groups.keys()]; if (R.filter === 'route') keys.sort((a, b) => (q.routes().findIndex(r => q.routeName(r) === a) + 99) % 99 - (q.routes().findIndex(r => q.routeName(r) === b) + 99) % 99);
   return ui.list(
     dupes && WD.can('crm.edit') ? ui.section(null, ui.row({ icon: 'arrow.triangle.merge', iconColor: 'var(--orange)', title: dupes + (dupes === 1 ? ' possible duplicate' : ' possible duplicates'), subtitle: 'Review and merge matching records', chevron: true, onTap: () => WD.nav.push(mergesPage()) })) : null,
-    R.filter !== 'all' ? h('div.cu-filter', 'Showing ' + { balance: 'customers with a balance due', route: 'customers by route', household: 'households' }[R.filter], h('button.cu-link', { onclick: () => { R.filter = 'all'; R.page && R.page.refresh(); } }, 'Show all')) : null,
+    R.filter !== 'all' ? h('div.cu-filter', 'Showing ' + { balance: 'customers with a balance due', route: 'customers by route', household: 'residential customers' }[R.filter], h('button.cu-link', { onclick: () => { R.filter = 'all'; R.page && R.page.refresh(); } }, 'Show all')) : null,
     list.length ? keys.map(k => ui.section(k, groups.get(k).map(custRow))) : ui.empty({ icon: 'person.2', title: 'No customers', text: 'Nothing matches this filter.' }),
     list.length ? h('div.cu-count', list.length + (list.length === 1 ? ' customer' : ' customers')) : null);
 }
@@ -369,7 +369,7 @@ function detailSpec(id) {
 function header(c) {
   const p = c.contacts[0], loc = c.locations[0];
   const qa = (ic, label, fn, disabled) => h('button.cu-qa', { disabled, onclick: fn }, icon(ic, 22), h('span', label));
-  return h('div.cu-head', avatar(c, 76), h('div.cu-title', c.name), h('div.cu-meta', h('span', c.kind === 'household' ? 'Household' : 'Company'), lcBadge(c)),
+  return h('div.cu-head', avatar(c, 76), h('div.cu-title', c.name), h('div.cu-meta', h('span', c.kind === 'household' ? 'Residential' : 'Company'), lcBadge(c)),
     c.successful && h('div.cu-success', icon('star.fill', 14, 'var(--yellow)'), 'Successful customer since ' + longDate(c.stats.firstInvoice)),
     h('div.cu-chip', icon('flag', 13), 'Came from ' + c.channel),
     h('div.cu-qas', qa('phone.fill', 'Call', () => startCall(c, p), !p || !p.phone), qa('message', 'Text', () => WD.nav.push(threadPage(c.id, latestThread(c.id))), !p || !p.phone),
@@ -494,7 +494,7 @@ function addNote(cid) {
 }
 function editCustomer(id) {
   const c = q.customer(id), f = { name: c.name, kind: c.kind, lifecycle: c.lifecycle, owner: c.owner, type: c.type, freq: c.freq, notes: c.notes, tags: c.tags.join(', '), billingEmail: c.billingEmail || '', po: c.po || '', contract: c.contract || '', sig: WD.sigPolicy(c), mode: c.billingMode || 'invoice' }, ok = () => !!f.name.trim();
-  const pickers = p => [['Kind', 'kind', [{ value: 'company', label: 'Company' }, { value: 'household', label: 'Household' }]], ['Stage', 'lifecycle', Object.keys(LC).map(k => ({ value: k, label: LC[k][0] }))],
+  const pickers = p => [['Kind', 'kind', [{ value: 'company', label: 'Company' }, { value: 'household', label: 'Residential' }]], ['Stage', 'lifecycle', Object.keys(LC).map(k => ({ value: k, label: LC[k][0] }))],
     ['Owner', 'owner', owners().map(u => ({ value: u.id, label: u.name }))], ['Default job type', 'type', WD.jobTypes.map(t => ({ value: t.id, label: t.title }))], ['Frequency', 'freq', FREQS]]
     .map(([title, k, options]) => ui.pickerRow({ title, options, value: f[k], onChange: v => { f[k] = v; p.refresh(); } }));
   ui.sheet({ title: 'Edit customer', leading: [{ label: 'Cancel', onTap: p => p.dismiss() }],
@@ -615,7 +615,8 @@ function callerCard(c, p, number) {
 function openNew(prefill = {}) {
   if (!WD.can('crm.edit')) return ui.toast('You can’t add customers with this role', 'lock');
   const f = { name: prefill.name || '', kind: 'company', contact: '', phone: prefill.phone || '', email: prefill.email || '', billingEmail: '', po: '', contract: '', sig: 'optional', mode: 'invoice', documents: [], poSchedule: [], address: prefill.address || '', containers: '', type: 'regular', channel: prefill.channel || '' };
-  const ok = () => !!(f.name.trim() && (e164(f.phone) || /@.+\./.test(f.email)));
+  /* Name and phone are required (phone always, so calls and texts match); email is strongly recommended but optional. */
+  const ok = () => !!(f.name.trim() && e164(f.phone));
   let dupBox = null, dupTimer = null;
   const dupes = () => { const out = new Map(), d = f.phone.replace(/\D/g, '');
     q.searchCustomers(f.name).filter(r => r.score >= 80).forEach(r => out.set(r.customer.id, { c: r.customer, why: 'Similar name' }));
@@ -632,18 +633,24 @@ function openNew(prefill = {}) {
       if (!await ui.run('Creating customer…', () => { id = create(f); }, { done: 'Customer created' })) return;
       p.dismiss(); setTimeout(() => openDetail(id), 420); } }],
     onClose: () => clearTimeout(dupTimer),
-    render: p => { dupBox = h('div'); const inp = (label, k, o = {}) => ui.inputRow({ label, value: f[k], onInput: v => { f[k] = v; changed(p, sheet); }, ...o });
-      const out = ui.list(ui.section(null, inp('Name', 'name', { placeholder: 'Company or person', autofocus: !f.name }), ui.pickerRow({ title: 'Kind', options: [{ value: 'company', label: 'Company' }, { value: 'household', label: 'Household' }], value: f.kind, onChange: v => { f.kind = v; p.refresh(); } })),
-        ui.section({ header: 'Primary contact', footer: 'A phone number or email is required so calls, texts and email match this customer.' }, inp('Contact name', 'contact', { placeholder: 'Name', caps: 'words' }), inp('Phone', 'phone', { type: 'tel', placeholder: '(512) 555-0100' }), inp('Email', 'email', { type: 'email', caps: 'off', placeholder: 'name@company.com' })),
+    render: p => { dupBox = h('div'); const sugBox = h('div'); const inp = (label, k, o = {}) => ui.inputRow({ label, value: f[k], onInput: v => { f[k] = v; changed(p, sheet); }, ...o });
+      /* Service address suggestions from Apple Maps (simulated), same as the job editor. Typed text is kept if nothing matches. */
+      const suggest = text => { const items = WD.addressSuggestions ? WD.addressSuggestions(text) : []; f.located = false;
+        sugBox.replaceChildren(items.length ? h('div.cells', { style: 'margin:8px 16px 0;border-radius:10px;overflow:hidden' }, items.map(x => ui.row({ icon: x.typed ? 'pencil' : 'mappin', iconPlain: true, iconColor: x.typed ? 'var(--label2)' : 'var(--red)', title: x.title, subtitle: x.sub,
+          onTap: () => { f.address = x.address; f.located = !x.typed; f.x = x.l && x.l.x; f.y = x.l && x.l.y; sugBox.replaceChildren(); if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); p.refresh(); check(p, ok()); } }))) : ''); };
+      const out = ui.list(
+        ui.section({ footer: 'Fields in red are required.' }, inp('Name', 'name', { placeholder: 'Company or person', autofocus: !f.name, required: true }), ui.pickerRow({ title: 'Kind', options: [{ value: 'company', label: 'Company' }, { value: 'household', label: 'Residential' }], value: f.kind, onChange: v => { f.kind = v; p.refresh(); } }),
+          ui.pickerRow({ title: 'Default job type', options: WD.jobTypes.map(t => ({ value: t.id, label: t.title })), value: f.type, onChange: v => { f.type = v; p.refresh(); } })),
+        ui.section({ header: 'Primary contact', footer: 'Phone is always required so calls and texts match this customer. Email is strongly recommended — invoices and receipts go there.' }, inp('Contact name', 'contact', { placeholder: 'Name', caps: 'words' }), inp('Phone', 'phone', { type: 'tel', placeholder: '(512) 555-0100', required: true }), inp('Email', 'email', { type: 'email', caps: 'off', placeholder: 'Recommended', suggested: true })),
         dupBox,
-        ui.section('Service address', inp('Address', 'address', { placeholder: 'Street, city' }), WD.asks(f.type, 'items') && inp('Containers', 'containers', { placeholder: '2 consoles, 1 bin (96 gal)' })),
+        ui.section({ header: 'Service address', footer: f.located ? 'Found on the map.' : 'Start typing and pick a suggestion, or keep the address as typed.' }, ui.inputRow({ label: 'Address', placeholder: 'Street, city', value: f.address, icon: f.located ? 'mappin' : null, iconColor: 'var(--red)', onInput: v => { f.address = v; changed(p, sheet); suggest(v); } }), WD.asks(f.type, 'items') && inp('Containers', 'containers', { placeholder: '2 consoles, 1 bin (96 gal)' })),
+        sugBox,
         (WD.asks(f.type, 'billingEmail') || WD.asks(f.type, 'po') || WD.asks(f.type, 'contract')) && ui.section({ header: 'Billing', footer: 'Printed on invoices. PO and contract numbers can be changed on each job.' },
           WD.asks(f.type, 'billingEmail') && inp('Billing email', 'billingEmail', { type: 'email', caps: 'off', placeholder: 'If different' }), WD.asks(f.type, 'po') && inp('PO number', 'po', { placeholder: 'None' }), WD.asks(f.type, 'contract') && inp('Contract', 'contract', { placeholder: 'None' }),
           WD.asks(f.type, 'signature') && ui.pickerRow({ title: 'Customer signature', options: WD.SIG_POLICIES, value: f.sig, onChange: v => { f.sig = v; p.refresh(); } }),
           ui.pickerRow({ title: 'Billing', options: WD.workflow.BILLING_MODES, value: f.mode, onChange: v => { f.mode = v; if (v === 'serviceNote') f.sig = 'always'; p.refresh(); } })),
         WD.workflow.docsEditor(f, p),
-        ui.section(null, ui.pickerRow({ title: 'Default job type', options: WD.jobTypes.map(t => ({ value: t.id, label: t.title })), value: f.type, onChange: v => { f.type = v; p.refresh(); } }),
-          ui.pickerRow({ title: 'How did you hear about us?', options: CHANNELS, value: f.channel, placeholder: 'Choose', onChange: v => { f.channel = v; p.refresh(); } })));
+        ui.section(null, ui.pickerRow({ title: 'How did you hear about us?', options: CHANNELS, value: f.channel, placeholder: 'Choose', onChange: v => { f.channel = v; p.refresh(); } })));
       setTimeout(() => drawDupes(sheet), 0); return out; } });
 }
 function create(f) {
@@ -651,7 +658,7 @@ function create(f) {
   const c = { id, name: f.name.trim(), kind: f.kind, route: null, lifecycle: 'lead', channel: ch, type: f.type, freq: f.type === 'purge' ? 'One time' : 'Every 4 weeks',
     contacts: [{ name: f.contact.trim() || f.name.trim(), role: '', phone: e164(f.phone), email: f.email.trim().toLowerCase() }],
     billingEmail: f.billingEmail.trim(), po: f.po.trim(), contract: f.contract.trim(), signature: f.sig, billingMode: f.mode, documents: f.documents.slice(), poSchedule: f.poSchedule.slice(),
-    locations: [{ id: id + 'l1', items: WD.parseItems(f.containers), label: house ? 'Home' : 'Main office', address: f.address.trim() || 'Address not set', x: 300 + Math.round(Math.random() * 400), y: 300 + Math.round(Math.random() * 400), containers: f.containers.trim(), bizOpen: '08:00', bizClose: '17:00', notes: '', located: !!f.address.trim() }],
+    locations: [{ id: id + 'l1', items: WD.parseItems(f.containers), label: house ? 'Home' : 'Main office', address: f.address.trim() || 'Address not set', x: f.x != null ? f.x : 300 + Math.round(Math.random() * 400), y: f.y != null ? f.y : 300 + Math.round(Math.random() * 400), containers: f.containers.trim(), bizOpen: '08:00', bizClose: '17:00', notes: '', located: !!f.address.trim() }],
     owner: (WD.state.me && WD.state.me.id) || 'u3', nextAction: today, notes: '', tags: [], lostReason: null, createdAt: +WD.now(),
     stats: { jobs: 0, invoiced: 0, paid: 0, balance: 0, lastService: null, firstInvoice: null, rate: 85 }, successful: false };
   data.customers.push(c);
@@ -671,7 +678,7 @@ function mergesPage() {
   } };
 }
 function comparePage(aId, bId, sugg) {
-  const vals = c => [['Name', c.name], ['Kind', c.kind === 'household' ? 'Household' : 'Company'], ['Stage', LC[c.lifecycle][0]], ['Contacts', c.contacts.map(p => p.name).join(', ') || '—'],
+  const vals = c => [['Name', c.name], ['Kind', c.kind === 'household' ? 'Residential' : 'Company'], ['Stage', LC[c.lifecycle][0]], ['Contacts', c.contacts.map(p => p.name).join(', ') || '—'],
     ['Phone', c.contacts.map(p => fmt.phone(p.phone)).filter(Boolean).join(', ') || '—'], ['Email', c.contacts.map(p => p.email).filter(Boolean).join(', ') || '—'], ['Address', c.locations[0] ? c.locations[0].address.replace(/, Lakemont$/, '') : '—'],
     ['Channel', c.channel], ['Jobs', String(q.jobsForCustomer(c.id).length)], ['Timeline', timeline(c.id).length + ' entries'], ['Created', c.createdAt ? fmt.day(D.key(new Date(c.createdAt)), 'md') + ', ' + new Date(c.createdAt).getFullYear() : '—']];
   return { title: 'Compare', render: page => {

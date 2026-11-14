@@ -5,7 +5,7 @@
 'use strict';
 const WD = window.WD, { h, ui, icon, state: S, data, q, fmt, date: D, api } = WD;
 
-WD.addIcons({ 'bi.minus': '<circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.5 12h9" stroke="#fff"/>' });
+WD.addIcons({ 'arrow.uturn.left': '<path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>', 'rotate.right': '<rect x="3" y="9" width="12" height="12" rx="2"/><path d="M10 3.5h3.5a6 6 0 0 1 6 6V12"/><path d="M17 9.5l2.5 2.5 2.5-2.5"/>', 'bi.minus': '<circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.5 12h9" stroke="#fff"/>' });
 WD.css(`
 .bi-line { padding: 9px 12px 10px 16px; position: relative; }
 .bi-nums { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
@@ -30,6 +30,14 @@ WD.css(`
 .bi-pad .x::before { content: '×'; position: absolute; left: 0; bottom: 2px; font-size: 20px; color: #8e8e93; }
 .bi-pad .hint { position: absolute; left: 0; right: 0; bottom: 16px; text-align: center; font-size: 12px; color: #8e8e93; pointer-events: none; }
 .bi-docwrap { zoom: .58; margin: 8px -8px; }
+.bi-land { position: absolute; inset: 0; z-index: 900; background: #f2f2f7; overflow: hidden; }
+.bi-land-in { position: absolute; top: 0; transform-origin: top left; display: flex; flex-direction: column; box-sizing: border-box; padding: 10px 50px 14px; }
+.bi-land-bar { display: flex; align-items: center; justify-content: space-between; height: 40px; color: #1c1c1e; font-size: 17px; }
+.bi-land-bar button { border: 0; background: none; color: #007AFF; font-size: 17px; cursor: pointer; padding: 6px 8px; display: inline-flex; align-items: center; gap: 3px; } .bi-land-bar button.done { font-weight: 600; }
+.bi-land-pad { flex: 1; position: relative; background: #fff; border-radius: 14px; box-shadow: inset 0 0 0 .5px #c6c6c8; }
+.bi-land-pad canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: crosshair; }
+.bi-land-pad .x { position: absolute; left: 30px; right: 30px; bottom: 54px; border-bottom: 1.5px solid #c7c7cc; pointer-events: none; } .bi-land-pad .x::before { content: '×'; position: absolute; left: 0; bottom: 2px; font-size: 24px; color: #8e8e93; }
+.bi-land-pad .hint { position: absolute; left: 0; right: 0; bottom: 20px; text-align: center; font-size: 13px; color: #8e8e93; pointer-events: none; }
 .bi-doc { width: 660px; box-sizing: border-box; background: #fff; color: #1c1c1e; margin: 0 auto 18px; padding: 34px 26px 22px; box-shadow: 0 2px 14px rgba(0,0,0,.16); font: 12.5px/16px Calibri, Carlito, -apple-system, sans-serif; letter-spacing: 0; }
 .bi-top { display: flex; justify-content: space-between; align-items: flex-start; }
 .bi-logo { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
@@ -65,32 +73,50 @@ function sigView(sig) {
   if (/^data:/.test(sig)) return h('img', { src: sig, alt: 'Signature' });
   return h('span', { html: '<svg viewBox="0 0 300 90" width="200" height="60" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="' + sig + '"/></svg>' });
 }
-/** Signature pad sheet. o: {title, subtitle, askName, name} → Promise<{image, name} | null>. */
+/** Signature pad sheet. o: {title, subtitle, askName, name} → Promise<{image, name} | null>.
+    Turning the phone sideways (or tapping Full screen) switches to a landscape pad that uses the whole screen; turning back keeps what was signed. */
 function signaturePad(o = {}) {
   return new Promise(resolve => {
-    let strokes = 0, name = o.name || '', done = false, canvas = null, ctx = null, last = null;
+    let strokes = 0, name = o.name || '', done = false, canvas = null, ctx = null, land = null, page = null;
     const finish = v => { if (done) return; done = true; resolve(v); };
+    /** Ink on a canvas. rotated: the canvas is drawn turned 90° clockwise inside the portrait screen (the prototype's stand-in for turning the phone). */
+    const pen = (cv, rotated) => { const c = cv.getContext('2d'); let last = null;
+      c.lineWidth = 4.2; c.lineCap = 'round'; c.lineJoin = 'round'; c.strokeStyle = '#1c1c1e'; c.fillStyle = '#1c1c1e';
+      const pt = e => { const r = cv.getBoundingClientRect(); return rotated ? [(e.clientY - r.top) / r.height * cv.width, (r.right - e.clientX) / r.width * cv.height] : [(e.clientX - r.left) / r.width * cv.width, (e.clientY - r.top) / r.height * cv.height]; };
+      cv.addEventListener('pointerdown', e => { e.preventDefault(); try { cv.setPointerCapture(e.pointerId); } catch (_) { /* synthetic */ } last = pt(e); c.beginPath(); c.arc(last[0], last[1], 1.6, 0, 7); c.fill(); strokes++; });
+      cv.addEventListener('pointermove', e => { if (!last) return; const p = pt(e); c.beginPath(); c.moveTo(last[0], last[1]); c.lineTo(p[0], p[1]); c.stroke(); last = p; strokes++; });
+      const up = () => { last = null; }; cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up); return c; };
+    const done2 = () => {
+      if (!strokes) return ui.toast('Sign in the box first', 'signature');
+      if (o.askName && !name.trim()) { if (land) exitLand(); return ui.toast('Add the signer’s printed name', 'person'); }
+      finish({ image: (land ? land.canvas : canvas).toDataURL('image/png'), name: name.trim() }); if (land) { land.el.remove(); land = null; } sheet.close();
+    };
+    /* Landscape: real phones switch when turned; the prototype also offers a button, since the frame doesn't rotate. */
+    const realTurn = window.matchMedia ? matchMedia('(orientation: landscape) and (pointer: coarse)') : null;
+    function enterLand() {
+      if (land) return; const scr = document.querySelector('#screen'), W = scr.offsetWidth, H = scr.offsetHeight, rotated = !(realTurn && realTurn.matches);
+      const cv = h('canvas', { width: 1500, height: 640 }), el = h('div.bi-land', h('div.bi-land-in', { style: rotated ? { width: H + 'px', height: W + 'px', left: W + 'px', transform: 'rotate(90deg)' } : { width: '100%', height: '100%', left: 0 } },
+        h('div.bi-land-bar', h('button', { onclick: exitLand }, icon('arrow.uturn.left', 17), ' Back'), h('b', o.title || 'Signature'), h('span', h('button', { onclick: () => { lctx.clearRect(0, 0, cv.width, cv.height); strokes = 0; } }, 'Clear'), h('button.done', { onclick: done2 }, 'Done'))),
+        h('div.bi-land-pad', cv, h('div.x'), h('div.hint', 'Sign above the line'))));
+      scr.appendChild(el); const lctx = pen(cv, rotated); if (strokes && canvas) lctx.drawImage(canvas, 0, 0, cv.width, cv.width * canvas.height / canvas.width);
+      land = { el, canvas: cv };
+    }
+    function exitLand() { if (!land) return; if (strokes && ctx) { ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.drawImage(land.canvas, 0, 0, canvas.width, canvas.width * land.canvas.height / land.canvas.width); } land.el.remove(); land = null; }
+    const onTurn = () => { if (realTurn.matches) enterLand(); else exitLand(); };
+    if (realTurn && realTurn.addEventListener) realTurn.addEventListener('change', onTurn);
     const sheet = ui.sheet({ title: o.title || 'Signature', live: false, leading: [{ label: 'Cancel', onTap: p => p.dismiss() }],
-      trailing: [{ label: 'Done', bold: true, onTap: p => {
-        if (!strokes) return ui.toast('Sign in the box first', 'signature');
-        if (o.askName && !name.trim()) return ui.toast('Add the signer’s printed name', 'person');
-        finish({ image: canvas.toDataURL('image/png'), name: name.trim() }); p.dismiss();
-      } }],
-      onClose: () => finish(null),
-      render: () => {
-        canvas = h('canvas', { width: 722, height: 380 }); ctx = canvas.getContext('2d');
-        ctx.lineWidth = 4.2; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#1c1c1e';
-        const pt = e => { const p = ui.localPoint(e, canvas); return [p.x * canvas.width / canvas.offsetWidth, p.y * canvas.height / canvas.offsetHeight]; };
-        canvas.addEventListener('pointerdown', e => { e.preventDefault(); try { canvas.setPointerCapture(e.pointerId); } catch (_) { /* synthetic */ } last = pt(e); ctx.beginPath(); ctx.arc(last[0], last[1], 1.6, 0, 7); ctx.fill(); });
-        canvas.addEventListener('pointermove', e => { if (!last) return; const p = pt(e); ctx.beginPath(); ctx.moveTo(last[0], last[1]); ctx.lineTo(p[0], p[1]); ctx.stroke(); last = p; strokes++; });
-        const up = () => { last = null; }; canvas.addEventListener('pointerup', up); canvas.addEventListener('pointercancel', up);
+      trailing: [{ label: 'Done', bold: true, onTap: done2 }],
+      onClose: () => { finish(null); if (land) { land.el.remove(); land = null; } if (realTurn && realTurn.removeEventListener) realTurn.removeEventListener('change', onTurn); },
+      render: p => { page = p;
+        canvas = h('canvas', { width: 722, height: 380 }); ctx = pen(canvas, false);
         return ui.list(
           o.subtitle && h('div.footnote', { style: { padding: '4px 4px 0' } }, o.subtitle),
           h('div.bi-pad', canvas, h('div.x'), h('div.hint', 'Sign above the line')),
-          h('div', { style: { textAlign: 'right', margin: '6px 4px 0' } }, h('button.cu-link', { onclick: () => { ctx.clearRect(0, 0, canvas.width, canvas.height); strokes = 0; } }, 'Clear')),
+          h('div.hstack', { style: { margin: '6px 4px 0' } }, h('button.cu-link', { onclick: enterLand }, icon('rotate.right', 15), ' Turn sideways for a full-screen pad'), h('span.spacer'), h('button.cu-link', { onclick: () => { ctx.clearRect(0, 0, canvas.width, canvas.height); strokes = 0; } }, 'Clear')),
           o.askName && ui.section({ footer: 'Prints under the signature on the invoice.' }, ui.inputRow({ label: 'Printed name', caps: 'words', placeholder: 'Signer’s name', value: name, onInput: v => { name = v; } })));
       } }, { detent: 'large' });
     sheet.closed.then(() => finish(null));
+    if (realTurn && realTurn.matches) setTimeout(enterLand, 500);
   });
 }
 

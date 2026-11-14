@@ -181,7 +181,7 @@ WD.addIcons = map => Object.assign(I, map);
 WD.textOn = hex => { const m = /^#?([0-9a-f]{6})$/i.exec(hex || ''); if (!m) return '#fff'; const n = parseInt(m[1], 16), c = [n >> 16, n >> 8 & 255, n & 255].map(v => { v /= 255; return v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); }); return .2126 * c[0] + .7152 * c[1] + .0722 * c[2] > .4 ? '#1C1C1E' : '#fff'; };
 
 /* ================= State and permissions ================= */
-const ALL = ['analytics.view', 'tracking.view_live', 'team.locations', 'crm.view', 'crm.edit', 'billing.view', 'billing.field', 'billing.manage', 'jobs.edit', 'users.manage', 'settings.manage'];
+const ALL = ['analytics.view', 'tracking.view_live', 'team.locations', 'crm.view', 'crm.edit', 'billing.view', 'billing.field', 'billing.manage', 'jobs.edit', 'users.manage', 'hr.manage', 'settings.manage'];
 WD.roles = {
   owner: { title: 'Owner', perms: ALL }, admin: { title: 'Admin', perms: ALL },
   dispatcher: { title: 'Dispatcher', perms: ['jobs.edit', 'tracking.view_live', 'team.locations', 'crm.view', 'crm.edit', 'analytics.view', 'billing.field'] },
@@ -194,7 +194,7 @@ WD.permissionList = [
   ['team.locations', 'Team locations', 'See where clocked-in employees are and where they stopped'],
   ['crm.view', 'View customers', 'Customer records and history'], ['crm.edit', 'Edit customers', 'Change customers, notes and follow-ups'],
   ['analytics.view', 'Analytics', 'Driver, stop and route reports'], ['billing.view', 'View billing', 'Invoices and payments'],
-  ['billing.field', 'Field invoicing', 'Edit job charges, collect signatures and payment on site'], ['billing.manage', 'Manage billing', 'Create invoices and charge cards'], ['users.manage', 'Manage team', 'Invite people and change roles'], ['settings.manage', 'Company settings', 'Integrations and the Google mirror'],
+  ['billing.field', 'Field invoicing', 'Edit job charges, collect signatures and payment on site'], ['billing.manage', 'Manage billing', 'Create invoices and charge cards'], ['users.manage', 'Manage team', 'Invite people and change roles'], ['hr.manage', 'HR and payroll', 'Fix clock-in/out times, add missed shifts, and run hours and overtime reports for any dates'], ['settings.manage', 'Company settings', 'Integrations and the Google mirror'],
 ];
 const S = WD.state = {
   signedIn: false, role: 'owner', me: null, org: null,
@@ -256,7 +256,10 @@ ui.toggleRow = o => ui.row({ ...o, onTap: null, trailing: ui.toggle(o.value, o.o
 ui.inputRow = o => {
   const input = h(o.multiline ? 'textarea.field' : 'input.field' + (o.right ? '.right' : ''), { type: o.multiline ? null : (o.type || 'text'), placeholder: o.placeholder || '', value: o.value || '', autocomplete: 'off', autocapitalize: o.caps || 'sentences', spellcheck: 'false', inputmode: o.inputmode, id: o.id, oninput: e => o.onInput && o.onInput(e.target.value, e.target), onkeydown: o.onEnter ? e => { if (e.key === 'Enter') o.onEnter(e.target.value); } : null });
   if (o.autofocus) setTimeout(() => input.focus(), 450);
-  return h('div.row', o.icon && h('div.row-icon.plain', { style: { color: o.iconColor || 'var(--label2)' } }, WD.icon(o.icon, 22)), o.label && h('div.field-label', o.label), input, o.trailing);
+  /* required: the label is bold red until the field has a value. suggested: bold label, not red. */
+  const lab = o.label && h('div.field-label' + (o.required ? '.req' + (String(o.value || '').trim() ? '' : '.missing') : o.suggested ? '.sugg' : ''), o.label);
+  if (o.required && lab) input.addEventListener('input', () => lab.classList.toggle('missing', !input.value.trim()));
+  return h('div.row', o.icon && h('div.row-icon.plain', { style: { color: o.iconColor || 'var(--label2)' } }, WD.icon(o.icon, 22)), lab, input, o.trailing);
 };
 /** Pop-up picker. {title, options: [{value, label, icon}] | ['a','b'], value, onChange(value), icon, iconColor} */
 ui.pickerRow = o => {
@@ -268,6 +271,16 @@ ui.pickerRow = o => {
 /** Native date / time inputs styled as iOS compact pickers. value 'YYYY-MM-DD' or 'HH:MM'. */
 ui.dateRow = o => ui.row({ title: o.title, icon: o.icon, iconColor: o.iconColor, trailing: h('input.pill-input', { type: 'date', value: o.value, onchange: e => o.onChange && e.target.value && o.onChange(e.target.value) }) });
 ui.timeRow = o => ui.row({ title: o.title, icon: o.icon, iconColor: o.iconColor, trailing: h('input.pill-input', { type: 'time', step: 300, value: o.value || '', onchange: e => o.onChange && o.onChange(e.target.value) }) });
+/** Time in 15-minute steps: an hour menu and a minutes menu (:00 :15 :30 :45). {title, subtitle, value 'HH:MM' | '', onChange('HH:MM' | ''), optional (adds "—" for no time)} */
+ui.quarterRow = o => {
+  let hh = '', mm = 0; const v = WD.fmt.fromHHMM(o.value); if (v != null) { const r = Math.round(v / 15) * 15; hh = Math.floor(r / 60) % 24; mm = r % 60; }
+  const emit = () => o.onChange && o.onChange(hh === '' ? '' : String(hh).padStart(2, '0') + ':' + String(mm).padStart(2, '0'));
+  const hs = h('select.pill-input.qt-h', { 'aria-label': (o.title || 'Time') + ' hour', onchange: e => { hh = e.target.value === '' ? '' : +e.target.value; ms.disabled = hh === ''; emit(); } },
+    o.optional !== false && h('option', { value: '' }, '—'), Array.from({ length: 24 }, (_, i) => h('option', { value: i, selected: hh === i }, (i % 12 || 12) + ' ' + (i < 12 ? 'AM' : 'PM'))));
+  if (hh === '') hs.value = '';
+  const ms = h('select.pill-input.qt-m', { 'aria-label': (o.title || 'Time') + ' minutes', disabled: hh === '', onchange: e => { mm = +e.target.value; emit(); } }, [0, 15, 30, 45].map(m => h('option', { value: m, selected: mm === m }, ':' + String(m).padStart(2, '0'))));
+  return ui.row({ title: o.title, subtitle: o.subtitle, icon: o.icon, iconColor: o.iconColor, trailing: h('div.qt', hs, ms) });
+};
 ui.stepper = (value, min, max, onChange) => h('div.stepper', h('button', { disabled: value <= min, onclick: () => onChange(value - 1) }, '−'), h('button', { disabled: value >= max, onclick: () => onChange(value + 1) }, '+'));
 ui.segmented = (options, value, onChange) => h('div.segmented', options.map(x => typeof x === 'object' ? x : { value: x, label: String(x) }).map(x =>
   h('button' + (x.value === value ? '.on' : ''), { onclick: e => { [...e.currentTarget.parentNode.children].forEach(b => b.classList.remove('on')); e.currentTarget.classList.add('on'); onChange && onChange(x.value); } }, x.label)));
@@ -443,7 +456,7 @@ ui.closeAllSheets = () => sheets.slice().reverse().forEach(s => s.close());
 
 const app = WD.app = { tabs: [
   { id: 'board', title: 'Dispatch', icon: 'calendar' }, { id: 'map', title: 'Map', icon: 'map' },
-  { id: 'customers', title: 'Customers', icon: 'person.2', can: 'crm.view' }, { id: 'shift', title: 'Shift', icon: 'truck' }, { id: 'settings', title: 'Settings', icon: 'gearshape' },
+  { id: 'customers', title: 'Customers', icon: 'person.2', can: 'crm.view' }, { id: 'invoices', title: 'Invoices', icon: 'doc.text', can: () => WD.can('billing.view') || WD.can('billing.field') }, { id: 'shift', title: 'Shift', icon: 'truck' }, { id: 'settings', title: 'Settings', icon: 'gearshape' },
 ] };
 let tabState = null, rootStack = null;
 const nav = WD.nav = {
@@ -460,7 +473,7 @@ app.showRoot = spec => { ui.closeAllSheets(); clearRoot(); rootStack = makeStack
 /** Show the signed-in tab interface. */
 app.showMain = tabId => {
   ui.closeAllSheets(); clearRoot();
-  const tabs = app.tabs.filter(t => !t.can || WD.can(t.can)), panes = h('div.tabpanes'), bar = h('div.tabbar'), state = tabState = { stacks: {}, active: null, buttons: {} };
+  const tabs = app.tabs.filter(t => !t.can || (typeof t.can === 'function' ? t.can() : WD.can(t.can))), panes = h('div.tabpanes'), bar = h('div.tabbar'), state = tabState = { stacks: {}, active: null, buttons: {} };
   tabs.forEach(t => { const b = state.buttons[t.id] = h('button.tab', { onclick: () => state.select(t.id) }, WD.icon(t.icon, 27), h('span', t.title)); bar.appendChild(b); });
   state.select = id => {
     const t = tabs.find(x => x.id === id) || tabs[0]; id = t.id;

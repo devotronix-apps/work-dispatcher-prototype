@@ -21,7 +21,7 @@ WD.css(`
 .bd-pill span.n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bd-strip { flex: none; display: flex; align-items: center; gap: 6px; padding: 6px 14px; font-size: 13px; font-weight: 500; letter-spacing: -.08px; cursor: pointer; background: color-mix(in srgb, var(--c) 14%, var(--cell)); color: var(--c); border-top: .5px solid var(--sep); }
 .bd-strip .spacer { flex: 1; }
-.bd-scroll { flex: 1; min-height: 0; overflow: auto; position: relative; background: var(--cell); border-top: .5px solid var(--sep); scrollbar-width: none; overscroll-behavior: contain; }
+.bd-scroll { touch-action: pan-x pan-y; flex: 1; min-height: 0; overflow: auto; position: relative; background: var(--cell); border-top: .5px solid var(--sep); scrollbar-width: none; overscroll-behavior: contain; }
 .bd-scroll::-webkit-scrollbar { display: none; }
 .bd-content { position: relative; min-width: 100%; }
 .bd-head { position: sticky; top: 0; z-index: 4; background: var(--cell); border-bottom: .5px solid var(--sep); }
@@ -45,6 +45,11 @@ WD.css(`
 .bd-job-title { font-weight: 600; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; word-break: break-word; }
 .bd-job-title .ic { margin: -2px 2px 0 0; }
 .bd-job-sub { font-size: 11px; line-height: 14px; opacity: .9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: 0; margin-top: 1px; }
+.bd-job-in.lvl0 { padding: 2px 4px; align-items: center; } .bd-job-in.lvl0 .bd-job-title { -webkit-line-clamp: 1; } .bd-job-in.lvl0 .bd-num { width: 17px; height: 17px; font-size: 10px; }
+.bd-job-in.lvl2 .bd-job-title { -webkit-line-clamp: 4; } .bd-job-in.lvl2 .bd-job-sub { white-space: normal; }
+.bd-job-sub .ic { margin-top: -2px; }
+.bd-job-note { font-size: 11px; line-height: 14px; opacity: .85; margin-top: 2px; font-style: italic; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; letter-spacing: 0; }
+.bd-zoom { position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); background: var(--material); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-radius: 12px; padding: 10px 16px; font-size: 15px; font-weight: 600; z-index: 30; pointer-events: none; box-shadow: 0 4px 18px rgba(0,0,0,.18); }
 .bd-q { display: inline-block; background: #fff; color: #FF3B30; font-weight: 800; border-radius: 4px; padding: 0 4px; margin-right: 3px; font-size: 11px; line-height: 13px; }
 .bd-job.faded .bd-job-in, .bd-job.struck .bd-job-in { opacity: .55; }
 .bd-tag.nb { background: #fff; color: #C93400; }
@@ -123,6 +128,7 @@ function boardMenu(anchor) {
   ui.menu(anchor, [
     { header: S.org.name + ' · routes on the board' },
     ...q.routes().map(r => ({ label: q.routeName(r), checked: r.visible, onTap: () => { r.visible = !r.visible; WD.changed(); } })),
+    'divider', { header: 'Card detail · or pinch the board' }, ...DETAIL.map((t, i) => ({ label: t, checked: b.detail === i, onTap: () => setDetail(i) })),
     'divider',
     { label: 'Pending changes' + (n ? ' (' + n + ')' : ''), icon: 'sync', onTap: () => WD.screens.settings && WD.screens.settings.openPending && WD.screens.settings.openPending() },
     { label: 'Refresh', icon: 'arrow.clockwise', onTap: async () => { if (S.offline) return ui.toast('Offline — showing saved jobs', 'wifi.slash'); ui.toast('Checking for changes…'); await WD.delay(900, 1400); ui.toast('Up to date', 'checkmark'); } },
@@ -132,7 +138,7 @@ function modeRow() {
   const b = S.board, route = q.route(b.routeId);
   const pill = b.mode === 'days'
     ? h('button.bd-pill', { onclick: e => ui.menu(e.currentTarget, [{ header: 'Route' }, ...q.routes().map(r => ({ label: q.routeName(r), checked: r.id === b.routeId, onTap: () => { b.routeId = r.id; refresh(); } })), 'divider',
-        { label: 'Show 1 day', checked: b.dayCount === 1, onTap: () => { b.dayCount = 1; refresh(); } }, { label: 'Show 3 days', checked: b.dayCount === 3, onTap: () => { b.dayCount = 3; refresh(); } }, 'divider', ...syncItems()]) },
+        { label: 'Show 1 day', checked: b.dayCount === 1, onTap: () => { b.dayCount = 1; refresh(); } }, { label: 'Show 3 days', checked: b.dayCount === 3, onTap: () => { b.dayCount = 3; refresh(); } }, 'divider', { header: 'Card detail · or pinch the board' }, ...DETAIL.map((t, i) => ({ label: t, checked: b.detail === i, onTap: () => setDetail(i) })), 'divider', ...syncItems()]) },
         ui.dot(q.routeColor(route)), h('span.n', q.routeName(route)), icon('chevron.down', 13))
     : h('button.bd-pill', { onclick: e => boardMenu(e.currentTarget) }, h('span.n', q.visibleRoutes().length + ' of ' + q.routes().length + ' routes'), icon('chevron.down', 13));
   return h('div.bd-mode', ui.segmented([{ value: 'routes', label: 'Routes' }, { value: 'days', label: 'Days' }, { value: 'month', label: 'Month' }], b.mode, v => { b.mode = v; keep(undefined, 0); refresh(); }), pill);
@@ -149,15 +155,39 @@ function statusStrip() {
 /* ---------- Ordered lists ---------- */
 /* Colors: the job type fills the card and the route (calendar) color rims it. */
 const cardStyle = job => { const c = q.jobType(job.type).color; return { '--c': c, '--ring': q.routeColor(job.routeId), '--fg': WD.textOn(c) }; };
+/* Card detail: pinch vertically on the board (or ⌘/ctrl-scroll, or the routes menu) — 0 shows more jobs with just the name, 2 shows fewer jobs with everything a dispatcher needs. Addresses are left off; they're one tap away. */
+const DETAIL = ['Less detail', 'Standard', 'More detail'];
+if (S.board.detail == null) S.board.detail = 1;
+const shortT = m => { const hh = Math.floor(m / 60), mm = m % 60; return (hh % 12 || 12) + (mm ? ':' + String(mm).padStart(2, '0') : '') + (hh < 12 ? 'a' : 'p'); };
+function facts(job) {
+  const out = [], items = WD.itemsLabel(job.items, job.type === 'purge'), est = job.type === 'purge' && job.purge && WD.purgeEstimate(job.purge), m = fmt.fromHHMM;
+  if (items) out.push(['shippingbox', items]); else if (job.containers) out.push(['shippingbox', job.containers]);
+  if (job.custFrom || job.custUntil) out.push(['clock', (job.windowBy === 'us' ? 'Told ' : 'Asked ') + (job.custFrom ? shortT(m(job.custFrom)) : 'any') + '–' + (job.custUntil ? shortT(m(job.custUntil)) : 'any') + (job.custStrict ? ' · required' : '')]);
+  else if (job.needsWindow) out.push(['clock', 'Needs window']);
+  if (est && est.minutes) out.push(['timer', (est.guess ? est.low + '–' + est.high : est.minutes) + ' min on site']); else if (job.dur && S.board.detail > 1) out.push(['timer', '~' + q.visitStats(job).median + ' min on site']);
+  return out;
+}
+function details(job) {
+  const c = job.customerId && q.customer(job.customerId), p = c && c.contacts[0], out = [];
+  out.push(h('div.bd-job-sub', q.jobType(job.type).title));
+  facts(job).forEach(([ic, t]) => out.push(h('div.bd-job-sub', icon(ic, 10), ' ', t)));
+  if (job.callAhead) out.push(h('div.bd-job-sub', icon('phone', 10), ' Call ' + (job.callAhead === 60 ? '1 hr' : job.callAhead + ' min') + ' ahead'));
+  if (p || job.phone) out.push(h('div.bd-job-sub', icon('person', 10), ' ', p ? p.name : job.contactName || fmt.phone(job.phone)));
+  if (job.po) out.push(h('div.bd-job-sub', 'PO ' + job.po));
+  if (job.notes) out.push(h('div.bd-job-note', job.notes));
+  return out;
+}
 function cell(job, number) {
-  const type = q.jobType(job.type), st = { enroute: 'truck', arrived: 'mappin', completed: 'checkmark', skipped: 'xmark', canceled: 'xmark', rescheduled: 'calendar', postponed: 'clock' }[job.status], struck = WD.struck[job.status];
+  const type = q.jobType(job.type), lvl = S.board.detail, st = { enroute: 'truck', arrived: 'mappin', completed: 'checkmark', skipped: 'xmark', canceled: 'xmark', rescheduled: 'calendar', postponed: 'clock' }[job.status], struck = WD.struck[job.status];
   const tag = { skipped: 'Skipped', canceled: 'Canceled', rescheduled: 'Rescheduled', postponed: 'Postponed' }[job.status];
   const wf = WD.workflow, notBilled = job.status === 'completed' && !wf.billed(job) && job.type !== 'meet';
   return h('div.bd-job.' + job.status + (struck ? '.struck' : '') + (wf.dimmed(job) ? '.faded' : '') + (job.pending ? '.pending' : '') + (drag && drag.job.id === job.id ? '.dragging' : '') + (flashId === job.id ? '.flash' : ''),
     { 'data-job': job.id, style: cardStyle(job) },
-    h('div.bd-job-in', h('span.bd-num', number),
-      h('div.bd-job-main', h('div.bd-job-title', !job.located && job.address && job.type !== 'meet' ? h('span.bd-q', '?') : null, st && icon(st, 12), job.pending && icon('sync', 11), wf.titleNode(job), job.recurring ? h('span', { style: 'opacity:.8;font-weight:400' }, ' ↻') : null),
-        tag ? h('div.bd-tag', tag + (job.rescheduledTo ? ' · ' + fmt.day(job.rescheduledTo, 'md') : '')) : notBilled ? h('div.bd-tag.nb', 'Not billed') : h('div.bd-job-sub', job.address ? job.address.split(',')[0] : type.title))));
+    h('div.bd-job-in.lvl' + lvl, h('span.bd-num', number),
+      h('div.bd-job-main', h('div.bd-job-title', !job.located && job.address && job.type !== 'meet' ? h('span.bd-q', '?') : null, st && icon(st, 12), job.pending && icon('sync', 11), lvl ? wf.titleNode(job) : job.title, job.recurring ? h('span', { style: 'opacity:.8;font-weight:400' }, ' ↻') : null),
+        tag ? h('div.bd-tag', tag + (job.rescheduledTo ? ' · ' + fmt.day(job.rescheduledTo, 'md') : '')) : notBilled ? h('div.bd-tag.nb', 'Not billed') : null,
+        lvl === 1 && !tag && h('div.bd-job-sub', facts(job).map(x => x[1]).join(' · ') || type.title),
+        lvl === 2 && !tag && details(job))));
 }
 function grid() {
   const b = S.board, cols = columns(), W = page.body.clientWidth || 393;
@@ -166,7 +196,7 @@ function grid() {
   layout = { cols, colW };
   const lists = cols.map(c => ({ notes: q.jobsFor(c.routeId, c.day).filter(j => j.allDay), stops: q.stopList(c.routeId, c.day) }));
   const head = showHead && h('div.bd-head', h('div.bd-hrow', cols.map((c, i) => h('div.bd-colhead' + (c.today && b.mode === 'days' ? '.today' : ''), { style: { width: colW + 'px' } },
-    c.color && ui.dot(c.color), h('span.n', c.title), h('span.c', lists[i].stops.length)))));
+    c.color && ui.dot(c.color), h('span.n', c.title), h('span.c', (d => d ? 'Leave ' + shortT(d.depart) + ' · ' : '')(data.routeDays[c.routeId + '|' + c.day]) + lists[i].stops.length)))));
   const body = h('div.bd-body', cols.map((c, i) => {
     const { notes, stops } = lists[i];
     return h('div.bd-col' + (c.day < today ? '.past' : ''), { 'data-i': i, style: { width: colW + 'px' } },
@@ -176,7 +206,7 @@ function grid() {
       canEdit && h('div.bd-add', { 'data-add': i }, icon('plus', 13), 'Add stop'));
   }));
   const el = scroller = h('div.bd-scroll', h('div.bd-content', { style: { width: colW * cols.length + 'px' } }, head, body));
-  el.addEventListener('pointerdown', onPointerDown);
+  el.addEventListener('pointerdown', pinchDown); el.addEventListener('pointerdown', onPointerDown); el.addEventListener('wheel', onWheel, { passive: false });
   el.addEventListener('touchmove', e => { if (drag) e.preventDefault(); }, { passive: false });
   const top = saved.top, left = saved.left, reveal = revealId; revealId = null;
   requestAnimationFrame(() => {
@@ -189,27 +219,58 @@ function grid() {
   return el;
 }
 
+/* ---------- Pinch: vertical pinch changes how much each card shows ---------- */
+let pinch = null, pinchAt = 0, wheelAcc = 0, wheelAt = 0;
+const touchPts = new Map();
+function setDetail(n, hud) {
+  n = clamp(n, 0, DETAIL.length - 1); if (n === S.board.detail) return; S.board.detail = n; keep(); refresh();
+  if (hud && page) { const old = page.body.querySelector('.bd-zoom'); if (old) old.remove(); const z = h('div.bd-zoom', DETAIL[n]); page.body.style.position = 'relative'; page.body.appendChild(z); setTimeout(() => z.remove(), 700); }
+}
+function pinchDown(e) {
+  if (e.pointerType !== 'touch') return; touchPts.set(e.pointerId, e.clientY);
+  if (touchPts.size === 2 && !drag) { const [a, b] = [...touchPts.values()]; pinch = { d0: Math.abs(a - b) || 1 }; pinchAt = Date.now(); }
+}
+document.addEventListener('pointermove', e => {
+  if (!touchPts.has(e.pointerId)) return; touchPts.set(e.pointerId, e.clientY);
+  if (pinch && touchPts.size === 2) { const [a, b] = [...touchPts.values()], d = Math.abs(a - b) || 1, r = d / pinch.d0; pinchAt = Date.now();
+    if (r > 1.3) { pinch.d0 = d; setDetail(S.board.detail + 1, true); } else if (r < 0.77) { pinch.d0 = d; setDetail(S.board.detail - 1, true); } }
+});
+const pinchUp = e => { touchPts.delete(e.pointerId); if (touchPts.size < 2) pinch = null; };
+document.addEventListener('pointerup', pinchUp); document.addEventListener('pointercancel', pinchUp);
+/** Trackpad pinch (ctrl-wheel) does the same on a Mac. */
+function onWheel(e) {
+  if (!e.ctrlKey && !e.metaKey) return; e.preventDefault(); const t = Date.now(); if (t - wheelAt > 400) wheelAcc = 0; wheelAt = t; wheelAcc += e.deltaY;
+  if (wheelAcc < -35) { wheelAcc = 0; setDetail(S.board.detail + 1, true); } else if (wheelAcc > 35) { wheelAcc = 0; setDetail(S.board.detail - 1, true); }
+}
+
 /* ---------- Tap, swipe and drag ---------- */
 function onPointerDown(e) {
-  if (e.button > 0 || e.target.closest('.bd-chip') || drag) return;
+  if (e.button > 0 || e.target.closest('.bd-chip') || drag || pinch) return;
   const cellEl = e.target.closest('.bd-job'), colEl = e.target.closest('.bd-col'), addEl = e.target.closest('.bd-add'), sx = e.clientX, sy = e.clientY, touch = e.pointerType === 'touch', el = scroller;
   const job = cellEl && q.job(cellEl.dataset.job), canDrag = job && WD.can('jobs.edit') && !job.pending && (job.status === 'scheduled' || job.status === 'enroute');
-  let moved = false, active = false, timer = null;
+  /* A stop that can't move says why when you try to drag it (hold on touch, drag with a mouse), instead of doing nothing. */
+  const locked = job && WD.can('jobs.edit') && !canDrag && lockedReason(job);
+  let moved = false, active = false, held = false, timer = null;
   const begin = ev => { active = true; startDrag(job, cellEl, ev); };
-  if (canDrag && touch) timer = setTimeout(() => begin(e), 380);
+  if (touch && (canDrag || locked)) timer = setTimeout(() => { if (pinch || Date.now() - pinchAt < 400) return; if (canDrag) begin(e); else { held = true; ui.toast(locked, 'lock', 2400); } }, 380);
   const move = ev => {
-    if (!active && Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) > 6) { moved = true; if (touch) clearTimeout(timer); else if (canDrag) begin(ev); }
+    if (!active && !moved && Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) > 6) { moved = true; if (touch) clearTimeout(timer); else if (canDrag) begin(ev); else if (locked) ui.toast(locked, 'lock', 2400); }
     if (active) { ev.preventDefault(); dragMove(ev); }
   };
   const cleanup = () => { clearTimeout(timer); document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); document.removeEventListener('pointercancel', cancel); };
   const up = ev => {
-    cleanup(); if (active) return dragEnd();
+    cleanup(); if (active) return dragEnd(); if (pinch || Date.now() - pinchAt < 500) return;
     const dx = ev.clientX - sx, dy = ev.clientY - sy;
+    if (held) return;
     if (!moved) { if (job) jobsScreen().openDetails && jobsScreen().openDetails(job.id); else if (colEl && WD.can('jobs.edit') && (addEl || !e.target.closest('.bd-empty'))) addStop(colEl); }
     else if (!job && Math.abs(dx) > 70 && Math.abs(dy) < 45 && (dx < 0 ? el.scrollLeft >= el.scrollWidth - el.clientWidth - 2 : el.scrollLeft <= 2)) step(dx < 0 ? 1 : -1);
   };
   const cancel = () => { cleanup(); if (active) { drag.ghost.remove(); drag.ins.remove(); drag.slot.remove(); drag = null; refresh(); } };
   document.addEventListener('pointermove', move); document.addEventListener('pointerup', up); document.addEventListener('pointercancel', cancel);
+}
+function lockedReason(job) {
+  if (job.pending) return 'This stop is still syncing. Try again in a moment.';
+  return { completed: 'Completed stops can’t be moved', arrived: 'The driver is at this stop, so it can’t be moved', skipped: 'Skipped stops can’t be moved', canceled: 'Canceled stops can’t be moved', rescheduled: 'Rescheduled stops can’t be moved', postponed: 'Postponed stops can’t be moved' }[job.status] || 'This stop can’t be moved';
 }
 /** Tapping a column's empty space (or its Add stop button) adds a job at the end of that list. */
 function addStop(colEl) { const c = layout.cols[+colEl.dataset.i]; jobsScreen().openEditor && jobsScreen().openEditor({ day: c.day, routeId: c.routeId }); }
