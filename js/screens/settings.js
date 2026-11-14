@@ -90,7 +90,7 @@ function root() {
         ui.row({ icon: 'questionmark.circle', iconColor: 'var(--teal)', title: 'Support', trailing: icon('arrow.up.right', 17, 'var(--label3)'), onTap: safari }),
         ui.row({ icon: 'trash', iconColor: 'var(--red)', title: 'Request account deletion', onTap: requestDeletion })),
       ui.section(ui.row({ title: 'Sign out', destructive: true, center: true, onTap: signOut })),
-      ui.section('About', ui.row({ title: 'Version', detail: '2.0 (prototype)' }), ui.row({ title: 'Acknowledgements', chevron: true, onTap: () => push(ackSpec()) })));
+      ui.section('About', ui.row({ title: 'Version', detail: '2.1 (prototype)' }), ui.row({ title: 'Acknowledgements', chevron: true, onTap: () => push(ackSpec()) })));
   } };
 }
 function plan(o) {

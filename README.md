@@ -26,6 +26,10 @@ Board and map colors: the job type fills each card and pin (purge yellow, govern
 
 Jobs have no scheduled times: each route's day is an ordered list, and stop 1 is done first. Cards leave the address off and show the key facts (containers or boxes, window, time on site); pinch vertically on the board (or ⌘/ctrl-scroll, or the routes menu) to switch between less and more detail. AutoRoute recommends when to leave the truck's parking place for a day that hasn't started, which you can accept or replace with your own time, and gives a window to each stop marked **Needs a window**. On the board, drag a job up or down to reorder it or into another column to reassign it, and tap a column's empty space (or **Add stop**) to add a job at the end. Notes for the day sit above the list. The prototype clock starts at 10:24 AM; other drivers' trucks move and complete their stops on their own, faster than real life, so the board and map change while you watch.
 
+## Version
+
+Settings → About → Version shows the prototype version (`js/screens/settings.js`). Increment it every time the prototype is republished to the public site.
+
 ## Files
 
 | File | Contents |
