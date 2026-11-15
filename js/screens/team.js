@@ -16,6 +16,9 @@ WD.css(`
 .tc-num { min-width: 54px; text-align: right; font-variant-numeric: tabular-nums; }
 .tc-short { color: var(--label3); }
 .tc-tile.fed b { color: var(--indigo); } .tc-edited { color: var(--indigo); }
+.tc-card table.tc-tab { font-size: 11.5px; font-variant-numeric: tabular-nums; } .tc-card .tc-tab th { text-align: left; font-weight: 600; padding: 3px 0; color: #6b6b70; } .tc-card .tc-tab td { padding: 3px 0; text-align: left; white-space: nowrap; }
+.tc-card .tc-tab td.r, .tc-card .tc-tab th.r { text-align: right; padding-left: 7px; } .tc-card .tc-tab tr.tot td { font-weight: 700; border-top: 1px solid #1c1c1e; } .tc-card .bad { color: #d70015; font-weight: 600; }
+.tc-sign { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 30px; font-size: 11px; color: #6b6b70; } .tc-sign div { border-top: 1px solid #1c1c1e; padding-top: 3px; }
 `);
 
 /* ---------- Hours and overtime ---------- */
@@ -62,15 +65,29 @@ function tiles(w, o = {}) {
 /* Date ranges for timesheets and reports: pay periods (two weeks by default), months, or any dates. */
 const RANGES = [{ value: 'week', label: 'This week' }, { value: 'pp', label: 'This pay period' }, { value: 'lastpp', label: 'Last pay period' }, { value: 'month', label: 'This month' }, { value: 'lastmonth', label: 'Last month' }, { value: 'custom', label: 'Custom dates' }];
 const RS = { kind: 'pp', from: D.add(today, -13), to: today };
+/* Pay periods follow the pattern set in Settings → Pay period and payday: how often, a payday, and how many days after the period ends people are paid. */
+if (!R.payKind) { R.payKind = R.payDays === 7 ? 'weekly' : 'biweekly'; R.payLag = 5; }
+const PAY_KINDS = [{ value: 'weekly', label: 'Every week' }, { value: 'biweekly', label: 'Every 2 weeks' }, { value: 'semimonthly', label: 'Twice a month (1st–15th, 16th–end)' }, { value: 'monthly', label: 'Once a month' }];
+const payLen = () => R.payKind === 'weekly' ? 7 : 14;
+/** The pay period n periods away from the current one (0 = this one, -1 = last) → {from, to, payday}. */
+function payPeriod(n = 0) {
+  const k = R.payKind, mk = (from, to) => ({ from, to, payday: D.add(to, R.payLag || 0) });
+  if (k === 'weekly' || k === 'biweekly') { const len = payLen(), from = D.add(R.payAnchor, (Math.floor(D.diff(today, R.payAnchor) / len) + n) * len); return mk(from, D.add(from, len - 1)); }
+  const d = D.parse(today);
+  if (k === 'monthly') { const a = new Date(d.getFullYear(), d.getMonth() + n, 1), b = new Date(d.getFullYear(), d.getMonth() + n + 1, 0); return mk(D.key(a), D.key(b)); }
+  const half = (d.getFullYear() * 12 + d.getMonth()) * 2 + (d.getDate() > 15 ? 1 : 0) + n, y = Math.floor(half / 24), m = Math.floor((half % 24) / 2), second = half % 2 === 1;
+  return mk(D.key(new Date(y, m, second ? 16 : 1)), D.key(second ? new Date(y, m + 1, 0) : new Date(y, m, 15)));
+}
+const payText = () => { const p = payPeriod(0); return 'This pay period is ' + fmt.day(p.from, 'md') + ' – ' + fmt.day(p.to, 'md') + ', paid ' + fmt.day(p.payday, 'short') + '.'; };
 function rangeDates(rs) {
-  const len = R.payDays || 14, idx = Math.floor(D.diff(today, R.payAnchor) / len), pp = D.add(R.payAnchor, idx * len);
+  const cur = payPeriod(0), last = payPeriod(-1);
   const month = n => { const d = D.parse(today); d.setDate(1); d.setMonth(d.getMonth() + n); const first = D.key(d); d.setMonth(d.getMonth() + 1); d.setDate(0); return [first, D.key(d)]; };
-  const [from, to] = { week: [mondayOf(today), D.add(mondayOf(today), 6)], pp: [pp, D.add(pp, len - 1)], lastpp: [D.add(pp, -len), D.add(pp, -1)], month: month(0), lastmonth: month(-1), custom: [rs.from, rs.to] }[rs.kind];
-  return { from, to: to > today ? today : to, label: fmt.day(from, 'md') + ' – ' + fmt.day(to, 'md') };
+  const [from, to] = { week: [mondayOf(today), D.add(mondayOf(today), 6)], pp: [cur.from, cur.to], lastpp: [last.from, last.to], month: month(0), lastmonth: month(-1), custom: [rs.from, rs.to] }[rs.kind];
+  return { from, to: to > today ? today : to, label: fmt.day(from, 'md') + ' – ' + fmt.day(to, 'md'), payday: rs.kind === 'pp' ? cur.payday : rs.kind === 'lastpp' ? last.payday : null };
 }
 function rangeSection(rs, page, footer) {
   const r = rangeDates(rs);
-  return ui.section({ header: 'Dates · ' + r.label, footer },
+  return ui.section({ header: 'Dates · ' + r.label + (r.payday ? ' · paid ' + fmt.day(r.payday, 'md') : ''), footer },
     ui.pickerRow({ title: 'Period', icon: 'calendar', iconColor: 'var(--red)', value: rs.kind, options: RANGES, onChange: v => { if (v === 'custom') { const c = rangeDates(rs); rs.from = c.from; rs.to = c.to; } rs.kind = v; page.refresh(); } }),
     rs.kind === 'custom' && ui.dateRow({ title: 'From', value: rs.from, onChange: v => { rs.from = v; if (rs.to < v) rs.to = v; page.refresh(); } }),
     rs.kind === 'custom' && ui.dateRow({ title: 'Through', value: rs.to, onChange: v => { rs.to = v; if (rs.from > v) rs.from = v; page.refresh(); } }));
@@ -128,6 +145,7 @@ function timesheetSpec(userId, rs0) {
       w.open > 0 && h('div', { style: 'margin-top:8px' }, ui.note(w.open + (w.open === 1 ? ' shift has' : ' shifts have') + ' no clock-out and count no time until ' + (canFix ? 'you fix ' + (w.open === 1 ? 'it' : 'them') + '.' : 'HR fixes ' + (w.open === 1 ? 'it' : 'them') + '.'))),
       ui.section({ header: 'Days', footer: canFix ? 'Tap a day to correct clock-in, clock-out or break. Every change asks for a reason and is kept with the shift.' : null }, w.days.map(dayRow), !w.days.length && ui.row({ title: 'No time in these dates' }),
         canFix && ui.row({ title: 'Add missed shift', icon: 'plus.circle.fill', iconPlain: true, tint: true, onTap: () => editPunch(u.id, null, r.to < today ? r.to : D.add(today, -1)) })),
+      ui.section(null, ui.row({ icon: 'doc.text', iconPlain: true, title: 'Time card for these dates', tint: true, chevron: true, onTap: () => page.push({ title: 'Time card', trailing: [shareBtn], render: () => timeCard(u, rangeDates(rs)) }) })),
       mine && !canFix && ui.section({ footer: 'Forgot to clock in or out? Ask HR to fix it — they see your note with the day.' }, ui.row({ title: 'Ask HR for a correction', icon: 'envelope', iconPlain: true, tint: true, onTap: async () => {
         const a = await ui.alert({ title: 'Ask for a correction', message: 'Which day, and what should it say?', input: { placeholder: 'e.g. Fri — forgot to clock out, left at 5:15' }, buttons: [{ label: 'Cancel', value: null }, { label: 'Send', value: true, bold: true }] });
         if (a && a.value && a.text.trim()) ui.toast('Sent to HR', 'checkmark'); } })));
@@ -140,15 +158,51 @@ function timesheetsSpec() {
     const tot = ['reg', 'ot', 'dt', 'total', 'fed', 'open'].reduce((o, k) => { o[k] = people.reduce((s, x) => s + x.w[k], 0); return o; }, {});
     const open = people.flatMap(x => x.w.days.filter(d => d.open).map(d => ({ u: x.u, d })));
     return ui.list(
-      rangeSection(RS, page, 'Pay periods are ' + (R.payDays || 14) + ' days, Monday to Sunday. Pick a month or any dates for other reports.'),
+      rangeSection(RS, page, payText() + ' Pick last pay period, a month or any dates for other reports. The pay period pattern is set in Settings → Time clock and overtime.'),
       ui.section({ header: 'Everyone · ' + people.length + (people.length === 1 ? ' person' : ' people'), footer: 'Federal overtime counts hours over 40 in each Monday–Sunday workweek, as the FLSA requires. Company overtime (' + ruleText() + ') can pay more than the federal minimum; payroll uses whichever the company rules say.' }, tiles(tot)),
       open.length > 0 && ui.section({ header: 'Needs fixing', footer: 'Shifts with no clock-out count no time until they’re fixed.' }, open.map(x => ui.row({ leading: ui.avatar(x.u.name, { size: 30 }), title: x.u.name + ' · ' + fmt.day(x.d.day, 'short'), subtitle: 'Clocked in ' + fmt.time(x.d.start) + ' · no clock-out', detail: canFix ? 'Fix' : null, chevron: canFix, onTap: canFix ? () => editPunch(x.u.id, x.d.src) : null }))),
       ui.section({ header: 'People', footer: 'Tap someone to see each day' + (canFix ? ', fix times or add a shift they forgot to clock in for.' : '.') },
         people.map(({ u, w }) => ui.row({ leading: ui.avatar(u.name, { size: 34 }), title: u.name, subtitle: h('span', 'Reg ' + hrs(w.reg) + (w.ot ? ' · ' : ''), w.ot ? h('span.tc-ot', 'OT ' + hrs(w.ot)) : null, w.dt ? h('span.tc-dt', ' · DT ' + hrs(w.dt)) : null, ' · Fed OT ' + hrs(w.fed), w.open ? h('span', { style: 'color:var(--red)' }, ' · ' + w.open + ' to fix') : null),
           detail: hrs(w.total), chevron: true, onTap: () => page.push(timesheetSpec(u.id, RS)) })),
         !people.length && ui.row({ title: 'No time in these dates' })),
+      people.length > 0 && ui.section({ header: 'Time cards and reports', footer: 'Each uses the dates chosen above.' },
+        ui.row({ icon: 'doc.text', iconColor: 'var(--indigo)', title: 'Time cards', subtitle: 'One card per person: every clock-in and clock-out, with totals', chevron: true, onTap: () => page.push(reportSpec('cards')) }),
+        ui.row({ icon: 'clock', iconColor: 'var(--orange)', title: 'Overtime report', subtitle: 'Daily, weekly and double-time hours by person', chevron: true, onTap: () => page.push(reportSpec('ot')) }),
+        ui.row({ icon: 'calendar', iconColor: 'var(--blue)', title: 'Federal overtime by workweek', subtitle: 'Hours over 40 in each Monday–Sunday week', chevron: true, onTap: () => page.push(reportSpec('weeks')) })),
       people.length > 0 && ui.section(null, ui.row({ title: 'Export for payroll (CSV)', icon: 'square.and.arrow.up', iconPlain: true, tint: true, onTap: () => ui.toast('Exported ' + people.length + ' people · ' + r.label, 'checkmark') })),
       WD.can('settings.manage') && ui.section(ui.row({ title: 'Overtime rules and pay period', icon: 'clock', iconColor: 'var(--orange)', chevron: true, onTap: () => page.push(rulesSpec()) })));
+  } };
+}
+/* ---------- Time cards and reports (HR) ---------- */
+const shareBtn = { icon: 'share', label: 'Share', onTap: () => ui.toast('Share sheet: print, email or save as PDF', 'share', 2400) };
+const num = m => m ? (Math.round(m / 6) / 10).toFixed(1) : '';
+function timeCard(u, r) {
+  const w = range(u.id, r.from, r.to), org = S.org || data.orgs[0], fixed = w.days.filter(d => d.src && d.src.edits && d.src.edits.length).length, td = (t, cls) => h('td' + (cls || ''), t);
+  return h('div.x-doc.tc-card', h('h4', 'Time card'), h('small', org.name + ' · ' + r.label + (r.payday ? ' · payday ' + fmt.day(r.payday, 'md') : '')),
+    h('p', h('b', u.name), ' · ' + WD.roles[u.role].title),
+    h('table.tc-tab', h('tr', ['Date', 'In', 'Out', 'Break'].map(t => h('th', t)), ['Reg', 'OT', 'DT', 'Total'].map(t => h('th.r', t))),
+      w.days.map(d => h('tr', td(fmt.day(d.day, 'short')), td(fmt.time(d.start)), d.open ? td('missing', '.bad') : td(d.end == null ? 'on shift' : fmt.time(d.end)), td(d.breakMin ? d.breakMin + ' m' : ''), td(num(d.reg), '.r'), td(num(d.ot), '.r'), td(num(d.dt), '.r'), td(num(d.m) || '0.0', '.r'))),
+      !w.days.length && h('tr', h('td', { colspan: 8 }, 'No time in these dates')),
+      h('tr.tot', h('td', { colspan: 4 }, 'Totals (hours)'), td(num(w.reg) || '0.0', '.r'), td(num(w.ot) || '0.0', '.r'), td(num(w.dt) || '0.0', '.r'), td(num(w.total) || '0.0', '.r'))),
+    h('p', 'Federal overtime (hours over 40 in a Monday–Sunday workweek): ', h('b', hrs(w.fed))),
+    w.open > 0 && h('p.bad', w.open + (w.open === 1 ? ' shift has' : ' shifts have') + ' no clock-out and count no time until fixed.'),
+    fixed > 0 && h('p', h('small', fixed + (fixed === 1 ? ' shift was' : ' shifts were') + ' corrected by HR. The reason and who changed it are kept with the shift.')),
+    h('div.tc-sign', h('div', 'Employee signature · date'), h('div', 'Supervisor signature · date')));
+}
+/** Reports for everyone over the dates chosen in Hours and overtime: all time cards, overtime by person, federal overtime week by week. */
+function reportSpec(kind) {
+  const title = { cards: 'Time cards', ot: 'Overtime report', weeks: 'Federal overtime' }[kind];
+  return { title, trailing: [shareBtn], render: () => {
+    const r = rangeDates(RS), people = clockedUsers().map(u => ({ u, w: range(u.id, r.from, r.to) })).filter(x => x.w.days.length);
+    if (kind === 'cards') return [h('div', { style: 'padding:10px 4px 0' }, ui.note(people.length + ' time cards · ' + r.label + '. Share prints or emails them as one PDF, one page per person.')), people.map(x => timeCard(x.u, r)), h('div', { style: 'height:16px' })];
+    if (kind === 'ot') { const ot = people.filter(x => x.w.ot || x.w.dt);
+      return ui.list(ui.section({ header: r.label + ' · ' + ot.length + ' of ' + people.length + ' with overtime', footer: 'Company rules: overtime on hours ' + ruleText() + '. Daily overtime is counted first, then weekly overtime on the regular hours left.' },
+        people.sort((a, b) => (b.w.ot + b.w.dt) - (a.w.ot + a.w.dt)).map(({ u, w }) => ui.row({ leading: ui.avatar(u.name, { size: 34 }), title: u.name, subtitle: 'Daily ' + hrs(w.daily) + ' · weekly ' + hrs(w.weekly) + (R.double.on ? ' · double ' + hrs(w.dt) : '') + ' · regular ' + hrs(w.reg), detail: h('span' + (w.ot + w.dt ? '.tc-ot' : ''), hrs(w.ot + w.dt)) }))),
+        ui.section(null, ui.row({ title: 'Total overtime', detail: hrs(people.reduce((s, x) => s + x.w.ot + x.w.dt, 0)) }), ui.row({ title: 'Total federal overtime', detail: hrs(people.reduce((s, x) => s + x.w.fed, 0)) }))); }
+    const weeks = []; for (let mon = mondayOf(r.from); mon <= r.to; mon = D.add(mon, 7)) weeks.push(mon);
+    return ui.list(h('div', { style: 'padding:4px 4px 0' }, ui.note('Federal overtime (FLSA) is every hour worked over 40 in a Monday–Sunday workweek, whatever the daily hours. A week only partly inside the dates still counts all of its days toward 40.')),
+      weeks.map(mon => { const rows = clockedUsers().map(u => ({ u, w: range(u.id, mon, D.add(mon, 6)) })).filter(x => x.w.days.length);
+        return ui.section('Week of ' + fmt.day(mon, 'md') + ' – ' + fmt.day(D.add(mon, 6), 'md'), rows.map(({ u, w }) => ui.row({ title: u.name, subtitle: hrs(w.total) + ' worked', detail: h('span' + (w.fed ? '.tc-ot' : ''), w.fed ? hrs(w.fed) + ' over 40' : 'None') })), !rows.length && ui.row({ title: 'No time this week' })); }));
   } };
 }
 function rulesSpec() {
@@ -160,9 +214,12 @@ function rulesSpec() {
       R[key].on && ui.pickerRow({ title: 'Pay rate', value: R[key].rate, disabled: !edit, options: rates, onChange: v => { R[key].rate = v; page.refresh(); } })];
     return ui.list(
       !edit && h('div', { style: 'margin-top:8px' }, ui.note('Ask an admin to change these rules.')),
-      ui.section({ header: 'Pay period', footer: 'Used for “This pay period” in Hours and overtime. Reports can also use a month or any dates.' },
-        ui.pickerRow({ title: 'Length', value: R.payDays, disabled: !edit, options: [{ value: 7, label: 'Every week' }, { value: 14, label: 'Every 2 weeks' }], onChange: v => { R.payDays = v; page.refresh(); } }),
-        edit ? ui.dateRow({ title: 'A period started on', value: R.payAnchor, onChange: v => { R.payAnchor = mondayOf(v); page.refresh(); } }) : ui.row({ title: 'A period started on', detail: fmt.day(R.payAnchor, 'md') })),
+      (() => { const fixedLen = R.payKind === 'weekly' || R.payKind === 'biweekly', cur = payPeriod(0), nxt = payPeriod(1), span = payLen() - 1 + (R.payLag || 0);
+        return ui.section({ header: 'Pay period and payday', footer: payText() + ' The next is ' + fmt.day(nxt.from, 'md') + ' – ' + fmt.day(nxt.to, 'md') + ', paid ' + fmt.day(nxt.payday, 'short') + '. “This pay period” and “Last pay period” in the Shift tab and in every hours report follow this pattern.' },
+          ui.pickerRow({ title: 'Paid', value: R.payKind, disabled: !edit, options: PAY_KINDS, onChange: v => { R.payKind = v; R.payDays = payLen(); page.refresh(); } }),
+          fixedLen && (edit ? ui.dateRow({ title: 'A payday falls on', icon: 'dollarsign.circle', iconColor: 'var(--green)', value: cur.payday, onChange: v => { R.payAnchor = D.add(v, -span); page.refresh(); } }) : ui.row({ title: 'A payday falls on', detail: fmt.day(cur.payday, 'md') })),
+          ui.row({ title: 'Payday is', subtitle: 'Days after the pay period ends', detail: (R.payLag || 0) + (R.payLag === 1 ? ' day after' : ' days after'), trailing: edit ? ui.stepper(R.payLag || 0, 0, 15, v => { if (fixedLen) R.payAnchor = D.add(R.payAnchor, (R.payLag || 0) - v); R.payLag = v; page.refresh(); }) : null }),
+          ui.row({ title: 'Each period runs', detail: fixedLen ? fmt.day(cur.from, 'weekday') + ' – ' + fmt.day(cur.to, 'weekday') : R.payKind === 'monthly' ? '1st – end of month' : '1st–15th · 16th–end' })); })(),
       ui.section({ header: 'Daily overtime', footer: 'Hours past this in a single day.' }, rule('daily', 'Overtime after hours in a day', 'a day', 6, 14)),
       ui.section({ header: 'Weekly overtime', footer: 'Regular hours past this in a week (Monday–Sunday). Hours already paid as daily overtime don’t count again.' }, rule('weekly', 'Overtime after hours in a week', 'a week', 30, 60)),
       ui.section({ header: 'Double time', footer: 'Optional. Hours past this in a day are paid at the double-time rate instead.' }, rule('double', 'Double time after hours in a day', 'a day', 10, 16)),
@@ -222,8 +279,9 @@ function personSpec(userId) {
   } };
 }
 
-WD.timeclock = { week, range, rangeDates, editPunch, hrs, timesheetSpec, timesheetsSpec, rulesSpec, teamMapSpec, ruleText };
+WD.timeclock = { week, range, rangeDates, editPunch, hrs, timesheetSpec, timesheetsSpec, rulesSpec, teamMapSpec, ruleText, payPeriod, payText, reportSpec };
 WD.panel.addJump('Team locations', () => { WD.nav.switchTab('shift'); WD.nav.push(teamMapSpec()); });
 WD.panel.addJump('Hours and overtime (HR)', () => { WD.nav.switchTab('shift'); WD.nav.push(timesheetsSpec()); });
+WD.panel.addJump('Time cards (HR)', () => { WD.nav.switchTab('shift'); WD.nav.push(timesheetsSpec()); WD.nav.push(reportSpec('cards')); });
 WD.panel.addJump('Overtime rules', () => { WD.nav.switchTab('settings'); WD.nav.push(rulesSpec()); });
 })();

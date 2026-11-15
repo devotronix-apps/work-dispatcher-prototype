@@ -224,7 +224,7 @@ function offShift(m) {
       : ui.section({ footer: 'You need to agree before your first shift.' }, ui.row({ title: 'Location tracking notice', subtitle: 'Review and agree', icon: 'hand.raised', iconColor: 'var(--orange)', chevron: true, onTap: openNotice })),
     h('div.sh-cta', ui.button('Clock in', { icon: 'play.fill', disabled: !consent, onTap: () => clockIn(r && r.id, veh, m) })),
     locationAuth === 'denied' && h('div', { style: { marginTop: '10px' } }, ui.note('Location is off for Work Dispatcher. You can still clock in and report stops with the buttons; geofence arrivals and the live map won’t work.')),
-    weekSection(), WD.x.timeOffSection(), teamSection(),
+    weekSection(), WD.x.timeOffSection(), WD.co && WD.co.qrSection(), teamSection(),
     !general && ui.section('Recent shifts', history().map(s => ui.row({ title: fmt.day(s.day, 'rel'), subtitle: q.routeName(s.routeId) + ' · ' + s.completed + ' stops · ' + s.miles.toFixed(1) + ' mi', detail: hm(s.end - s.start), chevron: true, onTap: () => nav.push(shiftDetail(s)) }))));
 }
 function nextCard(r) {
@@ -233,7 +233,7 @@ function nextCard(r) {
   const job = stop.job, sx = WD.jobStatuses[job.status], b = (label, kind, fn, ic) => ui.button(label, { kind, icon: ic, block: false, onTap: fn }), btnArrive = data.workflow.arrival !== 'auto';
   const complete = b('Complete stop', 'filled', () => { clearTimeout(geofenceTimer); wf().completeStop(job); }, 'checkmark');
   /* Complete works from any status: drivers who know the way, or several customers at one address, skip Start driving and arrival. */
-  const flow = { scheduled: [b('Start driving', 'tinted', () => { setStatus(job.id, 'enroute'); armGeofence(job); if (data.workflow.afterBilling === 'navigate') wf().openDirections(job); }, 'truck'), complete],
+  const flow = { scheduled: [b('Start driving', 'tinted', () => { setStatus(job.id, 'enroute'); armGeofence(job); if (data.workflow.afterBilling === 'navigate') wf().openDirections(job); WD.co && WD.co.onMyWay(job); }, 'truck'), complete],
     enroute: [btnArrive && b('I’ve arrived', 'tinted', () => { clearTimeout(geofenceTimer); setStatus(job.id, 'arrived'); }, 'mappin'), complete],
     arrived: [complete] }[job.status] || [];
   return h('div.sh-card.sh-next',
@@ -274,7 +274,7 @@ function onShift() {
     ui.section(null, ui.toggleRow({ title: 'Take a break', subtitle: 'Pauses your shift time', icon: 'sh.cup', iconColor: 'var(--orange)', value: sh.onBreak, onChange: on => {
       const now = +WD.now(); if (on) sh.breakStartedAt = now; else { sh.breakMs += now - sh.breakStartedAt; sh.breakStartedAt = null; } sh.onBreak = on; WD.changed(); } })),
     canSeeInv() && ui.section(null, ui.row({ icon: 'doc.text', iconColor: 'var(--indigo)', title: 'Invoices', subtitle: 'Newest first · search by invoice number', chevron: true, onTap: () => nav.push(wf().invoicesSpec()) })),
-    weekSection(), WD.x.timeOffSection(), teamSection(),
+    weekSection(), WD.x.timeOffSection(), WD.co && WD.co.qrSection(), teamSection(),
     h('div.sh-cta', ui.button('Clock out', { kind: 'destructive', icon: 'stop.fill', onTap: clockOut })),
     h('div', { style: { marginTop: '10px' } }, ui.note('Tracking stops automatically ' + cutoff() + ' hours after clock-in (Settings → Field workflow).')));
 }
@@ -297,7 +297,7 @@ function generalShift() {
       h('div.sh-timer' + (sh.onBreak ? '.paused' : ''), { 'data-sh': 'timer' }, v.timer), h('div.subhead', icon('briefcase', 15), ' ', sh.work || 'Shop')),
     ui.section(null, ui.toggleRow({ title: 'Take a break', subtitle: 'Pauses your shift time', icon: 'sh.cup', iconColor: 'var(--orange)', value: sh.onBreak, onChange: on => {
       const now = +WD.now(); if (on) sh.breakStartedAt = now; else { sh.breakMs += now - sh.breakStartedAt; sh.breakStartedAt = null; } sh.onBreak = on; WD.changed(); } })),
-    weekSection(), WD.x.timeOffSection(), teamSection(),
+    weekSection(), WD.x.timeOffSection(), WD.co && WD.co.qrSection(), teamSection(),
     h('div.sh-cta', ui.button('Clock out', { kind: 'destructive', icon: 'stop.fill', onTap: async () => {
       if (!await ui.actionSheet({ title: 'Clock out?', message: 'Location sharing stops when you clock out.', buttons: [{ label: 'Clock out', value: true, role: 'destructive' }] })) return;
       await ui.run('Clocking out…', () => { S.shift = null; }, { offlineOK: true, done: 'Clocked out' }); } })));

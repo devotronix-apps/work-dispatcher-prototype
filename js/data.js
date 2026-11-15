@@ -51,7 +51,7 @@ WD.purgeExtras = (p, boxes) => { const out = [], pb = id => data.priceBook.find(
   if (p && p.stairs === 'down') out.push({ id: 'stairsDown', qty: boxes, rate: pb('stairsDown').rate }); if (p && p.stairs === 'up') out.push({ id: 'stairsUp', qty: boxes, rate: pb('stairsUp').rate });
   if (p && p.haul) out.push({ id: 'haul', qty: boxes, rate: pb('haul').rate }); return out; };
 /** ETA windows given to customers who asked for one: 2 hours before 10 AM, 3 hours from 10 to 1, 4 hours after 1 PM. */
-WD.etaWindow = eta => { const len = eta < 10 * 60 ? 120 : eta < 13 * 60 ? 180 : 240, from = Math.max(6 * 60, Math.round((eta - len / 2) / 30) * 30); return { from, until: from + len }; };
+WD.etaWindow = eta => { const E = data.workflow.eta, len = eta < 10 * 60 ? E.early : eta < 13 * 60 ? E.mid : E.late, from = Math.max(6 * 60, Math.round((eta - len / 2) / 30) * 30); return { from, until: from + len }; };
 /** Planned departure per route and day: key routeId + '|' + day → { depart (minutes), manual }. */
 data.routeDays = {};
 WD.CONTAINERS = ['console', 'bin64', 'bin96', 'box'];
@@ -99,6 +99,10 @@ data.workflow = {
   titleDetails: { on: true, hours: true, lunch: true, closed: true, setup: true, extraBin: true, extraShred: true, early: true, window: true, callAhead: true },
   normalOpen: '08:00', normalClose: '17:00',
   pretripMin: 15,           // minutes for the pre-trip check and loading, added before the recommended departure
+  dayStartMin: 7 * 60 + 30, // when a driver's day starts if AutoRoute has nothing better to go on
+  eta: { early: 120, mid: 180, late: 240 }, // minutes of arrival window given to customers: before 10 AM, 10 to 1, after 1 PM
+  defaultStopMin: 20,       // minutes on site assumed for a stop with no history
+  speedPct: 100,            // drive-time estimate, as a percentage of the map's normal estimate (110 = allow 10% longer)
 };
 WD.state.prefs = { mapsApp: 'apple' };
 data.serviceNotes = [];

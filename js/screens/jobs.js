@@ -89,7 +89,7 @@ function details(job, p) {
   let steps = null;
   if (!job.allDay) {
     const b = (label, kind, fn, ic) => ui.button(label, { kind, icon: ic, block: false, onTap: fn }), complete = b('Complete', 'filled', () => wf.completeStop(job), 'checkmark'), arriveBtn = data.workflow.arrival !== 'auto';
-    if (job.status === 'scheduled') steps = h('div.jb-steps', b('Start driving', 'tinted', () => setStatus('enroute'), 'truck'), complete, b('Skip…', 'gray', skip));
+    if (job.status === 'scheduled') steps = h('div.jb-steps', b('Start driving', 'tinted', () => { setStatus('enroute'); WD.co && WD.co.onMyWay(job); }, 'truck'), complete, b('Skip…', 'gray', skip));
     else if (job.status === 'enroute') steps = h('div.jb-steps', arriveBtn && b('Arrived', 'tinted', () => setStatus('arrived'), 'mappin'), complete, b('Skip…', 'gray', skip));
     else if (job.status === 'arrived') steps = h('div.jb-steps', complete, b('Skip…', 'gray', skip));
     else steps = h('div.jb-done', icon(st.icon, 22, st.color), h('span', job.status === 'completed' && job.arrivedAt != null ? 'Arrived ' + fmt.time(job.arrivedAt) + ' · left ' + fmt.time(job.departedAt) + ' · ' + fmt.dur(Math.max(1, job.departedAt - job.arrivedAt)) + ' on site' : st.title + (job.rescheduledTo ? ' to ' + fmt.day(job.rescheduledTo) : '') + (job.skipNote ? ' · ' + job.skipNote : '')), h('span.spacer'), h('button', { onclick: () => setStatus('scheduled') }, 'Reopen'));
@@ -226,7 +226,7 @@ function ruleLabel(f) {
   return base + (f.repeat === 'weekly' ? ' on ' + WEEKDAYS[D.parse(f.day).getDay()] : f.repeat === 'monthly' ? ' on day ' + D.parse(f.day).getDate() : '') + (f.ends === 'count' ? ', ' + f.count + ' times' : f.ends === 'until' ? ', until ' + fmt.day(f.until, 'md') : '');
 }
 const ITEM_LABEL = { console: 'Consoles', bin64: 'Bins (64 gal)', bin96: 'Bins (96 gal)', box: 'Boxes' };
-const driveMin = (a, b) => Math.round(Math.hypot(a.x - b.x, a.y - b.y) * 0.05 + 3);
+const driveMin = (a, b) => Math.round((Math.hypot(a.x - b.x, a.y - b.y) * 0.05 + 3) * (data.workflow.speedPct || 100) / 100);
 /** Best places to add a located job: the cheapest insertion into each route's day (purge jobs also look at the next working days). */
 function recommend(f, job) {
   if (f.x == null || !f.located || f.allDay) return [];
@@ -485,7 +485,7 @@ function openSearch() {
 /* ================= AutoRoute ================= */
 /* Reorders the remaining (unstarted, located) stops on a route's day list. The board has no clock times, so the result is a new order;
    AutoRoute simulates the day to respect office hours and requested windows (required windows are hard limits, preferred ones are soft). */
-const DAY_START = 7 * 60 + 30;
+const dayStart = () => data.workflow.dayStartMin;
 /** Hard and soft windows for a stop, in minutes since midnight. */
 function windowsOf(j) {
   const open = fmt.fromHHMM(j.bizOpen), close = fmt.fromHHMM(j.bizClose), from = fmt.fromHHMM(j.custFrom), until = fmt.fromHHMM(j.custUntil);
@@ -548,11 +548,11 @@ async function openAutoRoute(routeId, o = {}) {
   /* Start time: for a day that hasn't started, AutoRoute recommends when to leave where the truck is parked so it reaches the first stop as it opens.
      The dispatcher accepts it or picks their own time; either is saved with the route's day. */
   const dayKey = routeId + '|' + day, pretrip = data.workflow.pretripMin, plansDepart = !done && !isToday;
-  let depart = plansDepart ? (data.routeDays[dayKey] ? { ...data.routeDays[dayKey] } : { depart: DAY_START, manual: false }) : null;
-  const ends = () => q.routeEnds(routeId, day), from = () => ({ at: done || ends().start, t: isToday ? Math.max(WD.nowMins(), DAY_START) : depart ? depart.depart + pretrip : DAY_START });
+  let depart = plansDepart ? (data.routeDays[dayKey] ? { ...data.routeDays[dayKey] } : { depart: dayStart(), manual: false }) : null;
+  const ends = () => q.routeEnds(routeId, day), from = () => ({ at: done || ends().start, t: isToday ? Math.max(WD.nowMins(), dayStart()) : depart ? depart.depart + pretrip : dayStart() });
   /** Latest departure that still reaches the first stop when it opens (or at the usual opening time when it has no hours), after the pre-trip time. */
   function recommendDepart(order) {
-    if (!order.length) return DAY_START;
+    if (!order.length) return dayStart();
     const l = simulate(order, { at: ends().start, t: 3 * 60 }, ends().end).legs[0], opens = l.w.hard.from > 0 ? l.w.hard.from : fmt.fromHHMM(data.workflow.normalOpen);
     return { t: Math.max(3 * 60, Math.floor((opens - l.drive - pretrip) / 15) * 15), opens, drive: l.drive, job: l.job };
   }

@@ -1,0 +1,228 @@
+/* CRM tab (people with the “CRM: leads and pipeline” permission): the lead pipeline with sources and territories, follow-ups from templates,
+   quotes and bids, referrals, leads by source, and customer feedback. Features switch on and off in Settings → CRM and leads.
+   Registers WD.screens.crm. Builds on the lead helpers exported by customers.js and the settings and templates in company.js. */
+(function () {
+'use strict';
+const WD = window.WD, { h, ui, icon, state: S, data, q, fmt, date: D } = WD, CO = WD.co, K = WD.screens.customers.crm, ST = data.settings.crm, F = ST.features;
+const today = D.today(), me = () => (S.me && S.me.name) || 'You', first = K.first, canEdit = () => WD.can('crm.edit');
+const money = n => fmt.money(n), money2 = n => fmt.money(n, true), pbName = id => (data.priceBook.find(x => x.id === id) || { name: id }).name;
+const plural = (n, w) => n + ' ' + w + (n === 1 ? '' : 's');
+
+WD.css(`
+.cr-head { padding: 14px 16px 2px; display: flex; align-items: center; gap: 8px; } .cr-head .headline { min-width: 0; overflow-wrap: anywhere; }
+.cr-quiet { color: var(--orange); font-weight: 600; } .cr-hot { color: var(--green); font-weight: 600; }
+.cr-src { display: inline-flex; align-items: center; gap: 4px; }
+`);
+
+/* ================= Sources, seed leads, quotes, referrals ================= */
+const SRC = Object.fromEntries(CO.SOURCES.map(([k, title, ic]) => [k, { title, icon: ic }]));
+/** How the lead arrived (phone, text, email, website form, Google Sheets, manual entry, referral). The channel says where they heard of us. */
+const sourceOf = c => c.source || (c.referredBy || c.channel === 'Referral' ? 'referral' : c.channel === 'Website' ? 'form' : data.interactions.some(i => i.customerId === c.id && i.type === 'sheet') ? 'sheet' : 'phone');
+const srcLabel = c => (SRC[sourceOf(c)] || SRC.phone).title;
+const P = (name, role, phone, email) => ({ name, role, phone, email });
+[['c41', 'Pinecrest Family Law', 'email', 'Website', 'lead', 0, 540, 180, '18 Pinecrest Ave', P('Hannah Brandt', 'Office manager', '+17375550141', 'hannah@pinecrestlaw.example'), 'Emailed asking for a price on two consoles, every 4 weeks.', 1, 'u3'],
+  ['c42', 'Oak Hollow HOA', 'text', 'Google Maps', 'contacted', -5, 300, 430, '900 Oak Hollow Dr', P('Dale Whitman', 'Board treasurer', '+15125550142', 'treasurer@oakhollowhoa.example'), 'Texted about a one-time clean-out of 25 boxes of old records.', 9, 'u2'],
+  ['c43', 'Summit Tax Service', 'referral', 'Referral', 'quoted', 2, 760, 380, '45 Summit Plaza', P('Irene Kovac', 'Owner', '+15125550143', 'irene@summittax.example'), 'Referred by Harlow & Finch. Wants weekly service January through April.', 4, 'u3'],
+  ['c44', 'Lakemont County Clerk', 'email', 'Other', 'quoted', 6, 480, 760, '1 Courthouse Sq', P('Procurement desk', 'Purchasing', '+15125550144', 'bids@lakemontcounty.example'), 'Invitation to bid: 14 consoles at three buildings, 3-year term. Bid due in two weeks.', 3, 'u3']]
+  .forEach(([id, name, source, channel, lifecycle, next, x, y, address, contact, note, age, owner]) => { if (q.customer(id)) return;
+    const c = K.mk({ id, name, channel, lifecycle, next, x, y, address, contacts: [contact], owner, cnotes: note, containers: id === 'c42' ? '25 boxes' : id === 'c44' ? '14 consoles' : '2 consoles', type: id === 'c42' ? 'purge' : 'regular', freq: id === 'c42' ? 'One time' : id === 'c43' ? 'Weekly' : 'Every 4 weeks' });
+    Object.assign(c, { source, createdAt: +WD.now() - age * 864e5, changes: [] }); c.locations.forEach(l => { l.items = WD.parseItems(l.containers); });
+    K.addI({ customerId: id, type: 'note', at: c.createdAt, text: note, by: source === 'referral' ? 'Colleen Abbott' : 'Work Dispatcher · ' + SRC[source].title.toLowerCase() });
+    if (lifecycle !== 'lead') K.addI({ customerId: id, type: 'note', at: c.createdAt + 5 * 36e5, text: 'Follow-up sent (“New lead — first reply”, text).', by: (q.user(owner) || {}).name || 'Office' }); });
+data.quotes = []; let qSeq = 300;
+function addQuote(c, o = {}) {
+  const loc = c.locations[0] || {}, src = (loc.items && loc.items.length ? loc.items : WD.parseItems(loc.containers)).filter(i => i.qty > 0);
+  const qt = { id: 'qt' + (++qSeq), number: (o.kind === 'bid' ? 'B-' : 'Q-') + qSeq, kind: 'quote', customerId: c.id, items: src.length ? src.map(i => ({ name: pbName(i.id), qty: i.qty, rate: i.rate })) : [{ name: 'Console service', qty: 1, rate: 65 }], freq: c.freq, status: 'draft', at: +WD.now(), sentAt: null, validDays: 30, due: null, notes: '', by: me(), ...o };
+  data.quotes.push(qt); return qt;
+}
+[['c23', { status: 'sent', sentAt: +WD.now() - 6 * 864e5, at: +WD.now() - 6 * 864e5, by: 'Priya Raman' }], ['c34', { status: 'sent', sentAt: +WD.now() - 2 * 864e5, at: +WD.now() - 3 * 864e5, by: 'Priya Raman' }], ['c43', { status: 'sent', sentAt: +WD.now() - 864e5, at: +WD.now() - 2 * 864e5, by: 'Colleen Abbott' }],
+  ['c44', { kind: 'bid', status: 'draft', due: D.add(today, 13), at: +WD.now() - 2 * 864e5, by: 'Colleen Abbott', notes: 'Three buildings. Price per console per service, 3-year term with a fixed rate.' }], ['c25', { status: 'draft', at: +WD.now() - 864e5, by: 'Colleen Abbott' }]]
+  .forEach(([cid, o]) => { const c = q.customer(cid); if (c) addQuote(c, o); });
+data.referrals = [];
+[['c43', 'c1', 2, false], ['c36', 'c21', 3, false], ['c2', 'c1', 210, true]].forEach(([leadId, byId, age, thanked]) => { const c = q.customer(leadId), by = q.customer(byId); if (!c || !by) return; c.referredBy = byId; data.referrals.push({ id: 'rf' + leadId, leadId, byId, at: +WD.now() - age * 864e5, thanked }); });
+
+/* ================= Lead helpers ================= */
+const pipe = () => data.customers.filter(c => K.PIPE.includes(c.lifecycle) && CO.inTerritory(c));
+const lastTouch = c => Math.max(c.lastFollowAt || 0, c.createdAt || 0, ...data.interactions.filter(i => i.customerId === c.id).map(i => i.at));
+const quiet = c => { const t = lastTouch(c); return t ? Math.max(0, Math.floor((+WD.now() - t) / 864e5)) : 0; };
+const isDue = c => c.lifecycle !== 'scheduled' && c.lifecycle !== 'lost' && ((c.nextAction && c.nextAction <= today) || (F.reminders && c.lifecycle !== 'lead' && quiet(c) >= ST.remindDays && !(c.nextAction && c.nextAction > today)));
+/** The follow-up that fits: by stage, how many were already sent, and how long it has been quiet. → [template id, why] */
+function suggest(c) {
+  const d = quiet(c), n = c.followUps || 0;
+  if (c.lifecycle === 'quoted') return ['quote1', 'Quote sent' + (d ? ', quiet for ' + plural(d, 'day') : '')];
+  if (c.lifecycle === 'lead' && !K.contactedYet(c) && !n) return ['lead1', 'New lead, nobody has replied yet'];
+  if (n >= 2 || d >= 14) return ['lead4', n >= 2 ? plural(n, 'follow-up') + ' sent with no reply' : 'No reply for ' + plural(d, 'day')];
+  if (d >= 7) return ['lead3', 'No reply for ' + plural(d, 'day')];
+  return ['lead2', d ? 'No reply for ' + plural(d, 'day') : 'Contacted, waiting to hear back'];
+}
+const quietText = c => { const d = quiet(c); return c.lifecycle === 'lead' && !K.contactedYet(c) && !c.followUps ? h('span.cr-hot', 'New ' + (d ? plural(d, 'day') + ' ago' : 'today')) : d >= ST.remindDays ? h('span.cr-quiet', 'Quiet for ' + plural(d, 'day')) : h('span', d ? 'Last contact ' + plural(d, 'day') + ' ago' : 'Contact today'); };
+function sendFollowUp(c, startId, onDone) {
+  const list = data.templates.filter(t => t.group === 'Leads and follow-ups' || !t.builtin), p = c.contacts[0] || {}; let id = startId || suggest(c)[0];
+  const ctx = () => CO.ctxFor(c, { customer: c.name, link: 'https://go.discountshred.example/q/' + c.id }); let text = CO.fill(CO.tpl(id).body, ctx());
+  ui.sheet({ title: 'Send a follow-up', leading: [{ label: 'Cancel', onTap: pg => pg.dismiss() }],
+    trailing: [{ label: 'Send', bold: true, onTap: async pg => { const t = CO.tpl(id), to = t.channel === 'email' ? p.email : p.phone && fmt.phone(p.phone); if (!to) return ui.alert({ title: t.channel === 'email' ? 'No email on file' : 'No phone on file', message: 'Add one to the contact, or choose a template sent the other way.' });
+      if (!await ui.run('Sending…', () => { K.addI({ customerId: c.id, type: 'note', at: +WD.now(), text: 'Follow-up sent (“' + t.name + '”, ' + (t.channel === 'email' ? 'email' : 'text') + ' to ' + to + '): ' + text.replace(/\s+/g, ' ').slice(0, 110) + (text.length > 110 ? '…' : ''), by: me() });
+        c.followUps = (c.followUps || 0) + 1; c.lastFollowAt = +WD.now(); if (c.lifecycle === 'lead') c.lifecycle = 'contacted'; if (F.reminders) c.nextAction = D.add(today, ST.remindDays); }, { done: 'Sent' })) return;
+      pg.dismiss(); ui.toast('Sent to ' + to + (F.reminders ? ' · comes back in ' + plural(ST.remindDays, 'day') + ' if there’s no reply' : ''), t.channel === 'email' ? 'envelope' : 'message', 3200); onDone && onDone(); } }],
+    render: pg => { const t = CO.tpl(id), [sid, why] = suggest(c);
+      return ui.list(ui.section({ header: c.name + ' · ' + (p.name || 'Contact'), footer: id === sid ? 'Suggested: ' + why.toLowerCase() + '.' : 'Suggested for this lead: “' + CO.tpl(sid).name + '” (' + why.toLowerCase() + ').' },
+          ui.pickerRow({ title: 'Template', value: id, options: list.map(x => ({ value: x.id, label: x.name + (x.id === sid ? ' · suggested' : '') })), onChange: v => { id = v; text = CO.fill(CO.tpl(id).body, ctx()); pg.refresh(); } }),
+          ui.row({ title: 'Sent as', detail: (t.channel === 'email' ? 'Email to ' + (p.email || 'no email') : 'Text to ' + (p.phone ? fmt.phone(p.phone) : 'no phone')) })),
+        ui.section({ header: t.channel === 'email' ? 'Subject: ' + CO.fill(t.subject, ctx()) : 'Message', footer: 'Change the wording for this lead here. To change it for everyone, edit the template in Settings → Templates.' },
+          (r => { r.classList.add('co-body'); return r; })(ui.inputRow({ multiline: true, value: text, onInput: v => { text = v; } })))); } }, { detent: 'large' });
+}
+
+/* ================= Lead page ================= */
+function leadSpec(id) {
+  return { title: 'Lead', render: page => { const c = q.customer(id); if (!c) return ui.empty({ icon: 'person', title: 'Lead not found' });
+    const p = c.contacts[0] || {}, edit = canEdit(), [sid, why] = suggest(c), quotes = data.quotes.filter(x => x.customerId === id), ref = data.referrals.find(r => r.leadId === id), by = ref && q.customer(ref.byId), acts = K.timeline(id).slice(0, 4), src = SRC[sourceOf(c)] || SRC.phone;
+    const stages = ['lead', 'contacted', 'quoted', 'scheduled', 'customer'].concat(c.lifecycle === 'lost' ? ['lost'] : []).map(s => ({ value: s, label: K.LC[s][0] }));
+    return [h('div.cr-head', h('span.headline', c.name), h('span.spacer'), ui.badge(K.LC[c.lifecycle][0], K.LC[c.lifecycle][1])),
+      h('div.footnote', { style: 'padding:0 16px 2px' }, [p.name, p.phone && fmt.phone(p.phone), p.email].filter(Boolean).join(' · ')),
+      ui.list(
+        ui.section({ header: 'Status', footer: c.notes || null },
+          ui.pickerRow({ title: 'Stage', disabled: !edit, value: c.lifecycle, options: stages, onChange: v => { if (v === c.lifecycle) return; c.lifecycle = v; c.lostReason = null; K.addI({ customerId: id, type: 'note', at: +WD.now(), text: 'Moved to ' + K.LC[v][0] + '.', by: me() }); WD.changed(); page.refresh(); ui.toast('Moved to ' + K.LC[v][0], 'checkmark'); } }),
+          edit ? ui.dateRow({ title: 'Next follow-up', value: c.nextAction || '', onChange: v => { c.nextAction = v; WD.changed(); page.refresh(); } }) : ui.row({ title: 'Next follow-up', detail: K.nextLabel(c) }),
+          ui.pickerRow({ title: 'Assigned to', disabled: !edit, value: c.owner, options: K.owners().map(u => ({ value: u.id, label: u.name })), onChange: v => { c.owner = v; WD.changed(); page.refresh(); } }),
+          ui.row({ title: 'Last contact', detail: quietText(c) })),
+        ui.section('Where it came from',
+          ui.row({ icon: src.icon, iconColor: 'var(--teal)', title: src.title, subtitle: by ? 'Referred by ' + by.name : 'Heard of us: ' + c.channel, detail: c.createdAt ? fmt.rel(c.createdAt) : null }),
+          F.territories && ui.row({ icon: 'mappin', iconColor: 'var(--red)', title: 'Territory', subtitle: (c.locations[0] || {}).address, detail: CO.regionOf(c) + ' · ' + CO.zipOf(c) + (CO.areaOf(c) ? ' · (' + CO.areaOf(c) + ')' : '') })),
+        edit && c.lifecycle !== 'lost' && ui.section({ header: 'Follow up', footer: F.followups ? 'The suggestion changes with the stage, how many follow-ups went out and how long it has been quiet.' : null },
+          F.followups && ui.row({ icon: (CO.tpl(sid).channel === 'email' ? 'envelope' : 'message'), iconColor: 'var(--green)', title: 'Send “' + CO.tpl(sid).name + '”', subtitle: why, chevron: true, onTap: () => sendFollowUp(c, sid, () => page.refresh()) }),
+          F.followups && ui.row({ icon: 'doc.text', iconPlain: true, title: 'Choose another template…', tint: true, onTap: () => sendFollowUp(c, null, () => page.refresh()) }),
+          ui.row({ icon: 'phone.fill', iconPlain: true, title: 'Call ' + (first(p.name) || 'them'), tint: true, disabled: !p.phone, onTap: () => K.startCall(c, p) }),
+          ui.row({ icon: 'phone', iconPlain: true, title: 'Log a call', tint: true, onTap: () => K.logCall(c) })),
+        F.quotes && ui.section({ header: 'Quotes and bids' },
+          quotes.map(qt => quoteRow(qt, false)),
+          edit && ui.row({ icon: 'plus.circle.fill', iconPlain: true, iconColor: 'var(--green)', title: 'New quote', tint: true, onTap: () => page.push(quoteSpec(addQuote(c))) }),
+          edit && ui.row({ icon: 'plus.circle.fill', iconPlain: true, iconColor: 'var(--green)', title: 'New bid', subtitle: 'For an invitation to bid, with a due date', tint: true, onTap: () => page.push(quoteSpec(addQuote(c, { kind: 'bid', due: D.add(today, 14) }))) })),
+        F.referrals && ref && ui.section({ header: 'Referral', footer: 'Thank-you: ' + ST.referralReward + '.' }, referralRow(ref, page)),
+        ui.section('Recent activity', acts.map(i => { const d = K.describe(i); return ui.row({ title: d.title, subtitle: [d.snippet, (d.who ? d.who + ' · ' : '') + fmt.rel(i.at)].filter(Boolean).map(x => h('div', x)) }); }), !acts.length && ui.row({ title: 'Nothing yet' })),
+        ui.section(null, WD.can('crm.view') && ui.row({ title: 'Open the full record', subtitle: 'Contacts, calls, texts, email, documents', chevron: true, onTap: () => WD.screens.customers.openDetail(id) }),
+          edit && c.lifecycle !== 'lost' && ui.row({ title: 'Mark lost…', destructive: true, onTap: () => K.markLost(c) })))];
+  } };
+}
+const openLead = id => WD.nav.push(leadSpec(id));
+
+/* ================= Quotes and bids ================= */
+const QS = { draft: ['Draft', 'var(--gray)'], sent: ['Sent · waiting', 'var(--blue)'], accepted: ['Accepted', 'var(--green)'], declined: ['Declined', 'var(--red)'] };
+const qTotal = qt => qt.items.reduce((s, i) => s + (+i.qty || 0) * (+i.rate || 0), 0);
+const quoteRow = (qt, withName = true) => { const c = q.customer(qt.customerId), age = qt.sentAt ? Math.floor((+WD.now() - qt.sentAt) / 864e5) : 0;
+  return ui.row({ icon: qt.kind === 'bid' ? 'briefcase' : 'doc.text', iconColor: qt.kind === 'bid' ? 'var(--brown)' : 'var(--indigo)', title: withName ? (c ? c.name : 'Lead removed') : qt.number, subtitle: (withName ? qt.number + ' · ' : '') + (qt.kind === 'bid' ? 'Bid' + (qt.due ? ' due ' + fmt.day(qt.due, 'md') : '') : qt.freq) + (qt.status === 'sent' ? ' · sent ' + (age ? plural(age, 'day') + ' ago' : 'today') : ''),
+    badge: ui.badge(QS[qt.status][0], QS[qt.status][1]), detail: money(qTotal(qt)), chevron: true, onTap: () => WD.nav.push(quoteSpec(qt)) }); };
+function quoteDoc(qt) { const c = q.customer(qt.customerId) || { name: 'Customer', locations: [{}] }, o = S.org || data.orgs[0], bid = qt.kind === 'bid';
+  return h('div.x-doc', h('h4', (bid ? 'Bid ' : 'Quote ') + qt.number), h('small', o.name + (o.phone ? ' · ' + o.phone : '')), h('p', 'Prepared for ', h('b', c.name), (c.locations[0] || {}).address ? ', ' + c.locations[0].address : '', '.'),
+    h('table', qt.items.map(i => h('tr', h('td', i.qty + ' × ' + i.name), h('td', money2(i.rate) + ' each'))), h('tr', h('td', 'Service'), h('td', qt.freq)), h('tr', h('td', qt.freq === 'One time' ? 'Total' : 'Per visit'), h('td', h('b', money2(qTotal(qt))))),
+      h('tr', h('td', bid ? 'Bid due' : 'Good for'), h('td', bid && qt.due ? fmt.day(qt.due, 'md') : qt.validDays + ' days'))),
+    qt.notes && h('p', qt.notes), h('p', 'All material is shredded on site and recycled, with a certificate of destruction on every invoice.')); }
+function quoteSpec(qt) {
+  const FREQS = ['Weekly', 'Every 2 weeks', 'Every 4 weeks', 'Monthly', 'Quarterly', 'One time', 'On call'];
+  return { title: () => qt.number, render: page => { const c = q.customer(qt.customerId), edit = canEdit() && qt.status === 'draft', p = (c && c.contacts[0]) || {}, bid = qt.kind === 'bid';
+    const setStatus = (st, fn, done) => ui.run('Saving…', () => { qt.status = st; fn && fn(); K.addI({ customerId: c.id, type: 'note', at: +WD.now(), text: (bid ? 'Bid ' : 'Quote ') + qt.number + ' ' + done + ' · ' + money(qTotal(qt)) + '.', by: me() }); }, { done: done[0].toUpperCase() + done.slice(1) });
+    return [h('div.cr-head', h('span.headline', c ? c.name : 'Lead'), h('span.spacer'), ui.badge(QS[qt.status][0], QS[qt.status][1])), quoteDoc(qt),
+      ui.list(
+        edit && ui.section({ header: 'Lines', footer: 'Starts from the containers on the lead. Rates come from the price book and can be changed for this ' + (bid ? 'bid' : 'quote') + '.' },
+          qt.items.map((it, i) => h('div.row.jb-item', h('div.row-main', h('input.field', { type: 'text', value: it.name, 'aria-label': 'Description', style: 'padding:0;width:100%', oninput: e => { it.name = e.target.value; }, onchange: () => page.refresh() }), h('div.row-sub', 'Rate each · quantity')),
+            h('input.jb-rate', { type: 'text', inputmode: 'decimal', 'aria-label': 'Rate', value: '$' + it.rate, oninput: e => { const v = parseFloat(e.target.value.replace(/[^0-9.]/g, '')); it.rate = isNaN(v) ? 0 : v; }, onchange: () => page.refresh() }),
+            h('span.jb-qn', String(it.qty)), ui.stepper(it.qty, 0, 200, v => { if (v === 0) qt.items.splice(i, 1); else it.qty = v; page.refresh(); }))),
+          ui.row({ icon: 'plus.circle.fill', iconPlain: true, iconColor: 'var(--green)', title: 'Add a line', tint: true, onTap: (e, el) => ui.menu(el, data.priceBook.map(x => ({ label: x.name, onTap: () => { qt.items.push({ name: x.name, qty: 1, rate: x.rate }); page.refresh(); } }))) })),
+        edit && ui.section('Terms', ui.pickerRow({ title: 'Service', value: qt.freq, options: FREQS.includes(qt.freq) ? FREQS : [qt.freq].concat(FREQS), onChange: v => { qt.freq = v; page.refresh(); } }),
+          bid ? ui.dateRow({ title: 'Bid due', value: qt.due || today, onChange: v => { qt.due = v; page.refresh(); } }) : ui.row({ title: 'Good for', detail: qt.validDays + ' days', trailing: ui.stepper(qt.validDays / 15, 1, 6, v => { qt.validDays = v * 15; page.refresh(); }) }),
+          ui.inputRow({ label: 'Note', placeholder: 'Shown on the ' + (bid ? 'bid' : 'quote'), value: qt.notes, onInput: v => { qt.notes = v; } })),
+        canEdit() && ui.section({ footer: qt.status === 'sent' ? 'Sent to ' + (p.email || 'the contact') + ' ' + fmt.rel(qt.sentAt).toLowerCase() + '. The lead comes back as due if there is no answer.' : qt.status === 'accepted' ? 'The lead moved to Scheduled.' : null },
+          qt.status === 'draft' && ui.row({ icon: 'envelope', iconPlain: true, title: 'Send by email', subtitle: p.email || 'No email on file', tint: true, disabled: !p.email, onTap: async () => { if (await setStatus('sent', () => { qt.sentAt = +WD.now(); if (c.lifecycle === 'lead' || c.lifecycle === 'contacted') c.lifecycle = 'quoted'; if (F.reminders) c.nextAction = D.add(today, ST.remindDays); }, 'sent')) page.refresh(); } }),
+          qt.status === 'sent' && F.followups && ui.row({ icon: 'envelope', iconPlain: true, title: 'Send “' + CO.tpl('quote1').name + '”', tint: true, onTap: () => sendFollowUp(c, 'quote1', () => page.refresh()) }),
+          (qt.status === 'sent' || qt.status === 'draft') && ui.row({ icon: 'checkmark.circle', iconPlain: true, title: bid ? 'Bid won' : 'Customer accepted', tint: true, onTap: async () => { if (!await setStatus('accepted', () => { c.lifecycle = 'scheduled'; c.nextAction = null; }, 'accepted')) return; page.refresh();
+            if (WD.can('contracts.manage') && await ui.actionSheet({ title: 'Create the service agreement?', message: 'It starts from this customer’s containers and rates, and can be edited before it is sent.', buttons: [{ label: 'Create service agreement', value: true }], cancel: 'Not now' })) { const loc = c.locations[0]; loc.items = WD.parseItems(loc.containers).map((it, i) => ({ ...it, rate: (qt.items[i] || it).rate })); WD.nav.push(WD.x.agreementSpec(WD.x.createAgreement(c))); } } }),
+          qt.status === 'sent' && ui.row({ title: bid ? 'Bid lost' : 'Customer declined', destructive: true, onTap: async () => { if (await setStatus('declined', null, 'declined')) page.refresh(); } }),
+          qt.status === 'draft' && ui.row({ title: 'Delete draft', destructive: true, onTap: () => { data.quotes = data.quotes.filter(x => x !== qt); WD.changed(); page.pop(); } })),
+        ui.section(null, c && ui.row({ title: 'Open the lead', chevron: true, onTap: () => openLead(c.id) })))];
+  } };
+}
+function quotesView() {
+  const mine = data.quotes.filter(x => { const c = q.customer(x.customerId); return c && CO.inTerritory(c); }).sort((a, b) => (b.sentAt || b.at) - (a.sentAt || a.at)), by = st => mine.filter(x => x.status === st), open = by('sent').reduce((s, x) => s + qTotal(x), 0);
+  return ui.list(
+    ui.section(null, h('div.co-tiles', h('div', h('b', String(by('draft').length)), h('span', 'Drafts')), h('div', h('b', String(by('sent').length)), h('span', 'Waiting')), h('div', h('b', money(open)), h('span', 'Open value')), h('div', h('b', String(by('accepted').length)), h('span', 'Accepted')))),
+    ui.section({ header: 'Sent — waiting for an answer', footer: 'Start a quote or bid from a lead.' }, by('sent').map(x => quoteRow(x)), !by('sent').length && ui.row({ title: 'Nothing waiting' })),
+    ui.section('Drafts', by('draft').map(x => quoteRow(x))), ui.section('Accepted', by('accepted').map(x => quoteRow(x))), ui.section('Declined', by('declined').map(x => quoteRow(x))));
+}
+
+/* ================= Referrals ================= */
+function referralRow(r, page) { const c = q.customer(r.leadId), by = q.customer(r.byId), won = c && ['scheduled', 'serviced', 'customer'].includes(c.lifecycle);
+  return ui.row({ leading: ui.avatar(c ? c.name : '?', { size: 34 }), title: c ? c.name : 'Lead removed', subtitle: ['Referred by ' + (by ? by.name : 'someone') + ' · ' + fmt.rel(r.at).toLowerCase(), r.thanked ? 'Thank-you sent' : won ? 'Signed up — thank-you not sent yet' : 'Thank-you goes out when they sign up'].map(x => h('div', x)),
+    badge: c ? ui.badge(K.LC[c.lifecycle][0], K.LC[c.lifecycle][1]) : null, chevron: true, onTap: async () => {
+      const v = await ui.actionSheet({ title: c.name, message: 'Referred by ' + (by ? by.name : 'someone'), buttons: [{ label: 'Open the lead', value: 'lead' }, by && { label: 'Open ' + by.name, value: 'by' }, by && !r.thanked && canEdit() && { label: 'Send the thank-you to ' + by.name, value: 'thanks' }].filter(Boolean) });
+      if (v === 'lead') openLead(c.id); else if (v === 'by') WD.screens.customers.openDetail(by.id);
+      else if (v === 'thanks' && await ui.run('Sending thank-you…', () => { r.thanked = true; K.addI({ customerId: by.id, type: 'note', at: +WD.now(), text: 'Referral thank-you sent for ' + c.name + ' (' + ST.referralReward + '): ' + CO.fill(CO.tpl('refthanks').body, CO.ctxFor(by, { customer: c.name })), by: me() }); }, { done: 'Thank-you sent' })) page && page.refresh(); } }); }
+function referralsView(page) {
+  const list = data.referrals.filter(r => { const c = q.customer(r.leadId); return c && CO.inTerritory(c); }).sort((a, b) => b.at - a.at), won = list.filter(r => ['scheduled', 'serviced', 'customer'].includes((q.customer(r.leadId) || {}).lifecycle));
+  return ui.list(
+    ui.section(null, h('div.co-tiles', { style: 'grid-template-columns:repeat(3,1fr)' }, h('div', h('b', String(list.length)), h('span', 'Referrals')), h('div', h('b', String(won.length)), h('span', 'Signed up')), h('div', h('b', String(won.filter(r => !r.thanked).length)), h('span', 'To thank')))),
+    ui.section({ header: 'Referrals', footer: 'Thank-you for a referral that signs up: ' + ST.referralReward + '. Change it in Settings → CRM and leads.' }, list.map(r => referralRow(r, page)), !list.length && ui.row({ title: 'No referrals yet' })),
+    canEdit() && ui.section(null, ui.row({ icon: 'plus.circle.fill', iconPlain: true, iconColor: 'var(--green)', title: 'Add a referral', tint: true, onTap: () => newLead({ source: 'referral' }) })));
+}
+
+/* ================= New lead (manual entry) ================= */
+function newLead(pre = {}) {
+  const on = CO.SOURCES.filter(([k]) => ST.sources[k]), f = { name: '', contact: '', phone: '', email: '', address: '', zip: '', source: pre.source || (ST.sources.manual ? 'manual' : on[0] ? on[0][0] : 'manual'), channel: 'Other', referredBy: null, notes: '', owner: S.me.id };
+  const customers = data.customers.filter(c => ['customer', 'serviced'].includes(c.lifecycle)).sort((a, b) => a.name.localeCompare(b.name));
+  ui.sheet({ title: 'New lead', leading: [{ label: 'Cancel', onTap: p => p.dismiss() }],
+    trailing: [{ label: 'Add', bold: true, onTap: async p => { if (!f.name.trim()) return ui.toast('Add a name', 'note'); if (!fmt.phoneValid(f.phone) && !f.email.trim()) return ui.toast('Add a phone number or an email', 'phone');
+      let c = null; const id = 'c' + Date.now().toString(36);
+      if (!await ui.run('Adding lead…', () => { c = K.mk({ id, name: f.name.trim(), channel: f.source === 'referral' ? 'Referral' : f.channel, contacts: [{ name: f.contact.trim() || f.name.trim(), role: '', phone: fmt.phoneValid(f.phone) ? '+1' + fmt.phoneDigits(f.phone) : '', email: f.email.trim() }], address: f.address.trim() || 'Address to come', owner: f.owner, next: 0, cnotes: f.notes.trim() });
+        Object.assign(c, { source: f.source, zip: f.zip.trim() || null, createdAt: +WD.now(), changes: [], referredBy: f.source === 'referral' ? f.referredBy : null }); c.locations.forEach(l => { l.items = []; });
+        if (c.referredBy) data.referrals.push({ id: 'rf' + id, leadId: id, byId: c.referredBy, at: +WD.now(), thanked: false });
+        K.addI({ customerId: id, type: 'note', at: +WD.now(), text: 'Lead added by hand' + (f.notes.trim() ? ': ' + f.notes.trim() : '.'), by: me() }); K.addTask(id, 'Call back new lead', 0, { lead: true }); }, { done: 'Lead added' })) return;
+      p.dismiss(); setTimeout(() => openLead(id), 400); } }],
+    render: p => ui.list(
+      ui.section('Who', ui.inputRow({ label: 'Name', placeholder: 'Company or person', caps: 'words', value: f.name, required: true, autofocus: true, onInput: v => { f.name = v; } }), ui.inputRow({ label: 'Contact', placeholder: 'Who to ask for', caps: 'words', value: f.contact, onInput: v => { f.contact = v; } }),
+        ui.phoneRow({ value: f.phone, onInput: v => { f.phone = v; } }), ui.inputRow({ label: 'Email', type: 'email', caps: 'off', placeholder: 'Optional', value: f.email, onInput: v => { f.email = v; } })),
+      ui.section({ header: 'Where', footer: F.territories ? 'The ZIP code and the phone’s area code decide who sees this lead.' : null }, ui.inputRow({ label: 'Address', placeholder: 'Optional', value: f.address, onInput: v => { f.address = v; } }), ui.inputRow({ label: 'ZIP', inputmode: 'numeric', placeholder: 'Optional', value: f.zip, onInput: v => { f.zip = v.replace(/\D/g, '').slice(0, 5); } })),
+      ui.section({ header: 'How it came in', footer: 'Sources are switched on and off in Settings → CRM and leads.' },
+        ui.pickerRow({ title: 'Source', value: f.source, options: on.map(([k, title, ic]) => ({ value: k, label: title, icon: ic })), onChange: v => { f.source = v; p.refresh(); } }),
+        f.source === 'referral' ? ui.pickerRow({ title: 'Referred by', placeholder: 'Choose a customer', value: f.referredBy, options: customers.map(c => ({ value: c.id, label: c.name })), onChange: v => { f.referredBy = v; p.refresh(); } })
+          : ui.pickerRow({ title: 'Heard of us from', value: f.channel, options: K.CHANNELS.filter(x => x !== 'Referral'), onChange: v => { f.channel = v; p.refresh(); } }),
+        ui.pickerRow({ title: 'Assigned to', value: f.owner, options: K.owners().map(u => ({ value: u.id, label: u.name })), onChange: v => { f.owner = v; p.refresh(); } })),
+      ui.section('Notes', ui.inputRow({ multiline: true, placeholder: 'What do they need?', value: f.notes, onInput: v => { f.notes = v; } }))) }, { detent: 'large' });
+}
+
+/* ================= Pipeline ================= */
+const R = { seg: 'pipeline', source: 'all', lostOpen: false };
+function pipelineView(page) {
+  const all = pipe(), list = R.source === 'all' ? all : all.filter(c => sourceOf(c) === R.source), g = { fresh: [], due: [], contacted: [], quoted: [], scheduled: [], lost: [] };
+  list.forEach(c => { if (c.lifecycle === 'lost') g.lost.push(c); else if (c.lifecycle === 'lead' && !K.contactedYet(c) && !c.followUps) g.fresh.push(c); else if (isDue(c)) g.due.push(c); else if (c.lifecycle === 'quoted') g.quoted.push(c); else if (c.lifecycle === 'scheduled') g.scheduled.push(c); else g.contacted.push(c); });
+  const quoted = data.quotes.filter(x => x.status === 'sent' && list.some(c => c.id === x.customerId)).reduce((s, x) => s + qTotal(x), 0), t = CO.territory(S.me);
+  const row = c => ui.row({ title: c.name, subtitle: [h('span.cr-src', icon((SRC[sourceOf(c)] || SRC.phone).icon, 13), srcLabel(c) + ' · ' + (c.referredBy && q.customer(c.referredBy) ? 'by ' + q.customer(c.referredBy).name : c.channel) + ' · ' + first(K.staff(c.owner))), c.lifecycle === 'lost' ? 'Lost: ' + (c.lostReason || 'no reason') : quietText(c)].map(x => h('div', x)),
+    detail: c.lifecycle === 'lost' ? null : K.nextLabel(c), chevron: true, onTap: () => openLead(c.id) });
+  const sec = (title, arr, footer) => arr.length ? ui.section({ header: title + ' · ' + arr.length, footer }, arr.sort((a, b) => (a.nextAction || '9').localeCompare(b.nextAction || '9')).map(row)) : null;
+  const srcRows = F.sources ? CO.SOURCES.map(([k, title, ic]) => { const xs = all.filter(c => sourceOf(c) === k), won = xs.filter(c => c.lifecycle === 'scheduled').length; return xs.length ? ui.row({ icon: ic, iconColor: 'var(--teal)', title, subtitle: ST.sources[k] ? null : 'Switched off — no new leads from here', detail: plural(xs.length, 'lead') + (won ? ' · ' + won + ' won' : ''), chevron: true, onTap: () => { R.source = k; page.refresh(); page.body.scrollTop = 0; } }) : null; }).filter(Boolean) : [];
+  return ui.list(
+    !CO.seesAll() && h('div', { style: 'padding:4px 4px 0' }, ui.note('You see leads assigned to you' + (t.values.length ? ', plus every lead in ' + CO.territoryText(S.me) : '') + '. An admin sets this in Settings → CRM and leads.')),
+    ui.section(null, h('div.co-tiles', h('div', h('b', { style: g.fresh.length ? 'color:var(--blue)' : null }, String(g.fresh.length)), h('span', 'New')), h('div', h('b', { style: g.due.length ? 'color:var(--orange)' : null }, String(g.due.length)), h('span', 'Due')), h('div', h('b', money(quoted)), h('span', 'Quoted')), h('div', h('b', String(g.scheduled.length)), h('span', 'Won')))),
+    R.source !== 'all' && h('div.cu-filter', 'Showing leads from ' + (SRC[R.source] || {}).title.toLowerCase(), h('button.cu-link', { onclick: () => { R.source = 'all'; page.refresh(); } }, 'Show all')),
+    sec('New — nobody has replied', g.fresh, 'From calls, texts, email, website forms, the leads sheet and manual entry.'), sec('Follow-up due', g.due, F.reminders ? 'Past their follow-up date, or quiet for ' + plural(ST.remindDays, 'day') + ' or more.' : null), sec('Contacted', g.contacted), sec('Quoted — waiting', g.quoted), sec('Won — scheduled', g.scheduled),
+    g.lost.length ? ui.section({ header: 'Lost · ' + g.lost.length }, ui.row({ title: R.lostOpen ? 'Hide lost leads' : 'Show lost leads', tint: true, onTap: () => { R.lostOpen = !R.lostOpen; page.refresh(); } }), R.lostOpen ? g.lost.map(row) : null) : null,
+    !list.length && ui.empty({ icon: 'funnel', title: 'No leads', text: CO.seesAll() ? 'New leads appear here as they come in.' : 'No leads in your territory right now.' }),
+    srcRows.length > 0 && R.source === 'all' && ui.section({ header: 'Leads by source', footer: 'Tap a source to see only its leads.' }, srcRows));
+}
+function root() {
+  return { title: 'CRM', large: true, trailing: () => canEdit() ? [{ icon: 'plus', label: 'New lead', onTap: () => newLead() }] : [],
+    render: page => { const segs = [{ value: 'pipeline', label: 'Pipeline' }, F.quotes && { value: 'quotes', label: 'Quotes' }, F.referrals && { value: 'referrals', label: 'Referrals' }, F.feedback && { value: 'feedback', label: 'Feedback' + (CO.feedbackOpen() ? ' · ' + CO.feedbackOpen() : '') }].filter(Boolean);
+      if (!segs.some(s => s.value === R.seg)) R.seg = 'pipeline';
+      return [segs.length > 1 && h('div.cu-seg', ui.segmented(segs, R.seg, v => { R.seg = v; page.refresh(); })), R.seg === 'quotes' ? quotesView() : R.seg === 'referrals' ? referralsView(page) : R.seg === 'feedback' ? CO.feedbackView(page) : pipelineView(page)]; } };
+}
+
+/* ================= Registration ================= */
+WD.screens.crm = { root, openLead, newLead };
+const tab = WD.app.tabs.find(t => t.id === 'crm');
+if (tab) tab.badge = () => { if (!WD.can('leads.view')) return 0; const p = pipe(); return p.filter(c => c.lifecycle === 'lead' && !K.contactedYet(c) && !c.followUps).length + p.filter(isDue).length + (F.feedback ? CO.feedbackOpen() : 0); };
+const show = seg => { R.seg = seg; WD.nav.switchTab('crm'); };
+WD.panel.addJump('CRM pipeline', () => show('pipeline'));
+WD.panel.addJump('Quotes and bids', () => show('quotes'));
+WD.panel.addAction('New lead from the website form', () => { const id = 'c' + Date.now().toString(36), names = [['Birchwood Pediatrics', 'Nina Alvarado', 'nina@birchwoodpeds.example', '31 Birchwood Ln'], ['Keystone Title Co.', 'Owen Marsh', 'owen@keystonetitle.example', '500 Keystone Ave']], n = names[data.customers.length % 2];
+  if (!ST.sources.form) return ui.toast('Website form leads are switched off in Settings → CRM and leads', 'info.circle', 3200);
+  const c = K.mk({ id, name: n[0], channel: 'Website', contacts: [{ name: n[1], role: '', phone: '+1512555' + String(1000 + data.customers.length * 7).slice(-4), email: n[2] }], address: n[3], x: 300 + (data.customers.length * 97) % 400, y: 200 + (data.customers.length * 53) % 500, next: 0, cnotes: 'Website form: “We need a console for patient records. What does it cost?”' });
+  Object.assign(c, { source: 'form', createdAt: +WD.now(), changes: [] }); c.locations.forEach(l => { l.items = []; }); K.addI({ customerId: id, type: 'note', at: +WD.now(), text: c.notes, by: 'Work Dispatcher · website form' }); WD.changed();
+  ui.banner({ title: 'New lead · website form', text: n[0] + ' — ' + n[1] + ' asked for a price.', icon: 'funnel', color: 'var(--purple)', duration: 7000, onTap: () => { if (WD.can('leads.view')) { WD.nav.switchTab('crm'); openLead(id); } } }); });
+})();

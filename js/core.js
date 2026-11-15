@@ -4,7 +4,7 @@
 'use strict';
 const WD = window.WD = { screens: {}, data: {} };
 /** Prototype version (Settings → About). Bump on every publish; the “what’s new” tutorial shows once per version. */
-WD.version = '2.2';
+WD.version = '2.3';
 const $ = (s, r) => (r || document).querySelector(s);
 
 /* ================= DOM helper ================= */
@@ -189,11 +189,11 @@ WD.addIcons = map => Object.assign(I, map);
 WD.textOn = hex => { const m = /^#?([0-9a-f]{6})$/i.exec(hex || ''); if (!m) return '#fff'; const n = parseInt(m[1], 16), c = [n >> 16, n >> 8 & 255, n & 255].map(v => { v /= 255; return v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); }); return .2126 * c[0] + .7152 * c[1] + .0722 * c[2] > .4 ? '#1C1C1E' : '#fff'; };
 
 /* ================= State and permissions ================= */
-const ALL = ['analytics.view', 'tracking.view_live', 'team.locations', 'crm.view', 'crm.edit', 'billing.view', 'billing.field', 'billing.manage', 'jobs.edit', 'users.manage', 'hr.manage', 'settings.manage', 'contracts.manage', 'comms.view'];
+const ALL = ['analytics.view', 'tracking.view_live', 'team.locations', 'crm.view', 'crm.edit', 'billing.view', 'billing.field', 'billing.manage', 'jobs.edit', 'users.manage', 'hr.manage', 'settings.manage', 'contracts.manage', 'comms.view', 'leads.view', 'leads.all'];
 WD.roles = {
   owner: { title: 'Owner', perms: ALL }, admin: { title: 'Admin', perms: ALL },
-  dispatcher: { title: 'Dispatcher', perms: ['jobs.edit', 'tracking.view_live', 'team.locations', 'crm.view', 'crm.edit', 'analytics.view', 'billing.field', 'comms.view'] },
-  office: { title: 'Office', perms: ['jobs.edit', 'team.locations', 'crm.view', 'crm.edit', 'billing.view', 'billing.field', 'billing.manage', 'contracts.manage', 'comms.view'] },
+  dispatcher: { title: 'Dispatcher', perms: ['jobs.edit', 'tracking.view_live', 'team.locations', 'crm.view', 'crm.edit', 'analytics.view', 'billing.field', 'comms.view', 'leads.view'] },
+  office: { title: 'Office', perms: ['jobs.edit', 'team.locations', 'crm.view', 'crm.edit', 'billing.view', 'billing.field', 'billing.manage', 'contracts.manage', 'comms.view', 'leads.view', 'leads.all'] },
   driver: { title: 'Driver', perms: ['billing.field'] },
   staff: { title: 'Staff', perms: [] },
 };
@@ -202,8 +202,9 @@ WD.permissionList = [
   ['team.locations', 'Team locations', 'See where clocked-in employees are and where they stopped'],
   ['crm.view', 'View customers', 'Customer records and history'], ['crm.edit', 'Edit customers', 'Change customers, notes and follow-ups'],
   ['analytics.view', 'Analytics', 'Driver, stop and route reports'], ['billing.view', 'View billing', 'Invoices and payments'],
-  ['billing.field', 'Field invoicing', 'Edit job charges, collect signatures and payment on site'], ['billing.manage', 'Manage billing', 'Create invoices and charge cards'], ['users.manage', 'Manage team', 'Invite people and change roles'], ['hr.manage', 'HR and payroll', 'Fix clock-in/out times, add missed shifts, and run hours and overtime reports for any dates'], ['settings.manage', 'Company settings', 'Integrations and the Google mirror'],
+  ['billing.field', 'Field invoicing', 'Edit job charges, collect signatures and payment on site'], ['billing.manage', 'Manage billing', 'Create invoices and charge cards'], ['users.manage', 'Manage team', 'Invite people and change roles'], ['hr.manage', 'HR and payroll', 'See everyone’s hours, overtime, federal overtime, time cards and reports for any dates; fix clock-in/out times and add missed shifts'], ['settings.manage', 'Company settings', 'Integrations and the Google mirror'],
   ['contracts.manage', 'Service agreements', 'Create, send and track service agreements to signature'], ['comms.view', 'Call and message history', 'Call transcripts and summaries of past calls, texts and emails when a customer calls'],
+  ['leads.view', 'CRM: leads and pipeline', 'The CRM tab: leads, follow-ups, quotes, referrals and customer feedback'], ['leads.all', 'CRM: all territories', 'See every lead. Off = only leads in the regions, ZIP codes or area codes assigned to this person'],
 ];
 const S = WD.state = {
   signedIn: false, role: 'owner', me: null, org: null,
@@ -477,7 +478,7 @@ ui.closeAllSheets = () => sheets.slice().reverse().forEach(s => s.close());
 
 const app = WD.app = { tabs: [
   { id: 'board', title: 'Dispatch', icon: 'calendar' }, { id: 'map', title: 'Map', icon: 'map' },
-  { id: 'customers', title: 'Customers', icon: 'person.2', can: 'crm.view' }, { id: 'invoices', title: 'Invoices', icon: 'doc.text', can: () => WD.can('billing.view') || WD.can('billing.field') }, { id: 'shift', title: 'Shift', icon: 'truck' }, { id: 'settings', title: 'Settings', icon: 'gearshape' },
+  { id: 'customers', title: 'Customers', icon: 'person.2', can: 'crm.view' }, { id: 'crm', title: 'CRM', icon: 'funnel', can: 'leads.view' }, { id: 'invoices', title: 'Invoices', icon: 'doc.text', can: () => WD.can('billing.view') || WD.can('billing.field') }, { id: 'shift', title: 'Shift', icon: 'truck' }, { id: 'settings', title: 'Settings', icon: 'gearshape' },
 ] };
 let tabState = null, rootStack = null;
 const nav = WD.nav = {

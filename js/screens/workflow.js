@@ -10,6 +10,8 @@ const guard = (mod, fn, ...args) => WD.screens[mod] && WD.screens[mod][fn] && WD
 const billing = () => WD.screens.billing || {};
 const canInvoice = () => WD.can('billing.field') || WD.can('billing.manage');
 const canSeeBilling = () => WD.can('billing.view') || WD.can('billing.field');
+/** The bookkeeping program the company uses (Settings → Bookkeeping), or '' when there is none. */
+const books = () => WD.co ? (WD.co.hasBooks() ? WD.co.booksName() : '') : 'Invoice Ninja';
 
 WD.css(`
 .wf-td { font-weight: 500; opacity: .92; }
@@ -198,8 +200,8 @@ async function markPaid(rec, job) {
   if (m === 'Other') { const r = await ui.alert({ title: 'Paid how?', input: { placeholder: 'e.g. ACH, Venmo, money order' }, buttons: [{ label: 'Cancel', value: null }, { label: 'Save', value: true, bold: true }] }); if (!r || !r.value) return false; method = r.text.trim() || 'Other'; }
   applyPaid(rec, job, method, amount); ui.toast('Marked paid · ' + method, 'checkmark'); return true;
 }
-function applyPaid(rec, job, method, amount) {
-  const me = S.me.name, at = +WD.now();
+function applyPaid(rec, job, method, amount, when) {
+  const me = when ? (WD.co ? WD.co.booksName() : 'Bookkeeping') : S.me.name, at = when || +WD.now();
   const apply = () => {
     if (rec && rec.status !== 'Paid') { const c = q.customer(rec.customerId); if (c && c.stats) { if (rec.status === 'Overdue') c.stats.balance = Math.max(0, c.stats.balance - amount); c.stats.paid += amount; }
       rec.status = 'Paid'; if (data.payments) { const pay = { id: 'pay-m' + Date.now(), invoiceId: rec.id, customerId: rec.customerId, at, amount, method }; data.payments.push(pay); rec.payments.push(pay.id); } }
@@ -209,7 +211,7 @@ function applyPaid(rec, job, method, amount) {
 }
 function sendReminder(rec) {
   const c = q.customer(rec.customerId);
-  return ui.run('Sending reminder…', () => { if (data.interactions) data.interactions.push({ id: 'i-rem' + Date.now(), customerId: rec.customerId, type: 'email', dir: 'out', at: +WD.now(), subject: 'Payment reminder — ' + rec.number, snippet: 'A friendly reminder that invoice ' + rec.number + ' for ' + fmt.money(rec.amount, true) + ' is ' + (rec.status === 'Overdue' ? 'past due.' : 'due soon.'), from: 'billing@discountshred.example', to: (c && (c.billingEmail || (c.contacts[0] || {}).email)) || '' }); }, { done: 'Reminder sent' });
+  return ui.run('Sending reminder…', () => { if (data.interactions) data.interactions.push({ id: 'i-rem' + Date.now(), customerId: rec.customerId, type: 'email', dir: 'out', at: +WD.now(), subject: 'Payment reminder — ' + rec.number, snippet: WD.co ? WD.co.fill(WD.co.tpl('payrem').body, WD.co.ctxFor(c, { invoice: rec.number, amount: fmt.money(rec.amount, true) })).replace(/\s+/g, ' ') : 'A friendly reminder that invoice ' + rec.number + ' for ' + fmt.money(rec.amount, true) + ' is ' + (rec.status === 'Overdue' ? 'past due.' : 'due soon.'), from: 'billing@discountshred.example', to: (c && (c.billingEmail || (c.contacts[0] || {}).email)) || '' }); }, { done: 'Reminder sent' });
 }
 async function chargeCard(rec, job) {
   const ok = await ui.actionSheet({ title: 'Charge ' + fmt.money(rec.amount, true) + '?', message: 'Visa ending 4242 on file in Stripe, through Invoice Ninja.', buttons: [{ label: 'Charge ' + fmt.money(rec.amount, true), value: true }] });
@@ -224,7 +226,8 @@ function invoiceActionRows(rec, job, o = {}) {
     unpaid && field && ui.row({ title: 'Mark paid…', subtitle: 'Card, check, cash or other', icon: 'dollarsign.circle', iconPlain: true, tint: true, onTap: () => markPaid(rec, job) }),
     unpaid && field && ui.row({ title: 'Send reminder', icon: 'envelope', iconPlain: true, tint: true, onTap: () => sendReminder(rec) }),
     unpaid && manage && ui.row({ title: 'Charge card on file', icon: 'creditcard', iconPlain: true, tint: true, onTap: () => chargeCard(rec, job) }),
-    ui.row({ title: 'Open in Invoice Ninja', icon: 'arrow.up.right', iconPlain: true, tint: true, onTap: () => ui.toast('Opening ' + rec.number + ' in Invoice Ninja…', 'arrow.up.right') })];
+    rec.paidVia && ui.row({ icon: 'sync', iconPlain: true, iconColor: 'var(--green)', title: 'Paid in ' + rec.paidVia, subtitle: 'Found when payment status was checked, and marked paid here' }),
+    books() && ui.row({ title: 'Open in ' + books(), icon: 'arrow.up.right', iconPlain: true, tint: true, onTap: () => ui.toast('Opening ' + rec.number + ' in ' + books() + '…', 'arrow.up.right') })];
 }
 
 /* ================= Invoices list ================= */
@@ -261,9 +264,10 @@ function invoicesSpec() {
         ui.list(
           IV.scope === 'mine' && ui.section(null, ownRoute ? ui.row({ leading: ui.dot(q.routeColor(route)), title: q.routeName(route), subtitle: S.shift ? 'The route you’re clocked in on' : 'Your route' })
             : ui.pickerRow({ title: 'Route', icon: 'route', iconColor: q.routeColor(route), value: route, options: q.routes().map(r => ({ value: r.id, label: q.routeName(r) })), onChange: v => { IV.routeId = v; page.refresh(); } })),
+          IV.kind === 'invoices' && !s && WD.co && WD.co.booksSection(),
           IV.kind === 'notes' && notesList(page, s),
           IV.kind === 'invoices' && alerts.length > 0 && ui.section('Purchase orders', alerts.map(x => h('div', h('div.footnote', { style: 'padding:10px 16px 0;font-weight:600' }, x.c.name), alertRow(x.a, () => guard('customers', 'openDetail', x.c.id))))),
-          IV.kind !== 'invoices' ? null : list.length ? ui.section({ header: (s ? list.length + (list.length === 1 ? ' match' : ' matches') : 'Newest first') + (open ? ' · ' + fmt.money(open) + ' open' : ''), footer: 'Every invoice created, from Invoice Ninja, newest first. Search by invoice number (“2417” finds INV-2417) or customer.' },
+          IV.kind !== 'invoices' ? null : list.length ? ui.section({ header: (s ? list.length + (list.length === 1 ? ' match' : ' matches') : 'Newest first') + (open ? ' · ' + fmt.money(open) + ' open' : ''), footer: 'Every invoice created' + (books() ? ', from ' + books() : '') + ', newest first. Invoices paid there are marked paid here automatically. Search by invoice number (“2417” finds INV-2417) or customer.' },
             list.slice(0, IV.limit).map(r => { const c = q.customer(r.customerId), rt = recRoute(r);
               return ui.row({ icon: r.master ? 'tray' : 'doc.text', iconColor: r.master ? 'var(--brown)' : 'var(--indigo)', title: r.number, subtitle: h('span', (c ? c.name : '') + ' · ' + fmt.day(r.day, 'md') + (IV.scope === 'all' && rt ? ' · ' : ''), IV.scope === 'all' && rt ? h('span.cu-route', ui.dot(q.routeColor(rt)), q.routeName(rt)) : null),
                 badge: ui.badge(r.status, INV_COLOR[r.status] || 'var(--orange)'), detail: fmt.money(r.amount), chevron: true, onTap: () => openInvoiceRec(r) }); }),
@@ -387,7 +391,7 @@ function workflowSpec() {
 })();
 
 const api2 = { billed, dimmed, needsAction, missed, billingLabel, titleDetails, titleNode, titleText, poFor, poAlert, poAlerts, alertRow, customerSections, docsEditor, poScheduleSpec, editPO, BILLING_MODES,
-  addServiceNote, masterSpec, invoicesSpec, invoiceActionRows, markPaid, invRecFor, openInvoiceRec, openDirections, mapsName, completeStop, afterBilling, paidNoInvoice, missedSheet, workflowSpec, nextStop };
+  addServiceNote, masterSpec, invoicesSpec, invoiceActionRows, markPaid, applyPaid, invRecFor, openInvoiceRec, openDirections, mapsName, completeStop, afterBilling, paidNoInvoice, missedSheet, workflowSpec, nextStop };
 WD.workflow = WD.screens.workflow = api2;
 
 WD.screens.invoices = { root: invoicesSpec };

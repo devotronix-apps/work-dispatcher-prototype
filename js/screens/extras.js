@@ -109,6 +109,7 @@ function applyToJobs(c, items, from, exceptId) {
   return n;
 }
 function letterBody(c, changes, effective) {
+  if (WD.co) return WD.co.letterDoc(c, changes, effective);   // laid out from the editable “Price or service change” template
   const p = c.contacts[0] || {}, org = S.org || data.orgs[0], lines = changes.filter(ch => ch.kind !== 'start');
   return h('div.x-doc', h('h4', org.name), h('small', (org.remit || []).slice(1).join(' · ') + (org.phone ? ' · ' + org.phone : '')),
     h('p', longDay(today())), h('p', c.name, h('br'), loc(c).address || ''), h('p', 'Dear ' + (p.name || 'Customer') + ','),
@@ -197,7 +198,8 @@ X.customerNotices = () => {
   const an = canSeePricing() ? X.anniversaries() : [], todo = an.filter(a => a.c.annivReviewed !== a.day && !(a.c.upcoming && a.c.upcoming.effective >= a.day)).length, open = canManageAg() ? data.agreements.filter(a => a.status === 'sent' || a.status === 'viewed') : [];
   return ui.section(null,
     an.length > 0 && ui.row({ icon: 'calendar', iconColor: 'var(--orange)', title: an.length + (an.length === 1 ? ' anniversary' : ' anniversaries') + ' in ' + fmt.day(nextMonthKey() + '-01', 'month').split(' ')[0], subtitle: todo ? todo + ' to review for a price change' : 'All reviewed', chevron: true, onTap: () => WD.nav.push(X.anniversarySpec()) }),
-    canManageAg() && ui.row({ icon: 'signature', iconColor: 'var(--indigo)', title: 'Service agreements', subtitle: open.length ? open.length + ' waiting for a signature' : 'Create, send and track', chevron: true, onTap: () => WD.nav.push(X.agreementsSpec()) }));
+    canManageAg() && ui.row({ icon: 'signature', iconColor: 'var(--indigo)', title: 'Service agreements', subtitle: open.length ? open.length + ' waiting for a signature' : 'Create, send and track', chevron: true, onTap: () => WD.nav.push(X.agreementsSpec()) }),
+    WD.co && ui.row({ icon: 'star', iconColor: 'var(--orange)', title: 'Customer feedback', subtitle: (n => n ? n + ' to follow up' : data.feedback.length + ' replies to the follow-up text')(WD.co.feedbackOpen()), chevron: true, onTap: () => WD.nav.push(WD.co.feedbackSpec()) }));
 };
 
 /* ================= Service agreements ================= */
@@ -214,7 +216,7 @@ X.createAgreement = c => {
 async function sendAgreement(a, via) {
   const c = q.customer(a.customerId), p = c.contacts[0] || {}, to = via === 'Email' ? (c.billingEmail || p.email) : p.phone && fmt.phone(p.phone);
   if (!to) return ui.alert({ title: via === 'Email' ? 'No email on file' : 'No phone on file', message: 'Add one to the customer’s contact, or collect the signature in person.' });
-  if (await ui.run('Sending signing link…', () => { if (a.status === 'draft') a.status = 'sent'; a.sentVia = via; a.sentAt = +WD.now(); a.to = to; }, { done: 'Link sent' })) ui.toast('Signing link sent to ' + to, via === 'Email' ? 'envelope' : 'message', 2600);
+  if (await ui.run('Sending signing link…', () => { if (a.status === 'draft') a.status = 'sent'; a.sentVia = via; a.sentAt = +WD.now(); a.to = to; a.revised = false; }, { done: 'Link sent' })) ui.toast('Signing link sent to ' + to, via === 'Email' ? 'envelope' : 'message', 2600);
 }
 /** Collect the customer's signature on the phone. Anyone can do this for an agreement that has been sent; job (optional) gets a history line. */
 X.signAgreement = async (a, job) => {
@@ -226,6 +228,7 @@ X.signAgreement = async (a, job) => {
   WD.changed(); ui.toast('Agreement signed · copy emailed to the customer', 'checkmark', 2600); return true;
 };
 function agreementDoc(a) {
+  if (WD.co) return WD.co.agreementDoc(a);   // each agreement carries its own editable wording, items and rates
   const c = q.customer(a.customerId), org = S.org || data.orgs[0], items = (loc(c).items || []).filter(i => i.qty > 0), end = D.add(a.start, Math.round(a.term * 30.44) - 1), sv = WD.screens.billing && WD.screens.billing.sigView;
   return h('div.x-doc', h('h4', 'Service Agreement ' + a.number), h('small', org.name + ' · ' + (org.remit || []).slice(1).join(', ')),
     h('p', 'Between ', h('b', org.name), ' and ', h('b', c.name), ', ' + (loc(c).address || 'address to be confirmed') + '.'),
@@ -242,7 +245,8 @@ X.agreementSpec = (a, job) => ({ title: () => a.number, render: page => {
         step(true, 'Created', a.createdBy + ' · ' + when(a.createdAt)), step(rank >= 1, a.sentAt ? 'Sent by ' + a.sentVia.toLowerCase() : 'Send for signature', a.sentAt ? a.to + ' · ' + when(a.sentAt) : 'A link lets the customer read and sign on their phone or computer'),
         step(rank >= 2 || !!a.viewedAt, 'Opened by the customer', a.viewedAt ? when(a.viewedAt) : null), step(signed, 'Signed', signed ? a.signer + ' · ' + when(a.signedAt) + (a.method === 'inperson' ? ' · in person' : ' · from the link') : null))),
       !signed && ui.section({ header: 'Get it signed', footer: manage ? 'Any driver can also collect the signature in person from the job once the agreement has been sent.' : 'The customer can sign here on your iPhone.' },
-        manage && a.status === 'draft' && ui.pickerRow({ title: 'Term', value: a.term, options: [12, 24, 36, 60].map(n => ({ value: n, label: n + ' months' })), onChange: v => { a.term = v; page.refresh(); } }),
+        manage && WD.co && ui.row({ icon: 'pencil', iconPlain: true, title: 'Edit this agreement', subtitle: a.revised ? 'Changed after it was sent — send the link again' : 'Wording, containers, rates, schedule and every section', tint: true, chevron: true, onTap: () => WD.co.editAgreementDoc(a, { onSave: () => page.refresh() }) }),
+        manage && a.status === 'draft' && ui.pickerRow({ title: 'Term', value: a.term, options: [{ value: 0, label: 'Month to month' }].concat([12, 24, 36, 60].map(n => ({ value: n, label: n + ' months' }))), onChange: v => { a.term = v; page.refresh(); } }),
         manage && a.status === 'draft' && ui.dateRow({ title: 'Starts', value: a.start, onChange: v => { a.start = v; page.refresh(); } }),
         manage && ui.row({ icon: 'envelope', iconPlain: true, title: a.sentAt ? 'Send the link again by email' : 'Email a signing link', tint: true, onTap: () => sendAgreement(a, 'Email') }),
         manage && ui.row({ icon: 'message', iconPlain: true, title: a.sentAt ? 'Send the link again by text' : 'Text a signing link', tint: true, onTap: () => sendAgreement(a, 'Text') }),
@@ -252,7 +256,7 @@ X.agreementSpec = (a, job) => ({ title: () => a.number, render: page => {
 } });
 X.agreementsSpec = () => ({ title: 'Service agreements', render: page => {
   if (!canManageAg()) return ui.empty({ icon: 'lock', title: 'Ask an admin', text: 'Tracking service agreements needs the Service agreements permission.' });
-  const row = a => { const c = q.customer(a.customerId); return ui.row({ leading: ui.avatar(c ? c.name : '?', { size: 34 }), title: c ? c.name : 'Customer removed', subtitle: a.number + ' · ' + a.term + ' months · ' + (a.status === 'signed' ? 'signed ' + when(a.signedAt) : a.sentAt ? 'sent ' + fmt.rel(a.sentAt).toLowerCase() + ' by ' + a.sentVia.toLowerCase() : 'not sent yet'), badge: agBadge(a), chevron: true, onTap: () => page.push(X.agreementSpec(a)) }); };
+  const row = a => { const c = q.customer(a.customerId); return ui.row({ leading: ui.avatar(c ? c.name : '?', { size: 34 }), title: c ? c.name : 'Customer removed', subtitle: a.number + ' · ' + (a.term ? a.term + ' months' : 'month to month') + ' · ' + (a.status === 'signed' ? 'signed ' + when(a.signedAt) : a.sentAt ? 'sent ' + fmt.rel(a.sentAt).toLowerCase() + ' by ' + a.sentVia.toLowerCase() : 'not sent yet'), badge: agBadge(a), chevron: true, onTap: () => page.push(X.agreementSpec(a)) }); };
   const by = (...st) => data.agreements.filter(a => st.includes(a.status)).sort((a, b) => (b.sentAt || b.createdAt) - (a.sentAt || a.createdAt));
   return ui.list(ui.section({ header: 'Waiting for a signature', footer: 'Drivers see these on the customer’s next job and can collect the signature in person.' }, by('sent', 'viewed').map(row), !by('sent', 'viewed').length && ui.row({ title: 'Nothing waiting' })),
     ui.section('Drafts', by('draft').map(row)), ui.section('Signed', by('signed').map(row)),
@@ -262,7 +266,7 @@ X.agreementsSpec = () => ({ title: 'Service agreements', render: page => {
 X.agreementSection = c => {
   const list = X.agreementsFor(c.id), manage = canManageAg(); if (!list.length && !manage) return null;
   return ui.section({ header: 'Service agreement', footer: list.length ? null : 'Create an agreement from this customer’s pricing, then send a link to sign or collect the signature in person.' },
-    list.map(a => ui.row({ icon: 'signature', iconColor: AG[a.status][1], title: a.number + ' · ' + a.term + ' months', subtitle: a.status === 'signed' ? 'Signed by ' + a.signer + ' · ' + when(a.signedAt) : a.sentAt ? 'Sent ' + fmt.rel(a.sentAt).toLowerCase() + ' by ' + a.sentVia.toLowerCase() : 'Not sent yet', badge: agBadge(a), chevron: true, onTap: () => WD.nav.push(X.agreementSpec(a)) })),
+    list.map(a => ui.row({ icon: 'signature', iconColor: AG[a.status][1], title: a.number + ' · ' + (a.term ? a.term + ' months' : 'month to month'), subtitle: a.status === 'signed' ? 'Signed by ' + a.signer + ' · ' + when(a.signedAt) : a.sentAt ? 'Sent ' + fmt.rel(a.sentAt).toLowerCase() + ' by ' + a.sentVia.toLowerCase() : 'Not sent yet', badge: agBadge(a), chevron: true, onTap: () => WD.nav.push(X.agreementSpec(a)) })),
     manage && !list.some(a => a.status !== 'signed') && ui.row({ icon: 'plus.circle.fill', iconPlain: true, iconColor: 'var(--green)', title: list.length ? 'New agreement' : 'Create service agreement', tint: true, onTap: () => WD.nav.push(X.agreementSpec(X.createAgreement(c))) }));
 };
 /** Job details: an agreement that was sent but isn't signed yet — every driver can collect the signature in person. */
@@ -280,7 +284,10 @@ function requestTimeOff() {
   let from = D.add(today(), 7), to = from, allDay = true, fromTime = '13:00', untilTime = '17:00', reason = '';
   ui.sheet({ title: 'Request time off', leading: [{ label: 'Cancel', onTap: p => p.dismiss() }],
     trailing: () => [{ label: 'Send', bold: true, disabled: to < from, onTap: async p => { if (to < from) return;
-      if (!await ui.run('Sending request…', () => { data.timeOff.push({ id: 'to' + Date.now().toString(36), userId: S.me.id, from, to, fromTime: allDay || from !== to ? '' : fromTime, untilTime: allDay || from !== to ? '' : untilTime, reason: reason.trim(), status: 'pending', decidedBy: null, at: +WD.now() }); }, { done: 'Request sent' })) return; p.dismiss(); } }],
+      let auto = false;
+      if (!await ui.run('Sending request…', () => { const t = { id: 'to' + Date.now().toString(36), userId: S.me.id, from, to, fromTime: allDay || from !== to ? '' : fromTime, untilTime: allDay || from !== to ? '' : untilTime, reason: reason.trim(), status: 'pending', decidedBy: null, at: +WD.now() };
+        auto = !!(WD.co && WD.co.autoApprove(t)); data.timeOff.push(t); }, { done: auto ? 'Approved' : 'Request sent' })) return;
+      p.dismiss(); if (auto) { const t = data.timeOff[data.timeOff.length - 1]; ui.alert({ title: 'Time off approved', message: WD.timeOffLabel(t) + '\n\n' + t.note }); } } }],
     render: p => ui.list(ui.section({ footer: to < from ? 'The last day is before the first day.' : 'The office gets your request. Once it’s approved, the dispatch board shows you as off so nobody plans your route around you.' },
         ui.dateRow({ title: 'First day off', value: from, onChange: v => { from = v; if (to < from) to = from; p.refresh(); } }), ui.dateRow({ title: 'Last day off', value: to, onChange: v => { to = v; p.refresh(); } }),
         from === to && ui.toggleRow({ title: 'All day', value: allDay, onChange: v => { allDay = v; p.refresh(); } }),
@@ -291,7 +298,7 @@ function requestTimeOff() {
 X.timeOffSection = () => {
   if (!S.me) return null; const mine = data.timeOff.filter(t => t.userId === S.me.id && t.to >= today()).sort((a, b) => a.from.localeCompare(b.from)), waiting = data.timeOff.filter(t => t.status === 'pending' && t.userId !== S.me.id).length;
   return ui.section({ header: 'Time off', footer: 'Approved time off shows on the dispatch board for those days.' },
-    mine.map(t => ui.row({ icon: 'calendar', iconColor: TO[t.status][1], title: WD.timeOffLabel(t), subtitle: t.reason || null, badge: ui.badge(TO[t.status][0], TO[t.status][1]), onTap: async () => {
+    mine.map(t => ui.row({ icon: 'calendar', iconColor: TO[t.status][1], title: WD.timeOffLabel(t), subtitle: [t.reason, t.note].filter(Boolean).map(x => h('div', x)), badge: ui.badge(t.auto ? 'Auto-approved' : TO[t.status][0], TO[t.status][1]), onTap: async () => {
       if (await ui.actionSheet({ title: WD.timeOffLabel(t), message: t.status === 'pending' ? 'Withdraw this request?' : 'Cancel this time off? The office is told.', buttons: [{ label: t.status === 'pending' ? 'Withdraw request' : 'Cancel time off', role: 'destructive', value: true }], cancel: 'Keep' })) { data.timeOff = data.timeOff.filter(x => x !== t); WD.changed(); } } })),
     ui.row({ icon: 'plus.circle.fill', iconPlain: true, iconColor: 'var(--green)', title: 'Request time off', tint: true, onTap: requestTimeOff }),
     canApprove() && ui.row({ icon: 'person.2', iconColor: 'var(--indigo)', title: 'Team time-off requests', badge: waiting ? ui.badge(waiting + ' to approve', 'var(--orange)') : null, chevron: true, onTap: () => WD.nav.push(X.timeOffSpec()) }));
@@ -301,11 +308,12 @@ X.timeOffSpec = () => ({ title: 'Time off', render: page => {
   const decide = (t, status) => ui.run(status === 'approved' ? 'Approving…' : 'Saving…', () => { t.status = status; t.decidedBy = me(); }, { done: status === 'approved' ? 'Approved' : 'Not approved' });
   const impact = t => { const r = data.routes.find(x => x.driverId === t.userId); if (!r) return null; let n = 0; for (let d = t.from; d <= t.to; d = D.add(d, 1)) n += q.stopList(r.id, d).filter(j => !WD.calledOff(j)).length; return 'Drives ' + q.routeName(r) + ' · ' + n + (n === 1 ? ' stop' : ' stops') + ' on those days'; };
   const row = (t, acts) => { const u = q.user(t.userId) || { name: 'Former employee' };
-    return h('div.row', { style: 'flex-wrap:wrap;gap:8px' }, ui.avatar(u.name, { size: 34 }), h('div.row-main', h('div.row-title', u.name), h('div.row-sub', WD.timeOffLabel(t) + (t.reason ? ' · ' + t.reason : '')), impact(t) && h('div.row-sub', impact(t)), !acts && t.decidedBy && h('div.row-sub', TO[t.status][0] + ' by ' + t.decidedBy)),
+    return h('div.row', { style: 'flex-wrap:wrap;gap:8px' }, ui.avatar(u.name, { size: 34 }), h('div.row-main', h('div.row-title', u.name), h('div.row-sub', WD.timeOffLabel(t) + (t.reason ? ' · ' + t.reason : '')), impact(t) && h('div.row-sub', impact(t)), !acts && t.decidedBy && h('div.row-sub', t.auto ? 'Auto-approved · “' + t.note + '”' : TO[t.status][0] + ' by ' + t.decidedBy)),
       acts ? h('div.x-two', ui.button('Deny', { kind: 'gray', small: true, block: false, onTap: () => decide(t, 'denied') }), ui.button('Approve', { kind: 'filled', small: true, block: false, onTap: () => decide(t, 'approved') })) : ui.badge(TO[t.status][0], TO[t.status][1])); };
   const list = st => data.timeOff.filter(t => t.status === st).sort((a, b) => a.from.localeCompare(b.from)), pending = list('pending'), ok = list('approved').filter(t => t.to >= today()), no = list('denied');
   return ui.list(ui.section({ header: 'To approve', footer: 'Approving shows the person as off on the dispatch board for those days.' }, pending.map(t => row(t, true)), !pending.length && ui.row({ title: 'No requests waiting' })),
-    ui.section('Upcoming time off', ok.map(t => row(t))), ui.section('Not approved', no.map(t => row(t))));
+    ui.section('Upcoming time off', ok.map(t => row(t))), ui.section('Not approved', no.map(t => row(t))),
+    WD.co && WD.can('settings.manage') && ui.section({ footer: 'Requests can be approved automatically, with a message you write.' }, ui.row({ icon: 'gearshape', iconColor: 'var(--gray)', title: 'Auto-approval', detail: data.settings.timeOff.auto ? 'On' : 'Off', chevron: true, onTap: () => page.push(WD.co.timeOffSpec()) })));
 } });
 
 /* ================= Conflict review: the two versions side by side ================= */
@@ -408,13 +416,12 @@ X.contactSummary = (c, items, describe) => {
 /* ================= What's new tutorial ================= */
 const TOUR = [
   { icon: 'sparkles', title: 'What’s new in version ' + WD.version, text: 'A quick look at what changed. It takes under a minute, and you can run it again from Settings → About.' },
-  { tab: 'Dispatch', icon: 'calendar', title: 'Dispatch board', list: ['Pinch with two fingers to show less or more on each card.', 'Canceled, rescheduled and postponed jobs drop to the bottom and stay off the map and AutoRoute.', 'A bar under the date warns about upcoming jobs with no address.', 'Approved time off shows next to the route name.'] },
-  { find: '[aria-label="Search"]', icon: 'magnifyingglass', title: 'Search job history', text: 'Search finds past jobs as well as upcoming ones. If an older job isn’t on this iPhone, tap “Search older jobs on the server”.' },
-  { tab: 'Map', icon: 'map', title: 'Map', text: 'Zoom out past the service area, zoom in to street level, and drag as far as you like in any direction.' },
-  { tab: 'Customers', icon: 'person.2', title: 'Customers', list: ['Current pricing, with a history of price, quantity and service-interval changes.', 'Change pricing from any service date and send the customer a letter automatically.', 'Next month’s anniversaries and service agreements are at the top of the list.', 'Phone numbers format as 559-968-4175, with a box for an extension.'] },
-  { tab: 'Invoices', icon: 'doc.text', title: 'Invoices', text: 'Change a price while creating an invoice and choose whether it applies to this invoice only or to this and all future visits.' },
-  { tab: 'Shift', icon: 'truck', title: 'Shift', text: 'Request time off here. Once it’s approved, the dispatch board shows the days you’re off.' },
-  { tab: 'Settings', icon: 'gearshape', title: 'Settings', list: ['Team and roles: set permissions for each person, not only by role.', 'Job types and fields: choose which fields are required, by job type and by customer type.', 'Pending changes: compare the two versions side by side when a change needs review.', 'Offline data: what is saved on this iPhone.'] },
+  { tab: 'CRM', icon: 'funnel', title: 'New CRM tab', list: ['Leads by stage, with the source and how long since the last contact.', 'Send a follow-up from a template suggested for the situation.', 'Quotes and bids, referrals, and leads by source.', 'People can be limited to leads in certain regions, ZIP codes or area codes.'] },
+  { tab: 'CRM', icon: 'star', title: 'Customer feedback', text: 'A text after service asks how the driver did, by name. Positive replies get a review request with your review links; negative replies get an apology and wait in Feedback for a call.' },
+  { tab: 'Shift', icon: 'truck', title: 'Shift', list: ['Start driving can show the ETA and offer to text or call the customer.', 'Show a review QR code to a customer in person.', 'HR: hours, overtime, federal overtime, time cards and reports for everyone, for this or last pay period or any dates.', 'Time off can be approved automatically with your message.'] },
+  { tab: 'Invoices', icon: 'doc.text', title: 'Invoices', text: 'Open invoices are checked against your bookkeeping program and marked paid when the customer has paid there. Tap Check now any time.' },
+  { tab: 'Customers', icon: 'person.2', title: 'Service agreements', text: 'Every part of an agreement can be edited: wording, containers, rates, schedule and each section. Payment details are added by the customer in the portal, not on the agreement.' },
+  { tab: 'Settings', icon: 'gearshape', title: 'Settings and assumptions', list: ['Routing assumptions: start time, time to get rolling, drive time, arrival windows.', 'Templates: change the wording of every text, email and letter.', 'Pay period and payday, on-my-way notices, container barcodes, bookkeeping, reviews and the QR code, CRM features.'] },
 ];
 X.tutorial = () => {
   const screen = document.getElementById('screen'), old = screen.querySelector('.x-tour'); if (old) old.remove();

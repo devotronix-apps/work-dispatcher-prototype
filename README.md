@@ -48,6 +48,8 @@ Settings → About → Version shows the prototype version, `WD.version` in `js/
 | `js/screens/workflow.js` | Field workflow: Complete stop from any status → billing → next customer (optionally start directions), arrival from GPS, details after job titles, paid–no invoice, missed-invoice check, Invoices list (search by number, my route / all routes), invoice actions, service notes saved to the database and the monthly master invoice built from them, customer documents and dated PO schedules, directions app, Settings → Field workflow |
 | `js/screens/team.js` | Overtime rules (daily, weekly, double time), pay period, federal overtime (over 40/workweek), hours and overtime reports for pay periods, months or custom dates, HR shift corrections and missed shifts (reason required, change history), team locations map with stays over N minutes |
 | `js/screens/extras.js` | `WD.x`: customer pricing, change history and price-change letters, anniversaries report, service agreements, time off, side-by-side conflict review, missing-address list, dated POs in forms, older job history from the server, offline data page, call summary, the tutorial |
+| `js/screens/company.js` | `WD.co`: Settings and assumptions hub (routing assumptions, time-off auto-approval, on-my-way notices, container barcodes, bookkeeping and payment-status checks, reviews, CRM features/sources/territories), editable templates (`data.templates`, `WD.co.tpl/fill/ctxFor`), service-agreement wording and per-agreement documents (`a.doc`), the on-my-way prompt, barcode scanner, customer feedback (`data.feedback`) and the review QR code |
+| `js/screens/crm.js` | CRM tab (`leads.view`): pipeline with sources and territories, follow-ups from templates, quotes and bids (`data.quotes`), referrals (`data.referrals`), leads by source, feedback |
 | `sw.js` | Service worker: keeps a copy of the prototype for offline use (network first, saved copy as fallback) |
 | `js/screens/admin.js` | Sign-in policy, job types and the fields each asks for, import from .ics or Excel/CSV, new-company “connect your tools” step |
 
@@ -85,7 +87,7 @@ A page is a spec object:
 - `ui.sheet(spec, {detent: 'large'|'medium'|'small'})` presents a modal sheet with its own stack → `{close(result), push(spec), closed: Promise}`. Inside it, `page.dismiss(result)` closes the sheet; give sheets a `Cancel`/`Done` nav button.
 - `page.refresh()`, `page.setTitle()`, `page.push(spec)`, `page.pop()`, `page.body`, `page.el`.
 - After changing `WD.state` or `WD.data`, call `WD.changed()`; visible pages re-render (a page with a focused text field is skipped so typing is not interrupted — keep form values in closure variables, not in the DOM).
-- Tabs are fixed in `WD.app.tabs` (`board map customers invoices shift settings`; `can` is a permission flag or a function); a module supplies `WD.screens.<id>.root()` returning the tab's root page spec. `tab.badge = () => number` adds a badge.
+- Tabs are fixed in `WD.app.tabs` (`board map customers crm invoices shift settings`; `can` is a permission flag or a function); a module supplies `WD.screens.<id>.root()` returning the tab's root page spec. `tab.badge = () => number` adds a badge.
 
 ### Feedback and fake network
 
@@ -100,7 +102,7 @@ A page is a spec object:
 ### State, permissions, data
 
 - `WD.state`: `me`, `role`, `org`, `offline`, `theme`, `pending`, `abandoned`, `board`, `shift`, `tracking {consent, consentAt}`, `googleMirror {enabled, lastSync, errors}`.
-- `WD.can('jobs.edit' | 'tracking.view_live' | 'crm.view' | 'crm.edit' | 'analytics.view' | 'billing.view' | 'billing.manage' | 'users.manage' | 'hr.manage' | 'settings.manage')`. `WD.roles`, `WD.permissionList`.
+- `WD.can('leads.view' | 'leads.all' | 'jobs.edit' | 'tracking.view_live' | 'crm.view' | 'crm.edit' | 'analytics.view' | 'billing.view' | 'billing.manage' | 'users.manage' | 'hr.manage' | 'settings.manage')`. `WD.roles`, `WD.permissionList`.
 - `WD.now()` / `WD.nowMins()` — the prototype clock (today, starting 10:24 AM). `WD.date.today() / add(key, n) / key(Date) / parse(key)`; day keys are `YYYY-MM-DD`. Jobs carry no scheduled time: `job.seq` is the 1-based place in its route's day list (`allDay` marks a day note, not a stop), `dur` is typical minutes on site, and `arrivedAt`/`departedAt` are recorded minutes since midnight. Reorder with `WD.placeJob(job, routeId, day, index)`; `WD.renumber(routeId, day)` tidies a list.
 - `WD.fmt.day(key, 'short'|'long'|'rel'|'md'|'weekday')`, `time(mins)`, `dur(mins)`, `rel(Date)`, `money(n)`, `phone(str)`, `clock(Date)`.
 - `WD.data`: `orgs users vehicles routes customers jobs depot places vehicleDays priceBook fieldConfig timeRules punches stays`. Jobs and customer locations carry `items` (`[{id: 'console'|'bin64'|'bin96'|'box', qty, rate}]`); `WD.itemsLabel(items, purge)` formats them. Customers carry `billingEmail po contract requiresSignature`; jobs copy `po contract` and can change them. Requested windows are `custFrom`/`custUntil` with `custStrict` (true = required, false = preferred); `needsWindow` marks a job that wants a window not yet chosen (AutoRoute assigns `WD.etaWindow(eta)`). Purge jobs carry `purge` `{std, legal, xl, bin65, pallet, gaylord, cabinet, stairs, haul}`; `WD.purgeEstimate(purge)` → boxes, minutes, range and whether the count is a guess (rules in `data.purgeRules`), `WD.purgeExtras` → stairs/haul-away billing items. `data.routeDays[routeId|day]` holds the planned departure. `WD.asks(type, field)` says whether the editor shows a field for a job type. `WD.closed[status]` / `WD.struck[status]` cover completed/skipped/canceled/rescheduled/postponed.
@@ -118,6 +120,8 @@ A page is a spec object:
 | `WD.screens.billing.openEditor(jobId, {pay, lines, note})`, `.openInvoice(jobId)`, `.signaturePad(o)` | billing.js |
 | `WD.timeclock.week(userId)`, `.teamMapSpec()`, `.rulesSpec()`, `.timesheetsSpec()` | team.js |
 | `WD.admin.signInSpec()`, `.typesSpec()`, `.importSpec()`, `.connectPage(from, done)` | admin.js |
+| `WD.co.hubSpec()`, `.templatesSpec()`, `.editTemplate(t)`, `.agreementDoc(a)`, `.editAgreementDoc(a)`, `.onMyWay(job)`, `.scanSheet(job, scans, done)`, `.syncPayments(manual)`, `.feedbackSpec()`, `.qrSpec()`, `.autoApprove(timeOff)`, `.inTerritory(customer)` | company.js |
+| `WD.screens.crm.openLead(id)`, `.newLead()` | crm.js |
 | `WD.x.poRows(o)`, `.pricingSection(c)`, `.historySection(c)`, `.agreementSection(c)`, `.jobAgreementSection(job, push)`, `.timeOffSection()`, `.compareOp(op)`, `.missingSheet()`, `.fetchHistory(text)`, `.diffJob(before, after)`, `.tutorial()` | extras.js |
 | `WD.miniMap({points, lines, aspect})`, `WD.pinStyle(job)` | map.js |
 | `WD.screens.map.root()`, `WD.screens.shift.root()` | map.js, shift.js |

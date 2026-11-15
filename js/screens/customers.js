@@ -227,7 +227,7 @@ function root() {
       WD.can('crm.edit') ? { icon: 'plus', label: R.seg === 'tasks' ? 'New follow-up' : 'New customer', onTap: () => R.seg === 'tasks' ? newTask() : openNew() } : null],
     onAppear: page => { R.page = page; },
     render: page => R.query ? searchView() : [
-      h('div.cu-seg', ui.segmented([{ value: 'customers', label: 'Customers' }, { value: 'leads', label: 'Leads' }, { value: 'tasks', label: 'Tasks' }, (WD.can('billing.view') || WD.can('billing.field')) && { value: 'invoices', label: 'Invoices' }].filter(Boolean), R.seg, v => { if (v === 'invoices') { WD.nav.push(WD.workflow.invoicesSpec()); return; } R.seg = v; page.refresh(); })),
+      h('div.cu-seg', ui.segmented([{ value: 'customers', label: 'Customers' }, !WD.can('leads.view') && { value: 'leads', label: 'Leads' }, { value: 'tasks', label: 'Tasks' }, (WD.can('billing.view') || WD.can('billing.field')) && { value: 'invoices', label: 'Invoices' }].filter(Boolean), R.seg, v => { if (v === 'invoices') { WD.nav.push(WD.workflow.invoicesSpec()); return; } R.seg = v; page.refresh(); })),
       R.seg === 'customers' ? customersView() : R.seg === 'leads' ? leadsView() : tasksView()] };
 }
 function filterMenu(el, page) {
@@ -791,10 +791,10 @@ function showSeg(seg) {
   R.seg = seg; R.query = ''; R.results = null; R.loading = false; WD.nav.switchTab('customers');
   if (R.page) { const inp = R.page.navbar.querySelector('.nav-search input'), box = R.page.navbar.querySelector('.search-box'); if (inp) inp.value = ''; if (box) box.classList.remove('filled'); R.page.refresh(); }
 }
-WD.screens.customers = { root, openDetail, openNew, simulateCall, invoicePage };
+WD.screens.customers = { root, openDetail, openNew, simulateCall, invoicePage, crm: { PIPE, LC, CHANNELS, LOST, mk, addI, addTask, logCall, moveStage, setNext, markLost, contactedYet, nextLabel, staff, first, startCall, timeline, describe, owners } };
 WD.panel.addAction('Incoming call (known customer)', () => simulateCall('c1'));
 WD.panel.addAction('Incoming call (unknown number)', () => simulateCall(null));
 WD.panel.addJump('Customer record', () => { WD.nav.switchTab('customers'); openDetail('c1'); });
-WD.panel.addJump('Leads', () => showSeg('leads'));
+WD.panel.addJump('Leads', () => WD.can('leads.view') ? WD.nav.switchTab('crm') : showSeg('leads'));
 WD.panel.addJump('Tasks', () => showSeg('tasks'));
 })();
