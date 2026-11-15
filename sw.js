@@ -1,6 +1,6 @@
 /* Work Dispatcher prototype — offline copy. Network first (so a newly published version always shows), falling back to the saved copy
    when there is no connection or the network takes more than 3 seconds. */
-const CACHE = 'wd-prototype-v3';
+const CACHE = 'wd-prototype-v4';
 const FILES = ['./', 'index.html', 'css/ios.css', 'img/app-icon.png', 'js/core.js', 'js/data.js'].concat(
   ['auth', 'board', 'jobs', 'map', 'customers', 'shift', 'settings', 'billing', 'workflow', 'team', 'admin', 'extras', 'company', 'crm', 'ops'].map(n => 'js/screens/' + n + '.js'));
 self.addEventListener('install', e => { self.skipWaiting(); e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).catch(() => {})); });

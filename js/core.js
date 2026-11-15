@@ -4,7 +4,7 @@
 'use strict';
 const WD = window.WD = { screens: {}, data: {} };
 /** Prototype version (Settings → About). Bump on every publish; the “what’s new” tutorial shows once per version. */
-WD.version = '2.5';
+WD.version = '2.6';
 const $ = (s, r) => (r || document).querySelector(s);
 
 /* ================= DOM helper ================= */
@@ -98,6 +98,7 @@ const F = WD.fmt = {
 const I = WD.icons = {
   'chevron.right': '<path d="M9 5l7 7-7 7"/>', 'chevron.left': '<path d="M15 5l-7 7 7 7"/>', 'chevron.down': '<path d="M5 9l7 7 7-7"/>', 'chevron.up': '<path d="M5 15l7-7 7 7"/>',
   'chevron.up.chevron.down': '<path d="M8 9.5l4-4 4 4M8 14.5l4 4 4-4"/>',
+  'eye.slash': '<path d="M3 12s3.3-6 9-6c1.6 0 3 .5 4.200 1.200M21 12s-3.300 6-9 6c-1.600 0-3-.5-4.200-1.200M4 4l16 16"/><circle cx="12" cy="12" r="2.6"/>', 'line.3.horizontal.decrease': '<path d="M4 7h16M7 12h10M10 17h4"/>',
   plus: '<path d="M12 5v14M5 12h14"/>', minus: '<path d="M5 12h14"/>', xmark: '<path d="M6 6l12 12M18 6L6 18"/>', checkmark: '<path d="M5 12.5l4.5 4.5L19 7"/>',
   'plus.circle.fill': '<circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M12 7.5v9M7.5 12h9" stroke="#fff"/>',
   'checkmark.circle': '<circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.8 2.8L16 9.5"/>',

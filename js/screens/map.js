@@ -253,7 +253,9 @@ const mini = (job, n) => h('span.mp-mini' + (DONE[job.status] ? '.done' : ''), {
 /* ================= The map page ================= */
 let inst = null;
 function createMap() {
-  const st = { day: S.board.day || D.today(), hidden: new Set(), extra: new Set(), showTrucks: true, sel: null, follow: null };
+  /* The day is the dispatch board's day: one shared date, so switching between Map and Board never shows two different days. */
+  const st = { get day() { return S.board.day || D.today(); }, set day(k) { S.board.day = k; }, hidden: new Set(), extra: new Set(), showTrucks: true, sel: null, follow: null };
+  let shownDay = st.day;
   let W = 393, H = 769, view = { s: 1, x0: 0, y0: 0 }, fitted = false, raf = 0, anim = 0, ro = null;
   const base = buildBase();
   const svg = document.createElementNS(NS, 'svg'); svg.setAttribute('class', 'mp-svg'); svg.setAttribute('preserveAspectRatio', 'none'); svg.innerHTML = base.markup;
@@ -376,7 +378,7 @@ function createMap() {
 
   /* ---------- Floating controls ---------- */
   function select(id) { st.sel = id; drawStops(); drawUI(); }
-  function setDay(k) { st.day = k; st.sel = null; st.follow = null; update(); fit(true); }
+  function setDay(k) { st.day = shownDay = k; st.sel = null; st.follow = null; update(); fit(true); }
   function stopFollow() { st.follow = null; drawUI(); }
   function follow(routeId) { const t = truckFor(routeId), v = t && q.vehicle(t.vehicleId); if (!t) return; st.follow = routeId; select(null); const [x, y] = posOf(t); animateTo(lookAt(x, y, Math.max(view.s, 1.4))); ui.toast('Following ' + (v ? v.name : 'truck'), 'location.fill'); kick(); }
   function locate() {
@@ -473,11 +475,11 @@ function createMap() {
 
   /* ---------- Lifecycle ---------- */
   function focus(job) {
-    st.day = job.day; st.follow = null; st.hidden.delete(job.routeId); if (!q.route(job.routeId).visible) st.extra.add(job.routeId);
+    st.day = shownDay = job.day; st.follow = null; st.hidden.delete(job.routeId); if (!q.route(job.routeId).visible) st.extra.add(job.routeId);
     st.sel = job.id; measure(); update(); fitted = true;
     if (job.located && job.x != null) animateTo(lookAt(job.x, job.y, Math.max(view.s, 1.5))); else ui.toast('This address isn’t on the map', 'questionmark.circle');
   }
-  const resume = () => { measure(); update(); };
+  const resume = () => { measure(); if (st.day !== shownDay) { shownDay = st.day; st.sel = null; st.follow = null; update(); fit(true); } else update(); };   // the board changed the day meanwhile
   unsub.push(WD.on('trucks', () => { if (el.isConnected) drawTrucks(); }), WD.on('tab', id => { if (id === 'map') resume(); }));
   if (typeof ResizeObserver !== 'undefined') { ro = new ResizeObserver(() => measure()); ro.observe(el); }
   return {

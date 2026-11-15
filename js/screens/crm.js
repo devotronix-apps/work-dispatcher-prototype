@@ -1,4 +1,4 @@
-/* CRM tab (people with the “CRM: leads and pipeline” permission): the lead pipeline with sources and territories, follow-ups from templates,
+/* CRM tab (people with the “CRM: leads and pipeline” permission): the lead pipeline with priorities, sorting, show/hide filters, jump links, sources and territories, follow-ups from templates,
    quotes and bids, referrals, leads by source, and customer feedback. Features switch on and off in Settings → CRM and leads.
    Registers WD.screens.crm. Builds on the lead helpers exported by customers.js and the settings and templates in company.js. */
 (function () {
@@ -12,6 +12,11 @@ WD.css(`
 .cr-head { padding: 14px 16px 2px; display: flex; align-items: center; gap: 8px; } .cr-head .headline { min-width: 0; overflow-wrap: anywhere; }
 .cr-quiet { color: var(--orange); font-weight: 600; } .cr-hot { color: var(--green); font-weight: 600; }
 .cr-src { display: inline-flex; align-items: center; gap: 4px; }
+.cr-sit { color: var(--label); } .cr-t { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; } .cr-t .badge { flex: none; } .cr-tile { cursor: pointer; }
+.cr-jump { display: flex; gap: 7px; overflow-x: auto; padding: 12px 16px 2px; scrollbar-width: none; -webkit-overflow-scrolling: touch; } .cr-jump::-webkit-scrollbar { display: none; }
+.cr-jump button { flex: none; display: inline-flex; align-items: center; gap: 5px; border: 0; border-radius: 15px; padding: 6px 11px; background: var(--cell); color: var(--label); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.cr-jump button i { font-style: normal; font-weight: 500; color: var(--label2); } .cr-jump button.hi { color: var(--red); } .cr-jump button.off { background: var(--fill3); color: var(--label3); font-weight: 500; } .cr-jump button.off i { color: var(--label3); }
+.cr-bar { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 13px; color: var(--label2); padding: 10px 16px 0; } .cr-bar .cu-link { font-size: 13px; }
 `);
 
 /* ================= Sources, seed leads, quotes, referrals ================= */
@@ -29,6 +34,12 @@ const P = (name, role, phone, email) => ({ name, role, phone, email });
     Object.assign(c, { source, createdAt: +WD.now() - age * 864e5, changes: [] }); c.locations.forEach(l => { l.items = WD.parseItems(l.containers); });
     K.addI({ customerId: id, type: 'note', at: c.createdAt, text: note, by: source === 'referral' ? 'Colleen Abbott' : 'Work Dispatcher · ' + SRC[source].title.toLowerCase() });
     if (lifecycle !== 'lead') K.addI({ customerId: id, type: 'note', at: c.createdAt + 5 * 36e5, text: 'Follow-up sent (“New lead — first reply”, text).', by: (q.user(owner) || {}).name || 'Office' }); });
+/* Priority (low, medium, high) is set by the office on each lead; new leads start at medium. */
+const PRI = { high: ['High', 'var(--red)', 0], medium: ['Medium', 'var(--orange)', 1], low: ['Low', 'var(--gray)', 2] }, PRIS = ['high', 'medium', 'low'], priOf = c => PRI[c.priority] ? c.priority : 'medium';
+const priBadge = c => ui.badge(PRI[priOf(c)][0], PRI[priOf(c)][1]);
+Object.entries({ c43: 'high', c44: 'high', c25: 'high', c42: 'low' }).forEach(([id, p]) => { const c = q.customer(id); if (c) c.priority = p; });
+[['c43', 'Comparing us with one other company. Irene decides by Friday.', 'Colleen Abbott', 1], ['c44', 'Bid is drafted. Waiting on the console count for the third building before it goes in.', 'Colleen Abbott', 2], ['c25', 'Wants a quote but has not sent the number of consoles. Two messages left.', 'Priya Raman', 3]]
+  .forEach(([id, text, by, age]) => { const c = q.customer(id); if (c) Object.assign(c, { situation: text, situationBy: by, situationAt: +WD.now() - age * 864e5 }); });
 data.quotes = []; let qSeq = 300;
 function addQuote(c, o = {}) {
   const loc = c.locations[0] || {}, src = (loc.items && loc.items.length ? loc.items : WD.parseItems(loc.containers)).filter(i => i.qty > 0);
@@ -46,6 +57,30 @@ const pipe = () => data.customers.filter(c => K.PIPE.includes(c.lifecycle) && CO
 const lastTouch = c => Math.max(c.lastFollowAt || 0, c.createdAt || 0, ...data.interactions.filter(i => i.customerId === c.id).map(i => i.at));
 const quiet = c => { const t = lastTouch(c); return t ? Math.max(0, Math.floor((+WD.now() - t) / 864e5)) : 0; };
 const isDue = c => c.lifecycle !== 'scheduled' && c.lifecycle !== 'lost' && ((c.nextAction && c.nextAction <= today) || (F.reminders && c.lifecycle !== 'lead' && quiet(c) >= ST.remindDays && !(c.nextAction && c.nextAction > today)));
+/** Who on the team last reached out (call, text, email, follow-up, quote, Yelp reply) and when. → {at, by, how} or null */
+function lastContact(c) {
+  let best = null; const take = (at, by, how) => { if (by && !/^Work Dispatcher/.test(by) && (!best || at > best.at)) best = { at, by, how }; };
+  data.interactions.forEach(i => { if (i.customerId !== c.id) return;
+    if (i.type === 'call') take(i.at, i.by, i.dir === 'in' ? 'took their call' : 'called');
+    else if (i.type === 'text') (i.messages || []).forEach(m => { if (m.dir === 'out') take(m.at, m.by || K.staff(c.owner), 'texted'); });
+    else if (i.type === 'email' && i.dir === 'out') { const u = data.users.find(x => first(x.name).toLowerCase() === String(i.from || '').split('@')[0]); take(i.at, u ? u.name : K.staff(c.owner), 'emailed'); }
+    else if (i.type === 'note') { const m = /^(Follow-up sent|Replied to the Yelp|(?:Quote|Bid) \S+ sent)/.exec(i.text || ''); if (m) take(i.at, i.by, m[1][0] === 'F' ? 'sent a follow-up' : m[1][0] === 'R' ? 'replied in Yelp' : 'sent a ' + m[1].split(' ')[0].toLowerCase()); } });
+  return best;
+}
+const ago = at => { const d = Math.max(0, Math.floor((+WD.now() - at) / 864e5)); return d ? plural(d, 'day') + ' ago' : 'today'; };
+const contactText = c => { const l = lastContact(c); return l ? first(l.by) + ' ' + l.how + ' ' + ago(l.at) : 'Nobody has contacted them yet'; };
+const contactLine = c => { const l = lastContact(c), d = quiet(c); return h('span' + (!l ? '.cr-hot' : d >= ST.remindDays && c.lifecycle !== 'scheduled' && c.lifecycle !== 'lost' ? '.cr-quiet' : ''), l ? 'Last contact: ' + contactText(c) : c.lifecycle === 'lead' ? 'New ' + ago(c.createdAt || +WD.now()) + ' · nobody has replied' : contactText(c)); };
+/** Where the lead stands: what the office wrote, or a line worked out from the stage, quotes and follow-ups. */
+function autoSituation(c) {
+  const qs = data.quotes.filter(x => x.customerId === c.id), sent = qs.find(x => x.status === 'sent'), draft = qs.find(x => x.status === 'draft'), n = c.followUps || 0;
+  if (c.lifecycle === 'lost') return 'Lost: ' + (c.lostReason || 'no reason given');
+  if (c.lifecycle === 'scheduled') return 'Won. First job is on the schedule or being booked.';
+  if (sent) return (sent.kind === 'bid' ? 'Bid ' : 'Quote ') + sent.number + ' (' + money(qTotal(sent)) + ') sent ' + ago(sent.sentAt) + ', waiting for an answer';
+  if (draft) return (draft.kind === 'bid' ? 'Bid ' : 'Quote ') + draft.number + ' is a draft' + (draft.due ? ', due ' + fmt.day(draft.due, 'md') : ', not sent yet');
+  if (c.lifecycle === 'lead' && !lastContact(c)) return 'New request, waiting for a first reply';
+  return n ? plural(n, 'follow-up') + ' sent, no answer yet' : 'Contacted, waiting to hear back';
+}
+const situation = c => (c.situation || '').trim() || autoSituation(c);
 /** The follow-up that fits: by stage, how many were already sent, and how long it has been quiet. → [template id, why] */
 function suggest(c) {
   const d = quiet(c), n = c.followUps || 0;
@@ -77,14 +112,18 @@ function leadSpec(id) {
   return { title: 'Lead', render: page => { const c = q.customer(id); if (!c) return ui.empty({ icon: 'person', title: 'Lead not found' });
     const p = c.contacts[0] || {}, edit = canEdit(), [sid, why] = suggest(c), quotes = data.quotes.filter(x => x.customerId === id), ref = data.referrals.find(r => r.leadId === id), by = ref && q.customer(ref.byId), acts = K.timeline(id).slice(0, 4), src = SRC[sourceOf(c)] || SRC.phone;
     const stages = ['lead', 'contacted', 'quoted', 'scheduled', 'customer'].concat(c.lifecycle === 'lost' ? ['lost'] : []).map(s => ({ value: s, label: K.LC[s][0] }));
-    return [h('div.cr-head', h('span.headline', c.name), h('span.spacer'), ui.badge(K.LC[c.lifecycle][0], K.LC[c.lifecycle][1])),
+    const lc = lastContact(c);
+    return [h('div.cr-head', h('span.headline', c.name), h('span.spacer'), priOf(c) === 'high' && ui.badge('High priority', 'var(--red)'), ui.badge(K.LC[c.lifecycle][0], K.LC[c.lifecycle][1])),
       h('div.footnote', { style: 'padding:0 16px 2px' }, [p.name, p.phone && fmt.phone(p.phone), p.email].filter(Boolean).join(' · ')),
       ui.list(
         ui.section({ header: 'Status', footer: c.notes || null },
           ui.pickerRow({ title: 'Stage', disabled: !edit, value: c.lifecycle, options: stages, onChange: v => { if (v === c.lifecycle) return; c.lifecycle = v; c.lostReason = null; K.addI({ customerId: id, type: 'note', at: +WD.now(), text: 'Moved to ' + K.LC[v][0] + '.', by: me() }); WD.changed(); page.refresh(); ui.toast('Moved to ' + K.LC[v][0], 'checkmark'); } }),
+          ui.pickerRow({ title: 'Priority', disabled: !edit, value: priOf(c), options: PRIS.map(k => ({ value: k, label: PRI[k][0] })), onChange: v => { if (v === priOf(c)) return; c.priority = v; K.addI({ customerId: id, type: 'note', at: +WD.now(), text: 'Priority set to ' + PRI[v][0].toLowerCase() + '.', by: me() }); WD.changed(); page.refresh(); ui.toast(PRI[v][0] + ' priority', 'flag'); } }),
           edit ? ui.dateRow({ title: 'Next follow-up', value: c.nextAction || '', onChange: v => { c.nextAction = v; WD.changed(); page.refresh(); } }) : ui.row({ title: 'Next follow-up', detail: K.nextLabel(c) }),
           ui.pickerRow({ title: 'Assigned to', disabled: !edit, value: c.owner, options: K.owners().map(u => ({ value: u.id, label: u.name })), onChange: v => { c.owner = v; WD.changed(); page.refresh(); } }),
-          ui.row({ title: 'Last contact', detail: quietText(c) })),
+          ui.row({ title: 'Last contact', subtitle: lc ? first(lc.by) === lc.by ? null : lc.by + ' ' + lc.how : null, detail: lc ? h('span' + (quiet(c) >= ST.remindDays && !['scheduled', 'lost'].includes(c.lifecycle) ? '.cr-quiet' : ''), ago(lc.at)[0].toUpperCase() + ago(lc.at).slice(1)) : h('span.cr-hot', 'Nobody yet') })),
+        ui.section({ header: 'Current situation', footer: c.situation ? 'Written by ' + (c.situationBy || 'the office') + (c.situationAt ? ' · ' + fmt.rel(c.situationAt).toLowerCase() : '') + '. Shown on the pipeline under the lead’s name.' : 'Shown on the pipeline under the lead’s name. Until someone writes one, the app fills it in from the stage, quotes and follow-ups.' },
+          edit ? ui.inputRow({ multiline: true, placeholder: autoSituation(c), value: c.situation || '', onInput: v => { c.situation = v; c.situationBy = me(); c.situationAt = +WD.now(); } }) : ui.row({ title: situation(c) })),
         ui.section('Where it came from',
           ui.row({ icon: src.icon, iconColor: 'var(--teal)', title: src.title, subtitle: by ? 'Referred by ' + by.name : 'Heard of us: ' + c.channel, detail: c.createdAt ? fmt.rel(c.createdAt) : null }),
           sourceOf(c) === 'yelp' && ui.row({ icon: 'arrow.up.right', iconPlain: true, title: c.yelpReplied ? 'Open the conversation in Yelp' : 'Reply in Yelp', subtitle: c.yelpReplied ? 'Replied ' + fmt.rel(c.yelpReplied).toLowerCase() : 'Yelp keeps messages on its side, so the reply is written there. Fast replies help your Yelp response time.', tint: true, badge: c.yelpReplied ? null : ui.badge('Waiting', 'var(--red)'),
@@ -167,13 +206,13 @@ function referralsView(page) {
 
 /* ================= New lead (manual entry) ================= */
 function newLead(pre = {}) {
-  const on = CO.SOURCES.filter(([k]) => ST.sources[k]), f = { name: '', contact: '', phone: '', email: '', address: '', zip: '', source: pre.source || (ST.sources.manual ? 'manual' : on[0] ? on[0][0] : 'manual'), channel: 'Other', referredBy: null, notes: '', owner: S.me.id };
+  const on = CO.SOURCES.filter(([k]) => ST.sources[k]), f = { name: '', contact: '', phone: '', email: '', address: '', zip: '', source: pre.source || (ST.sources.manual ? 'manual' : on[0] ? on[0][0] : 'manual'), channel: 'Other', referredBy: null, notes: '', owner: S.me.id, priority: 'medium' };
   const customers = data.customers.filter(c => ['customer', 'serviced'].includes(c.lifecycle)).sort((a, b) => a.name.localeCompare(b.name));
   ui.sheet({ title: 'New lead', leading: [{ label: 'Cancel', onTap: p => p.dismiss() }],
     trailing: [{ label: 'Add', bold: true, onTap: async p => { if (!f.name.trim()) return ui.toast('Add a name', 'note'); if (!fmt.phoneValid(f.phone) && !f.email.trim()) return ui.toast('Add a phone number or an email', 'phone');
       let c = null; const id = 'c' + Date.now().toString(36);
       if (!await ui.run('Adding lead…', () => { c = K.mk({ id, name: f.name.trim(), channel: f.source === 'referral' ? 'Referral' : f.channel, contacts: [{ name: f.contact.trim() || f.name.trim(), role: '', phone: fmt.phoneValid(f.phone) ? '+1' + fmt.phoneDigits(f.phone) : '', email: f.email.trim() }], address: f.address.trim() || 'Address to come', owner: f.owner, next: 0, cnotes: f.notes.trim() });
-        Object.assign(c, { source: f.source, zip: f.zip.trim() || null, createdAt: +WD.now(), changes: [], referredBy: f.source === 'referral' ? f.referredBy : null }); c.locations.forEach(l => { l.items = []; });
+        Object.assign(c, { source: f.source, priority: f.priority, zip: f.zip.trim() || null, createdAt: +WD.now(), changes: [], referredBy: f.source === 'referral' ? f.referredBy : null }); c.locations.forEach(l => { l.items = []; });
         if (c.referredBy) data.referrals.push({ id: 'rf' + id, leadId: id, byId: c.referredBy, at: +WD.now(), thanked: false });
         K.addI({ customerId: id, type: 'note', at: +WD.now(), text: 'Lead added by hand' + (f.notes.trim() ? ': ' + f.notes.trim() : '.'), by: me() }); K.addTask(id, 'Call back new lead', 0, { lead: true }); }, { done: 'Lead added' })) return;
       p.dismiss(); setTimeout(() => openLead(id), 400); } }],
@@ -185,27 +224,58 @@ function newLead(pre = {}) {
         ui.pickerRow({ title: 'Source', value: f.source, options: on.map(([k, title, ic]) => ({ value: k, label: title, icon: ic })), onChange: v => { f.source = v; p.refresh(); } }),
         f.source === 'referral' ? ui.pickerRow({ title: 'Referred by', placeholder: 'Choose a customer', value: f.referredBy, options: customers.map(c => ({ value: c.id, label: c.name })), onChange: v => { f.referredBy = v; p.refresh(); } })
           : ui.pickerRow({ title: 'Heard of us from', value: f.channel, options: K.CHANNELS.filter(x => x !== 'Referral'), onChange: v => { f.channel = v; p.refresh(); } }),
-        ui.pickerRow({ title: 'Assigned to', value: f.owner, options: K.owners().map(u => ({ value: u.id, label: u.name })), onChange: v => { f.owner = v; p.refresh(); } })),
+        ui.pickerRow({ title: 'Assigned to', value: f.owner, options: K.owners().map(u => ({ value: u.id, label: u.name })), onChange: v => { f.owner = v; p.refresh(); } }),
+        ui.pickerRow({ title: 'Priority', value: f.priority, options: PRIS.map(k => ({ value: k, label: PRI[k][0] })), onChange: v => { f.priority = v; p.refresh(); } })),
       ui.section('Notes', ui.inputRow({ multiline: true, placeholder: 'What do they need?', value: f.notes, onInput: v => { f.notes = v; } }))) }, { detent: 'large' });
 }
 
 /* ================= Pipeline ================= */
-const R = { seg: 'pipeline', source: 'all', lostOpen: false };
+const STAGES = [['fresh', 'New', 'New — nobody has replied'], ['due', 'Follow-up due', 'Follow-up due'], ['contacted', 'Contacted', 'Contacted'], ['quoted', 'Quoted', 'Quoted — waiting'], ['scheduled', 'Won', 'Won — scheduled'], ['lost', 'Lost', 'Lost']];
+const SORTS = [['next', 'Follow-up date'], ['priority', 'Priority'], ['quiet', 'Longest without contact'], ['newest', 'Newest lead']];
+const R = { seg: 'pipeline', source: 'all', sort: 'next', pri: { high: true, medium: true, low: true }, stages: { fresh: true, due: true, contacted: true, quoted: true, scheduled: true, lost: false }, important: true };
+const stageOf = c => c.lifecycle === 'lost' ? 'lost' : c.lifecycle === 'lead' && !K.contactedYet(c) && !c.followUps ? 'fresh' : isDue(c) ? 'due' : c.lifecycle === 'quoted' ? 'quoted' : c.lifecycle === 'scheduled' ? 'scheduled' : 'contacted';
+const byNext = (a, b) => (a.nextAction || '9').localeCompare(b.nextAction || '9') || a.name.localeCompare(b.name);
+const sorters = { next: byNext, priority: (a, b) => PRI[priOf(a)][2] - PRI[priOf(b)][2] || byNext(a, b), quiet: (a, b) => ((lastContact(a) || {}).at || 0) - ((lastContact(b) || {}).at || 0) || byNext(a, b), newest: (a, b) => (b.createdAt || 0) - (a.createdAt || 0) };
+/** Scroll the pipeline to a section (the jump links and the tiles). */
+function jumpTo(page, key) { const el = page.body.querySelector('[data-jump="' + key + '"]'); if (!el) return; const top = page.body.scrollTop + (el.getBoundingClientRect().top - page.body.getBoundingClientRect().top) / WD.scale() - 8; page.body.scrollTo ? page.body.scrollTo({ top, behavior: 'smooth' }) : (page.body.scrollTop = top); }
+function showAndJump(page, key) { if (key !== 'important' && !R.stages[key]) { R.stages[key] = true; page.refresh(); } else if (key === 'important' && (!R.important || !R.pri.high)) { R.important = R.pri.high = true; page.refresh(); } setTimeout(() => jumpTo(page, key), 30); }
+function filterSheet(page, counts) {
+  const flip = (o, k) => v => { o[k] = v; page.refresh(); };
+  ui.sheet({ title: 'Show and hide', leading: [{ label: 'Show all', onTap: pg => { PRIS.forEach(k => { R.pri[k] = true; }); STAGES.forEach(([k]) => { R.stages[k] = true; }); R.important = true; R.source = 'all'; page.refresh(); pg.refresh(); } }], trailing: [{ label: 'Done', bold: true, onTap: pg => pg.dismiss() }],
+    render: () => ui.list(
+      ui.section({ header: 'Priority', footer: 'Set the priority on the lead. New leads start at medium.' }, PRIS.map(k => ui.toggleRow({ icon: 'flag', iconColor: PRI[k][1], title: PRI[k][0], detail: String(counts.pri[k]), value: R.pri[k], onChange: flip(R.pri, k) }))),
+      ui.section({ header: 'Stages of the pipeline', footer: 'A hidden stage stays in the jump links, grayed out. Tap it there to bring it back.' }, STAGES.map(([k, label]) => ui.toggleRow({ title: label, detail: String(counts.stage[k]), value: R.stages[k], onChange: flip(R.stages, k) }))),
+      ui.section({ footer: 'Lists open high-priority leads first, above the stages.' }, ui.toggleRow({ icon: 'flag', iconColor: 'var(--red)', title: 'High priority section at the top', value: R.important, onChange: flip(R, 'important') }))) }, { detent: 'large' });
+}
 function pipelineView(page) {
-  const all = pipe(), list = R.source === 'all' ? all : all.filter(c => sourceOf(c) === R.source), g = { fresh: [], due: [], contacted: [], quoted: [], scheduled: [], lost: [] };
-  list.forEach(c => { if (c.lifecycle === 'lost') g.lost.push(c); else if (c.lifecycle === 'lead' && !K.contactedYet(c) && !c.followUps) g.fresh.push(c); else if (isDue(c)) g.due.push(c); else if (c.lifecycle === 'quoted') g.quoted.push(c); else if (c.lifecycle === 'scheduled') g.scheduled.push(c); else g.contacted.push(c); });
-  const quoted = data.quotes.filter(x => x.status === 'sent' && list.some(c => c.id === x.customerId)).reduce((s, x) => s + qTotal(x), 0), t = CO.territory(S.me);
-  const row = c => ui.row({ title: c.name, subtitle: [h('span.cr-src', icon((SRC[sourceOf(c)] || SRC.phone).icon, 13), srcLabel(c) + ' · ' + (c.referredBy && q.customer(c.referredBy) ? 'by ' + q.customer(c.referredBy).name : c.channel) + ' · ' + first(K.staff(c.owner))), c.lifecycle === 'lost' ? 'Lost: ' + (c.lostReason || 'no reason') : quietText(c)].map(x => h('div', x)),
+  const all = pipe(), inSrc = R.source === 'all' ? all : all.filter(c => sourceOf(c) === R.source), list = inSrc.filter(c => R.pri[priOf(c)]), g = Object.fromEntries(STAGES.map(([k]) => [k, []]));
+  list.forEach(c => g[stageOf(c)].push(c));
+  const counts = { pri: Object.fromEntries(PRIS.map(k => [k, inSrc.filter(c => priOf(c) === k).length])), stage: Object.fromEntries(STAGES.map(([k]) => [k, inSrc.filter(c => stageOf(c) === k).length])) };
+  const important = R.important && R.pri.high ? list.filter(c => priOf(c) === 'high' && !['lost', 'scheduled'].includes(c.lifecycle)) : [];
+  const quoted = data.quotes.filter(x => x.status === 'sent' && list.some(c => c.id === x.customerId)).reduce((s, x) => s + qTotal(x), 0), t = CO.territory(S.me), sort = sorters[R.sort] || byNext;
+  const row = (c, top) => ui.row({ title: h('span.cr-t', h('span', c.name), top ? ui.badge(K.LC[c.lifecycle][0], K.LC[c.lifecycle][1]) : priBadge(c)),
+    subtitle: [h('span.cr-sit', situation(c)), contactLine(c), h('span.cr-src', icon((SRC[sourceOf(c)] || SRC.phone).icon, 13), srcLabel(c) + ' · ' + (c.referredBy && q.customer(c.referredBy) ? 'by ' + q.customer(c.referredBy).name : c.channel) + ' · assigned to ' + first(K.staff(c.owner)))].map(x => h('div', x)),
     detail: c.lifecycle === 'lost' ? null : K.nextLabel(c), chevron: true, onTap: () => openLead(c.id) });
-  const sec = (title, arr, footer) => arr.length ? ui.section({ header: title + ' · ' + arr.length, footer }, arr.sort((a, b) => (a.nextAction || '9').localeCompare(b.nextAction || '9')).map(row)) : null;
+  const mark = (el, key) => { el.dataset.jump = key; return el; };
+  const FOOT = { fresh: 'From calls, texts, email, website forms, Yelp, the leads sheet and manual entry.', due: F.reminders ? 'Past their follow-up date, or quiet for ' + plural(ST.remindDays, 'day') + ' or more.' : null };
+  const sec = ([k, , title]) => R.stages[k] && g[k].length ? mark(ui.section({ header: title + ' · ' + g[k].length, footer: FOOT[k] }, g[k].sort(sort).map(c => row(c))), k) : null;
   const srcRows = F.sources ? CO.SOURCES.map(([k, title, ic]) => { const xs = all.filter(c => sourceOf(c) === k), won = xs.filter(c => c.lifecycle === 'scheduled').length; return xs.length ? ui.row({ icon: ic, iconColor: 'var(--teal)', title, subtitle: ST.sources[k] ? null : 'Switched off — no new leads from here', detail: plural(xs.length, 'lead') + (won ? ' · ' + won + ' won' : ''), chevron: true, onTap: () => { R.source = k; page.refresh(); page.body.scrollTop = 0; } }) : null; }).filter(Boolean) : [];
+  const tile = (key, n, label, color) => h('div.cr-tile', { onclick: () => showAndJump(page, key) }, h('b', { style: color ? 'color:' + color : null }, n), h('span', label));
+  const hidden = PRIS.filter(k => !R.pri[k] && counts.pri[k]).map(k => PRI[k][0].toLowerCase() + ' priority').concat(STAGES.filter(([k]) => !R.stages[k] && counts.stage[k]).map(([, label]) => label));
+  const shown = STAGES.reduce((n, [k]) => n + (R.stages[k] ? g[k].length : 0), 0);
   return ui.list(
     !CO.seesAll() && h('div', { style: 'padding:4px 4px 0' }, ui.note('You see leads assigned to you' + (t.values.length ? ', plus every lead in ' + CO.territoryText(S.me) : '') + '. An admin sets this in Settings → CRM and leads.')),
-    ui.section(null, h('div.co-tiles', h('div', h('b', { style: g.fresh.length ? 'color:var(--blue)' : null }, String(g.fresh.length)), h('span', 'New')), h('div', h('b', { style: g.due.length ? 'color:var(--orange)' : null }, String(g.due.length)), h('span', 'Due')), h('div', h('b', money(quoted)), h('span', 'Quoted')), h('div', h('b', String(g.scheduled.length)), h('span', 'Won')))),
+    ui.section(null, h('div.co-tiles', tile('fresh', String(g.fresh.length), 'New', g.fresh.length ? 'var(--blue)' : null), tile('due', String(g.due.length), 'Due', g.due.length ? 'var(--orange)' : null), tile('quoted', money(quoted), 'Quoted'), tile('scheduled', String(g.scheduled.length), 'Won'))),
+    h('div.cr-jump', { role: 'navigation', 'aria-label': 'Jump to a stage' },
+      important.length > 0 && h('button.hi', { onclick: () => jumpTo(page, 'important') }, icon('flag', 13), 'High priority', h('i', String(important.length))),
+      STAGES.map(([k, label]) => (g[k].length > 0 || !R.stages[k]) && h('button' + (R.stages[k] ? '' : '.off'), { 'aria-label': (R.stages[k] ? 'Jump to ' : 'Show ') + label, onclick: () => showAndJump(page, k) }, !R.stages[k] && icon('eye.slash', 13), label, h('i', String(g[k].length))))),
+    h('div.cr-bar', h('button.cu-link', { onclick: e => ui.menu(e.currentTarget, SORTS.map(([v, label]) => ({ label, checked: R.sort === v, onTap: () => { R.sort = v; page.refresh(); } }))) }, 'Sorted by ' + SORTS.find(x => x[0] === R.sort)[1].toLowerCase(), icon('chevron.down', 12)),
+      h('button.cu-link', { onclick: () => filterSheet(page, counts) }, icon('line.3.horizontal.decrease', 14), 'Show and hide')),
+    hidden.length > 0 && h('div.cr-bar', h('span', 'Hidden: ' + hidden.join(', ')), h('button.cu-link', { style: 'flex:none', onclick: () => { PRIS.forEach(k => { R.pri[k] = true; }); STAGES.forEach(([k]) => { R.stages[k] = true; }); page.refresh(); } }, 'Show all')),
     R.source !== 'all' && h('div.cu-filter', 'Showing leads from ' + (SRC[R.source] || {}).title.toLowerCase(), h('button.cu-link', { onclick: () => { R.source = 'all'; page.refresh(); } }, 'Show all')),
-    sec('New — nobody has replied', g.fresh, 'From calls, texts, email, website forms, Yelp, the leads sheet and manual entry.'), sec('Follow-up due', g.due, F.reminders ? 'Past their follow-up date, or quiet for ' + plural(ST.remindDays, 'day') + ' or more.' : null), sec('Contacted', g.contacted), sec('Quoted — waiting', g.quoted), sec('Won — scheduled', g.scheduled),
-    g.lost.length ? ui.section({ header: 'Lost · ' + g.lost.length }, ui.row({ title: R.lostOpen ? 'Hide lost leads' : 'Show lost leads', tint: true, onTap: () => { R.lostOpen = !R.lostOpen; page.refresh(); } }), R.lostOpen ? g.lost.map(row) : null) : null,
-    !list.length && ui.empty({ icon: 'funnel', title: 'No leads', text: CO.seesAll() ? 'New leads appear here as they come in.' : 'No leads in your territory right now.' }),
+    important.length > 0 && mark(ui.section({ header: h('span', { style: 'color:var(--red)' }, 'High priority · ' + important.length), footer: 'Open leads marked high priority. Each one is also listed under its stage below.' }, important.sort(sort).map(c => row(c, true))), 'important'),
+    STAGES.map(sec),
+    !shown && ui.empty({ icon: 'funnel', title: list.length || hidden.length ? 'Everything here is hidden' : 'No leads', text: list.length || hidden.length ? 'Tap Show all to bring the hidden priorities and stages back.' : CO.seesAll() ? 'New leads appear here as they come in.' : 'No leads in your territory right now.' }),
     srcRows.length > 0 && R.source === 'all' && ui.section({ header: 'Leads by source', footer: 'Tap a source to see only its leads.' }, srcRows));
 }
 function root() {
