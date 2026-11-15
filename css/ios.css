@@ -306,3 +306,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   .phone-scale { width: 100vw !important; height: 100dvh !important; }
   .screen { width: 100vw; height: 100dvh; border-radius: 0; }
 }
+
+/* Phone field: extension box and incomplete-number state */
+.row input.field.ext { flex: none; width: 62px; margin-left: 8px; padding: 5px 8px; border-radius: 7px; background: var(--fill3); text-align: center; font-size: 15px; }
+.row.bad input.field:not(.ext) { color: var(--red); }

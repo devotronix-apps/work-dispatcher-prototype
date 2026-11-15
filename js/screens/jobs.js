@@ -77,11 +77,11 @@ function details(job, p) {
   const line = (ic, ...kids) => h('div.jb-line', icon(ic, 18), h('span', kids)), wf = WD.workflow;
   const head = h('div.jb-head',
     h('div.title2', unresolved && h('span.jb-q', '?'), h('span', { style: WD.struck[job.status] ? { textDecoration: 'line-through' } : null }, job.title)),
-    h('div.jb-badges', ui.badge(st.title, st.color), type.color && ui.badge(type.title, type.color), job.pending && ui.badge('Pending sync', 'var(--orange)'), job.status === 'completed' && !wf.billed(job) && ui.badge('Not billed', 'var(--orange)')),
+    h('div.jb-badges', ui.badge(st.title, st.color), type.color && ui.badge(type.title, type.color), job.pending && ui.badge('Pending sync', 'var(--orange)'), !WD.closed[job.status] && WD.addressIssue(job) && ui.badge(WD.addressIssue(job), 'var(--red)'), job.status === 'completed' && !wf.billed(job) && ui.badge('Not billed', 'var(--orange)')),
     (d => d.length ? h('div.wf-chips', d.map(x => h('span.wf-chip', x))) : null)(wf.titleDetails(job)),
     h('div.jb-line', ui.dot(q.routeColor(route)), h('span', q.routeName(route) + (driver ? ' · ' + driver.name : '') + (vehicle ? ' · ' + vehicle.name : ''))),
     line('calendar', fmt.day(job.day, 'long')),
-    line('list.bullet', job.allDay ? 'Note for the day (not a stop)' : (p => 'Stop ' + p.n + ' of ' + p.of + ' on the list')(q.position(job))),
+    line('list.bullet', job.allDay ? 'Note for the day (not a stop)' : WD.calledOff(job) ? 'Not on the stop list, the map or AutoRoute' + (job.rescheduledTo ? ' · moved to ' + fmt.day(job.rescheduledTo) : '') : (p => 'Stop ' + p.n + ' of ' + p.of + ' on the list')(q.position(job))),
     job.recurring && line('repeat', job.recurring.rule));
 
   const setStatus = (s, note) => api.setStatus(job.id, s, note);
@@ -104,15 +104,20 @@ function details(job, p) {
       ui.row({ title: 'Delete job', icon: 'trash', iconPlain: true, iconColor: 'var(--red)', destructive: true, disabled: job.pending, onTap: () => deleteJob(job, p) })),
     cust && ui.section('Customer',
       ui.row({ leading: ui.avatar(cust.name, { size: 36, icon: cust.kind === 'household' ? 'house' : 'building' }), title: cust.name, subtitle: contact ? contact.name + (contact.role ? ' · ' + contact.role : '') : null, chevron: WD.can('crm.view'), onTap: WD.can('crm.view') ? () => guard('customers', 'openDetail', cust.id) : null }),
-      contact && ui.row({ title: fmt.phone(contact.phone), icon: 'phone', iconPlain: true, tint: true, onTap: () => ui.toast('Calling ' + contact.name + ' via Quo…', 'phone') }),
+      contact && ui.row({ title: fmt.phone(contact.phone, contact.ext), icon: 'phone', iconPlain: true, tint: true, onTap: () => ui.toast('Calling ' + contact.name + ' via Quo…', 'phone') }),
       contact && ui.row({ title: 'Send a text', icon: 'message', iconPlain: true, tint: true, onTap: () => ui.toast('Opening a text to ' + contact.name + '…', 'message') })),
-    !cust && job.phone && ui.section('Contact', ui.row({ title: fmt.phone(job.phone), subtitle: job.contactName || null, icon: 'phone', iconPlain: true, tint: true, onTap: () => ui.toast('Calling via Quo…', 'phone') })),
+    !cust && job.phone && ui.section('Contact', ui.row({ title: fmt.phone(job.phone, job.ext), subtitle: job.contactName || null, icon: 'phone', iconPlain: true, tint: true, onTap: () => ui.toast('Calling via Quo…', 'phone') })),
+    !job.address && !job.allDay && WD.addressIssue(job) && ui.section({ header: 'Location', footer: job.addrIgnored ? 'Marked as not needing an address for now.' : 'Saved without ' + (data.addressRules[job.type] === 'cityzip' ? 'a city or ZIP' : 'an address') + '. It can’t be mapped or routed until one is added.' },
+      ui.row({ title: WD.addressIssue(job), icon: 'mappin', iconPlain: true, iconColor: 'var(--red)', detail: canEdit && !job.pending ? 'Add' : null, tint: false, onTap: canEdit && !job.pending ? () => openEditor({ jobId: job.id }) : null })),
+    !job.address && job.cityZip && ui.section('Location', ui.row({ title: job.cityZip, subtitle: 'Where the customer is coming from', icon: 'mappin', iconPlain: true, iconColor: 'var(--label2)' })),
+    WD.x.jobAgreementSection(job, s => p.push(s)),
     job.address && ui.section({ header: 'Location', footer: unresolved ? 'Apple Maps could not find this address, so the stop has no pin and is left out of routing. Edit the job to fix it.' : null },
       ui.row({ title: job.address, icon: 'mappin', iconPlain: true, iconColor: unresolved ? 'var(--red)' : 'var(--label2)' }),
       ui.row({ title: 'Directions', subtitle: wf.mapsName(), icon: 'arrow.triangle.turn.up.right', iconPlain: true, tint: true, onTap: () => wf.openDirections(job) }),
       job.located && ui.row({ title: 'Show on map', icon: 'map', iconPlain: true, tint: true, onTap: () => { p.dismiss(); setTimeout(() => guard('map', 'focusJob', job.id), 350); } })),
     ui.section('Service',
       ui.row({ title: 'Job type', trailing: h('span.hstack.secondary', type.color && ui.dot(type.color), type.title) }),
+      !job.allDay && ui.row({ title: 'Customer type', detail: WD.custType(cust ? cust.custType : job.custType).title }),
       (job.items && job.items.length ? ui.row({ title: job.type === 'purge' ? 'Estimated boxes' : 'Containers', detail: WD.itemsLabel(job.items, job.type === 'purge') }) : job.containers && ui.row({ title: 'Containers', detail: job.containers })),
       job.bizOpen && ui.row({ title: 'Office hours', detail: fmt.time(fmt.fromHHMM(job.bizOpen)) + ' – ' + fmt.time(fmt.fromHHMM(job.bizClose)) }),
       job.lunchFrom && ui.row({ title: 'Closed for lunch', detail: fmt.time(fmt.fromHHMM(job.lunchFrom)) + ' – ' + fmt.time(fmt.fromHHMM(job.lunchUntil)) }),
@@ -127,8 +132,8 @@ function details(job, p) {
     ui.section('Attachments', job.attachments.map(a => attachmentRow(a)),
       ui.row({ title: 'Add photo or file', icon: 'paperclip', iconPlain: true, tint: true, onTap: () => addAttachment(job.attachments) })),
     (WD.can('billing.view') || WD.can('billing.field')) && !job.allDay && !WD.struck[job.status] && WD.screens.billing && ui.section({ header: 'Billing', footer: job.invoice || job.billing ? null : job.status === 'completed' ? 'This stop is completed but not billed. It stays bright on the board until it is.' : 'Nothing is sent until you review the charges.' }, WD.screens.billing.billingRows(job)),
-    ui.section({ header: 'History', footer: (S.googleMirror.enabled && route ? 'Copied to the ' + route.name + ' Google calendar a few seconds after each change syncs. ' : '') + 'Version ' + job.version + '.' },
-      job.events.slice().reverse().map(e => ui.row({ title: e.text, subtitle: e.actor + ' · ' + fmt.rel(e.at) }))));
+    ui.section({ header: 'History', footer: 'Shows who did what. Tap an edit to see exactly what changed. ' + (S.googleMirror.enabled && route ? 'Copied to the ' + route.name + ' Google calendar a few seconds after each change syncs. ' : '') + 'Version ' + job.version + '.' },
+      job.events.slice().reverse().map(e => ui.row({ leading: ui.avatar(e.actor, { size: 28 }), title: e.text + (e.changes && e.changes.length ? ' · ' + e.changes.length + (e.changes.length === 1 ? ' change' : ' changes') : ''), subtitle: e.actor + ' · ' + fmt.rel(e.at) + (e.changes && e.changes.length ? ' · ' + e.changes.map(c => c.label).slice(0, 3).join(', ') : ''), chevron: !!(e.changes && e.changes.length), onTap: e.changes && e.changes.length ? () => WD.x.showChanges(e) : null }))));
 }
 const windowText = j => (j.custFrom ? fmt.time(fmt.fromHHMM(j.custFrom)) : 'Any') + ' – ' + (j.custUntil ? fmt.time(fmt.fromHHMM(j.custUntil)) : 'Any');
 /** Copy a job onto another day (end of that route's list): used when a visit is rescheduled. */
@@ -228,8 +233,8 @@ function recommend(f, job) {
   const days = [f.day]; if (f.type === 'purge') { let d = f.day; while (days.length < 6) { d = D.add(d, 1); if (D.parse(d).getDay() !== 0) days.push(d); } }
   const out = [];
   days.forEach(day => q.routes().filter(r => r.writable).forEach(r => {
-    const list = q.stopList(r.id, day).filter(j => j !== job), ends = q.routeEnds(r.id, day), chain = [ends.start, ...list.filter(j => j.located && j.x != null), ends.end];
-    const locked = list.reduce((n, j, k) => !['scheduled', 'enroute'].includes(j.status) ? k + 1 : n, 0);
+    const list = q.stopList(r.id, day).filter(j => j !== job && !WD.calledOff(j)), ends = q.routeEnds(r.id, day), chain = [ends.start, ...list.filter(j => j.located && j.x != null), ends.end];
+    const locked = list.reduce((n, j, k) => !WD.calledOff(j) && !['scheduled', 'enroute'].includes(j.status) ? k + 1 : n, 0);
     let best = null;
     for (let i = 0; i < chain.length - 1; i++) { const a = chain[i], b = chain[i + 1], add = driveMin(a, f) + driveMin(f, b) - driveMin(a, b); const after = i === 0 ? null : a, idx = after ? list.indexOf(after) + 1 : 0;
       if (idx < locked) continue; if (!best || add < best.add) best = { add: Math.max(1, add), idx, after, near: driveMin(a, f) < driveMin(f, b) ? (i ? a : null) : (i + 1 < chain.length - 1 ? b : null) }; }
@@ -251,14 +256,17 @@ function addressSuggestions(text) {
 }
 function openEditor(o = {}) {
   const job = o.jobId ? q.job(o.jobId) : null, isNew = !job;
-  const f = job ? { title: job.title, address: job.address, notes: job.notes, routeId: job.routeId, day: job.day, allDay: job.allDay, pos: (p => p.n < p.of ? p.n : 0)(q.position(job)), dur: job.dur, type: job.type, items: WD.copyItems(job.items), bizOpen: job.bizOpen, bizClose: job.bizClose, custFrom: job.custFrom, custUntil: job.custUntil, custStrict: !!job.custStrict, customerId: job.customerId, located: job.located, x: job.x, y: job.y, po: job.po || '', contract: job.contract || '', contact: job.contactName || '', phone: job.phone ? fmt.phone(job.phone) : '', email: '', billingEmail: '', sig: WD.sigPolicy(q.customer(job.customerId)), windowBy: job.windowBy || 'customer', lunchFrom: job.lunchFrom || '', lunchUntil: job.lunchUntil || '', closedDays: (job.closedDays || []).slice(), callAhead: job.callAhead || 0, needsWindow: !!job.needsWindow, purge: job.purge ? { ...job.purge } : null, flags: { ...(job.flags || {}) }, ...parseRule(job.recurring && job.recurring.rule) }
-    : { title: '', address: '', notes: '', routeId: o.routeId || (q.visibleRoutes()[0] || q.routes()[0]).id, day: o.day || S.board.day, allDay: false, pos: o.pos || 0, dur: 30, type: o.type || 'purge', items: (o.type || 'purge') === 'purge' ? [{ id: 'box', qty: 0, rate: 8 }] : [], bizOpen: '', bizClose: '', custFrom: '', custUntil: '', custStrict: false, customerId: null, located: false, x: null, y: null, po: '', contract: '', contact: '', phone: '', email: '', billingEmail: '', sig: 'optional', windowBy: 'customer', lunchFrom: '', lunchUntil: '', closedDays: [], callAhead: 0, needsWindow: false, purge: null, flags: {}, repeat: 'none', interval: 1 };
-  Object.assign(f, { ends: 'never', count: 10, until: D.add(f.day, 90), attachments: [] });
+  const f = job ? { title: job.title, address: job.address, notes: job.notes, routeId: job.routeId, day: job.day, allDay: job.allDay, pos: (p => p.n < p.of ? p.n : 0)(q.position(job)), dur: job.dur, type: job.type, items: WD.copyItems(job.items), bizOpen: job.bizOpen, bizClose: job.bizClose, custFrom: job.custFrom, custUntil: job.custUntil, custStrict: !!job.custStrict, customerId: job.customerId, located: job.located, x: job.x, y: job.y, po: job.po || '', contract: job.contract || '', contact: job.contactName || '', phone: job.phone ? fmt.phone(job.phone) : '', ext: job.ext || '', email: job.email || '', billingEmail: '', custType: job.custType || 'business', cityZip: job.cityZip || '', sig: WD.sigPolicy(q.customer(job.customerId)), windowBy: job.windowBy || 'customer', lunchFrom: job.lunchFrom || '', lunchUntil: job.lunchUntil || '', closedDays: (job.closedDays || []).slice(), callAhead: job.callAhead || 0, needsWindow: !!job.needsWindow, purge: job.purge ? { ...job.purge } : null, flags: { ...(job.flags || {}) }, ...parseRule(job.recurring && job.recurring.rule) }
+    : { title: '', address: '', notes: '', routeId: o.routeId || (q.visibleRoutes()[0] || q.routes()[0]).id, day: o.day || S.board.day, allDay: false, pos: o.pos || 0, dur: 30, type: o.type || 'purge', items: (o.type || 'purge') === 'purge' ? [{ id: 'box', qty: 0, rate: 8 }] : [], bizOpen: '', bizClose: '', custFrom: '', custUntil: '', custStrict: false, customerId: null, located: false, x: null, y: null, po: '', contract: '', contact: '', phone: '', ext: '', email: '', billingEmail: '', custType: (o.type || 'purge') === 'government' ? 'government' : 'business', cityZip: '', sig: 'optional', windowBy: 'customer', lunchFrom: '', lunchUntil: '', closedDays: [], callAhead: 0, needsWindow: false, purge: null, flags: {}, repeat: 'none', interval: 1 };
+  Object.assign(f, { ends: 'never', count: 10, until: D.add(f.day, 90), attachments: [], poSchedule: [] });
+  const poSt = { multi: false }, linked = () => q.customer(f.customerId), custTypeOf = () => (linked() ? linked().custType : f.custType) || 'business';
+  /** The PO list being edited: the linked customer's schedule, or one kept in the form for a customer that doesn't exist yet. */
+  const poList = () => linked() ? linked().poSchedule : f.poSchedule;
   if (f.type === 'purge' && !f.purge) { const b = (f.items.find(i => i.id === 'box') || {}).qty || 0; f.purge = { std: b, stairs: 'none', haul: false }; }
   let customCall = ![0, 15, 30, 60].includes(f.callAhead);
   const wasRecurring = f.repeat !== 'none';
   let page = null, matchBox = null, suggestBox = null, recBox = null, timer = null, dirty = false;
-  const fill = c => { const l = c.locations[0], p = c.contacts[0] || {}; Object.assign(f, { customerId: c.id, title: c.name, address: l.address, notes: l.notes, type: c.type, items: WD.copyItems(l.items), bizOpen: l.bizOpen, bizClose: l.bizClose, located: l.located !== false, x: l.x, y: l.y, po: WD.workflow.poFor(c, f.day).po, contract: c.contract || '', sig: WD.sigPolicy(c), lunchFrom: l.lunchFrom || '', lunchUntil: l.lunchUntil || '', closedDays: (l.closedDays || []).slice(), callAhead: l.callAhead || 0, contact: p.name || '', phone: p.phone ? fmt.phone(p.phone) : '', email: p.email || '', billingEmail: c.billingEmail || '' }); dirty = true; };
+  const fill = c => { const l = c.locations[0], p = c.contacts[0] || {}; Object.assign(f, { customerId: c.id, title: c.name, address: l.address, notes: l.notes, type: c.type, items: WD.copyItems(l.items), bizOpen: l.bizOpen, bizClose: l.bizClose, located: l.located !== false, x: l.x, y: l.y, po: WD.workflow.poFor(c, f.day).po, contract: c.contract || '', sig: WD.sigPolicy(c), lunchFrom: l.lunchFrom || '', lunchUntil: l.lunchUntil || '', closedDays: (l.closedDays || []).slice(), callAhead: l.callAhead || 0, contact: p.name || '', phone: p.phone ? fmt.phone(p.phone) : '', ext: p.ext || '', email: p.email || '', billingEmail: c.billingEmail || '', custType: c.custType || 'business' }); dirty = true; };
   if (isNew && o.customerId && q.customer(o.customerId)) fill(q.customer(o.customerId));
   const blurAndRefresh = () => { if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); page.refresh(); };
   const syncSave = () => { const b = page.navbar.querySelector('.nav-trail .nav-btn'); if (b) b.disabled = !f.title.trim(); };
@@ -292,32 +300,42 @@ function openEditor(o = {}) {
   }
   async function save(p) {
     if (!f.title.trim()) return;
-    if (isNew && !f.customerId && !f.allDay && asks('phone') && f.phone.replace(/\D/g, '').length < 10) return ui.toast('A phone number is required for a new customer', 'phone', 2400);
+    if (!f.allDay && f.phone.trim() && !fmt.phoneValid(f.phone)) return ui.alert({ title: 'Check the phone number', message: 'Phone numbers need exactly 10 digits, like 559-968-4175. Put an extension in the Ext. box.' });
+    const missing = f.allDay ? [] : missingRequired();
+    /* New jobs can't be saved without their required fields. A job that already exists (perhaps from before the field became required) can, after a warning. */
+    const reqMsg = { title: missing.length === 1 ? missing[0] + ' is required' : 'Required fields are missing', message: (missing.length > 1 ? missing.join(', ') + '. ' : '') + 'Required for ' + q.jobType(f.type).title + ' jobs or ' + WD.custType(custTypeOf()).title + ' customers.' + (linked() && missing.some(m => ['Contact name', 'Phone', 'Email', 'Billing email (if different)'].includes(m)) ? ' Add it on the customer’s record.' : '') + (WD.can('settings.manage') ? ' Change what’s required in Settings → Job types and fields.' : '') };
+    if (missing.length && isNew) return ui.alert(reqMsg);
+    if (missing.length && !(await ui.actionSheet({ title: reqMsg.title, message: reqMsg.message, buttons: [{ label: 'Save anyway', value: true }], cancel: 'Keep editing' }))) return;
+    if (poList().length) f.po = WD.workflow.poFor({ poSchedule: poList() }, f.day).po;
+    /* A job can be saved without an address (the customer may call back with it), but only after saying so. */
+    const noAddr = WD.addressIssue({ type: f.type, allDay: f.allDay, address: f.address, cityZip: f.cityZip });
+    if (noAddr && !(await ui.actionSheet({ title: noAddr === 'No address' ? 'This job has no address' : 'This job has no city or ZIP', message: 'It can’t be put on the map or routed until one is added. It will be marked on the board and listed under “missing an address” until it’s fixed.', buttons: [{ label: 'Save without it', value: true }], cancel: noAddr === 'No address' ? 'Add the address' : 'Add it now' }))) return;
     if (f.type === 'purge' && f.purge) { const e = WD.purgeEstimate(f.purge); if (e.minutes) f.dur = e.minutes;
       const box = f.items.find(i => i.id === 'box'), rate = box ? box.rate : data.priceBook.find(x => x.id === 'box').rate;
       f.items = f.items.filter(i => !['box', 'stairsDown', 'stairsUp', 'haul'].includes(i.id)).concat(e.billable ? [{ id: 'box', qty: e.billable, rate }] : [], WD.purgeExtras(f.purge, e.billable)); }
     let scope = 'This job';
     if (job && job.recurring) { scope = await ui.actionSheet({ title: 'Save changes to a recurring job', message: 'Changing “this and following” ends the old series and starts a new one in a single step.', buttons: SCOPES.map(l => ({ label: l })) }); if (!scope) return; }
     if (!f.address.trim()) f.located = false; else if (f.x == null) { f.located = /\d/.test(f.address); if (f.located) { f.x = 150 + Math.random() * 700; f.y = 150 + Math.random() * 700; } }
-    const purge = f.type === 'purge', containers = WD.itemsLabel(f.items, purge), phone = f.phone.replace(/\D/g, '').length >= 10 ? '+1' + f.phone.replace(/\D/g, '').slice(-10) : '';
+    const purge = f.type === 'purge', containers = WD.itemsLabel(f.items, purge), phone = fmt.phoneValid(f.phone) ? '+1' + fmt.phoneDigits(f.phone) : '', ext = phone ? f.ext : '';
     let newCustomer = null;
     if (isNew && !f.customerId && f.type !== 'meet' && (f.address.trim() || phone || f.email.trim())) {
-      newCustomer = { id: 'c' + (900 + data.customers.length), name: f.title.trim(), kind: 'company', route: f.routeId, lifecycle: 'scheduled', channel: 'Other', type: f.type, freq: f.repeat === 'none' ? 'One time' : ruleLabel(f), contacts: (f.contact.trim() || phone || f.email.trim()) ? [{ name: f.contact.trim() || f.title.trim(), role: '', phone, email: f.email.trim().toLowerCase() }] : [], owner: S.me.id, nextAction: null, notes: '', tags: [], successful: false,
-        billingEmail: f.billingEmail.trim(), po: f.po.trim(), contract: f.contract.trim(), signature: f.sig, billingMode: 'invoice', documents: [], poSchedule: [],
+      newCustomer = { id: 'c' + (900 + data.customers.length), name: f.title.trim(), kind: f.custType === 'residential' ? 'household' : 'company', route: f.routeId, lifecycle: 'scheduled', channel: 'Other', type: f.type, freq: f.repeat === 'none' ? 'One time' : ruleLabel(f), custType: f.custType, contacts: (f.contact.trim() || phone || f.email.trim()) ? [{ name: f.contact.trim() || f.title.trim(), role: '', phone, ext, email: f.email.trim().toLowerCase() }] : [], owner: S.me.id, nextAction: null, notes: '', tags: [], successful: false,
+        billingEmail: f.billingEmail.trim(), po: f.po.trim(), contract: f.contract.trim(), signature: f.sig, billingMode: 'invoice', documents: [], poSchedule: f.poSchedule.slice(), changes: [],
         locations: [{ id: 'l' + Date.now(), label: 'Main office', address: f.address, x: f.x, y: f.y, containers, items: WD.copyItems(f.items), bizOpen: f.bizOpen, bizClose: f.bizClose, notes: f.notes, located: f.located }], stats: { jobs: 0, invoiced: 0, paid: 0, balance: 0, lastService: null, firstInvoice: null, rate: 85 } };
       data.customers.push(newCustomer); f.customerId = newCustomer.id;
     } else if (f.customerId && q.customer(f.customerId) && asks('signature')) q.customer(f.customerId).signature = f.sig;
     if (f.customerId && q.customer(f.customerId)) { const l = q.customer(f.customerId).locations[0]; if (l) Object.assign(l, { lunchFrom: f.lunchFrom, lunchUntil: f.lunchUntil, closedDays: f.closedDays.slice(), callAhead: f.callAhead }); }
-    const fields = { title: f.title.trim(), address: f.address.trim(), notes: f.notes, routeId: f.routeId, day: f.day, allDay: f.allDay, dur: f.dur, type: f.type, containers, items: WD.copyItems(f.items), bizOpen: f.bizOpen, bizClose: f.bizClose, custFrom: f.custFrom, custUntil: f.custUntil, custStrict: f.custStrict, customerId: f.customerId, locationId: null, located: f.located, x: f.x, y: f.y, po: f.po.trim(), contract: f.contract.trim(), phone: f.customerId ? '' : phone, contactName: f.customerId ? '' : f.contact.trim(), windowBy: f.windowBy, needsWindow: f.needsWindow && !(f.custFrom || f.custUntil), purge: f.type === 'purge' && f.purge ? { ...f.purge } : null, lunchFrom: f.lunchFrom, lunchUntil: f.lunchUntil, closedDays: f.closedDays.slice(), callAhead: f.callAhead, flags: { ...f.flags } };
-    const series = job ? seriesJobs(job, scope) : [], me = S.me.name;
+    const fields = { title: f.title.trim(), address: f.address.trim(), notes: f.notes, routeId: f.routeId, day: f.day, allDay: f.allDay, dur: f.dur, type: f.type, containers, items: WD.copyItems(f.items), bizOpen: f.bizOpen, bizClose: f.bizClose, custFrom: f.custFrom, custUntil: f.custUntil, custStrict: f.custStrict, customerId: f.customerId, locationId: null, located: f.located, x: f.x, y: f.y, po: f.po.trim(), contract: f.contract.trim(), phone: f.customerId ? '' : phone, ext: f.customerId ? '' : ext, email: f.customerId ? '' : f.email.trim().toLowerCase(), contactName: f.customerId ? '' : f.contact.trim(), custType: custTypeOf(), cityZip: f.cityZip.trim(), windowBy: f.windowBy, needsWindow: f.needsWindow && !(f.custFrom || f.custUntil), purge: f.type === 'purge' && f.purge ? { ...f.purge } : null, lunchFrom: f.lunchFrom, lunchUntil: f.lunchUntil, closedDays: f.closedDays.slice(), callAhead: f.callAhead, flags: { ...f.flags } };
+    const series = job ? seriesJobs(job, scope) : [], me = S.me.name, changes = job ? WD.x.diffJob(job, fields) : [];
+    if (job && !job.allDay && !fields.allDay && job.routeId === fields.routeId && job.day === fields.day) { const cur = q.position(job), to = f.pos || cur.of; if (to !== cur.n) changes.push({ label: 'Stop', from: String(cur.n), to: String(to) }); }
     api.op({ kind: isNew ? 'create' : 'edit', title: fields.title, scope: isNew ? (f.repeat === 'none' ? 'New job' : 'New recurring job') : scope, jobIds: job ? [job.id, ...series.map(j => j.id)] : [], apply() {
       const recurring = f.repeat === 'none' ? null : { rule: ruleLabel(f), seriesId: job && job.recurring && scope === 'All jobs' ? job.recurring.seriesId : 's-' + Date.now() };
       if (job) {
         const from = { routeId: job.routeId, day: job.day }; Object.assign(job, from, fields, { routeId: from.routeId, day: from.day, recurring: wasRecurring && scope === 'This job' ? job.recurring : recurring });
-        if (fields.allDay) { job.routeId = fields.routeId; job.day = fields.day; job.seq = 0; WD.renumber(from.routeId, from.day); } else WD.placeJob(job, fields.routeId, fields.day, f.pos ? f.pos - 1 : Infinity); job.events.push({ at: +WD.now(), actor: me, text: 'Edited' + (scope !== 'This job' ? ' (' + scope.toLowerCase() + ')' : '') });
+        if (fields.allDay) { job.routeId = fields.routeId; job.day = fields.day; job.seq = 0; WD.renumber(from.routeId, from.day); } else WD.placeJob(job, fields.routeId, fields.day, f.pos ? f.pos - 1 : Infinity); job.events.push({ at: +WD.now(), actor: me, text: 'Edited' + (scope !== 'This job' ? ' (' + scope.toLowerCase() + ')' : ''), changes }); if (fields.address || fields.cityZip) job.addrIgnored = false;
         series.forEach(j => Object.assign(j, { title: fields.title, address: fields.address, notes: fields.notes, dur: fields.dur, allDay: fields.allDay, type: fields.type, containers: fields.containers, items: WD.copyItems(fields.items), purge: fields.purge, needsWindow: fields.needsWindow, po: fields.po, contract: fields.contract, recurring: recurring || j.recurring })); series.forEach(j => { if (j.routeId !== fields.routeId) WD.placeJob(j, fields.routeId, j.day, Infinity); });
       } else {
-        const make = (day, pos) => { const j = WD.makeJob({ ...fields, items: WD.copyItems(fields.items), day, recurring, seq: fields.allDay ? 0 : null, attachments: f.attachments.slice(), events: [{ at: +WD.now(), actor: me, text: 'Created' }] }); if (pos && !j.allDay) WD.placeJob(j, j.routeId, day, pos - 1); }; make(f.day, f.pos);
+        const make = (day, pos) => { const j = WD.makeJob({ ...fields, items: WD.copyItems(fields.items), day, recurring, seq: fields.allDay ? 0 : null, attachments: f.attachments.slice(), events: [{ at: +WD.now(), actor: me, text: 'Created' + (noAddr ? ' · saved without ' + (noAddr === 'No address' ? 'an address' : 'a city or ZIP') : '') }] }); if (pos && !j.allDay) WD.placeJob(j, j.routeId, day, pos - 1); }; make(f.day, f.pos);
         if (recurring) { const stepDays = { daily: 1, weekly: 7, monthly: 28 }[f.repeat] * f.interval, max = f.ends === 'count' ? f.count : 60; for (let i = 1; i < max && i * stepDays <= 548; i++) { const day = D.add(f.day, i * stepDays); if (f.ends === 'until' && day > f.until) break; make(day); } }
       }
     } });
@@ -325,6 +343,14 @@ function openEditor(o = {}) {
     if (newCustomer) setTimeout(() => ui.toast('New customer created: ' + newCustomer.name, 'person.badge.plus', 2600), 500);
     guard('board', 'show', f.day, job ? job.id : (data.jobs[data.jobs.length - 1] || {}).id);
   }
+  /** Labels of required fields that are still empty. Required comes from the job type and the customer type (Settings → Job types and fields). */
+  function missingRequired() {
+    const c = linked(), p = c && c.contacts[0] || {}, ct = custTypeOf();
+    const has = { contact: c ? !!p.name : !!f.contact.trim(), phone: c ? !!p.phone : fmt.phoneValid(f.phone), email: c ? !!p.email : /\S+@\S+\.\S+/.test(f.email), billingEmail: c ? !!c.billingEmail : !!f.billingEmail.trim(), address: !!f.address.trim(), hours: !!(f.bizOpen && f.bizClose),
+      items: f.type === 'purge' ? WD.purgeEstimate(f.purge).boxes > 0 : f.items.some(i => i.qty > 0), freq: f.repeat !== 'none', po: !!f.po.trim() || poList().length > 0, contract: !!f.contract.trim(), window: !!(f.custFrom || f.custUntil || f.needsWindow), notes: !!f.notes.trim() };
+    return WD.REQUIRABLE.filter(k => WD.requires(f.type, ct, k) && !has[k]).map(WD.fieldLabel);
+  }
+  const req = k => !f.allDay && WD.requires(f.type, custTypeOf(), k);
   /** Container counts (and rates when pricing is asked for). Purge jobs ask for an estimated box count. */
   function itemsRows(p) {
     const purge = f.type === 'purge', ids = purge ? ['box'] : WD.CONTAINERS, pricing = asks('pricing');
@@ -371,7 +397,7 @@ function openEditor(o = {}) {
       const cust = q.customer(f.customerId), set = (k, v, re) => { f[k] = v; dirty = true; if (re) p.refresh(); };
       const unit = { daily: 'day', weekly: 'week', monthly: 'month' }[f.repeat], type = q.jobType(f.type), showWindow = asks('window') || f.custFrom || f.custUntil || f.needsWindow;
       function positionRow() {
-        const list = q.stopList(f.routeId, f.day).filter(j => j !== job); if (f.pos > list.length) f.pos = 0;
+        const list = q.stopList(f.routeId, f.day).filter(j => j !== job && !WD.calledOff(j)); if (f.pos > list.length) f.pos = 0;
         const options = [{ value: 0, label: 'End of list (stop ' + (list.length + 1) + ')' }, ...list.map((j, i) => ({ value: i + 1, label: 'Stop ' + (i + 1) + ' · before ' + j.title }))];
         return ui.pickerRow({ title: 'Position', value: f.pos, options, onChange: v => set('pos', +v, true) });
       }
@@ -380,12 +406,16 @@ function openEditor(o = {}) {
       return ui.list(
         ui.section({ header: 'Job', footer: cust ? null : 'Type a name, phone, email or address to find an existing customer.' },
           ui.pickerRow({ title: 'Job type', value: f.type, icon: 'tag', iconColor: type.color, options: WD.jobTypes.map(t => ({ value: t.id, label: t.title })), onChange: v => { if (v === 'purge' && !f.items.some(i => i.id === 'box')) f.items = [{ id: 'box', qty: 0, rate: 8 }]; if (v === 'purge' && !f.purge) f.purge = { std: (f.items.find(i => i.id === 'box') || {}).qty || 0, stairs: 'none', haul: false }; set('type', v, true); } }),
+          !f.allDay && ui.pickerRow({ title: 'Customer type', value: custTypeOf(), icon: 'building', iconColor: 'var(--indigo)', disabled: !!cust, subtitle: cust ? 'From the customer record' : null, options: WD.custTypes.map(t => ({ value: t.id, label: t.title })), onChange: v => set('custType', v, true) }),
           ui.inputRow({ placeholder: f.type === 'meet' ? 'Customer name' : 'Customer or job title', value: f.title, caps: 'words', autofocus: isNew && !f.title, onInput: v => { f.title = v; dirty = true; syncSave(); lookup(v); } }),
-          cust && ui.row({ leading: ui.avatar(cust.name, { size: 34 }), title: cust.name, subtitle: 'Linked customer' + (cust.contacts[0] ? ' · ' + cust.contacts[0].name + ' · ' + fmt.phone(cust.contacts[0].phone) : ''), trailing: h('button', { style: 'border:0;background:none;color:var(--tint);font-size:15px;cursor:pointer', onclick: e => { e.stopPropagation(); f.customerId = null; dirty = true; p.refresh(); } }, 'Unlink') })),
+          cust && ui.row({ leading: ui.avatar(cust.name, { size: 34 }), title: cust.name, subtitle: 'Linked customer' + (cust.contacts[0] ? ' · ' + cust.contacts[0].name + ' · ' + fmt.phone(cust.contacts[0].phone, cust.contacts[0].ext) : ''), trailing: h('button', { style: 'border:0;background:none;color:var(--tint);font-size:15px;cursor:pointer', onclick: e => { e.stopPropagation(); f.customerId = null; dirty = true; p.refresh(); } }, 'Unlink') })),
         matchBox,
-        !cust && (asks('contact') || asks('phone') || asks('email') || asks('billingEmail')) && ui.section({ header: f.type === 'meet' ? 'Contact' : 'New customer', footer: f.type === 'meet' ? 'Phone is required.' : isNew ? 'Saving creates the customer with these details. Phone is required; email is strongly recommended for invoices and receipts.' : null },
-          asks('contact') && inp('Contact', 'contact', { placeholder: 'Name', caps: 'words' }), asks('phone') && inp('Phone', 'phone', { type: 'tel', inputmode: 'tel', placeholder: '(559) 555-0100', required: !f.allDay }),
-          asks('email') && inp('Email', 'email', { type: 'email', caps: 'off', placeholder: 'Recommended', suggested: true }), asks('billingEmail') && inp('Billing', 'billingEmail', { type: 'email', caps: 'off', placeholder: 'Billing email, if different' })),
+        !cust && (asks('contact') || asks('phone') || asks('email') || asks('billingEmail') || req('email') || req('contact')) && ui.section({ header: f.type === 'meet' ? 'Contact' : 'New customer', footer: 'Fields in red are required for ' + WD.custType(custTypeOf()).title.toLowerCase() + ' customers on ' + q.jobType(f.type).title.toLowerCase() + ' jobs.' + (isNew && f.type !== 'meet' ? ' Saving creates the customer with these details.' : '') },
+          (asks('contact') || req('contact')) && inp('Contact', 'contact', { placeholder: 'Name', caps: 'words', required: req('contact') }),
+          (asks('phone') || req('phone')) && ui.phoneRow({ value: f.phone, ext: f.ext, required: req('phone'), onInput: (v, x) => { f.phone = v; f.ext = x; dirty = true; } }),
+          (asks('email') || req('email')) && inp('Email', 'email', { type: 'email', caps: 'off', placeholder: req('email') ? 'Required' : 'Recommended', required: req('email'), suggested: !req('email') }), (asks('billingEmail') || req('billingEmail')) && inp('Billing', 'billingEmail', { type: 'email', caps: 'off', placeholder: 'Billing email, if different', required: req('billingEmail') })),
+        !asks('address') && data.addressRules[f.type] === 'cityzip' && !f.allDay && ui.section({ header: 'Where they’re coming from', footer: 'No street address is needed for ' + type.title.toLowerCase() + ' jobs, only the city or ZIP code.' },
+          ui.inputRow({ icon: 'mappin', label: 'City or ZIP', placeholder: 'Fresno or 93721', value: f.cityZip, onInput: v => { f.cityZip = v; dirty = true; } })),
         asks('address') && ui.section({ header: 'Address', footer: f.located && f.x != null ? null : f.address ? 'Pick a suggestion to put the stop on the map, or keep the text as typed.' : null },
           ui.inputRow({ icon: 'mappin', iconColor: f.located && f.x != null ? 'var(--red)' : null, placeholder: 'Street address, city', value: f.address, onInput: v => { f.address = v; f.x = null; f.located = false; dirty = true; suggest(v); if (!f.title.trim()) lookup(v); } })),
         suggestBox, recBox,
@@ -407,8 +437,8 @@ function openEditor(o = {}) {
           ui.toggleRow({ title: 'Needs a window', subtitle: 'Time chosen when the route is finalized', value: f.needsWindow, onChange: v => { f.needsWindow = v; if (v) { f.custFrom = ''; f.custUntil = ''; } dirty = true; p.refresh(); } }),
           !f.needsWindow && [timeRows(), h('div.row', h('div.row-main', h('div.row-title', 'Who set it')), h('div', { style: 'width:190px;flex:none' }, ui.segmented([{ value: 'customer', label: 'They asked' }, { value: 'us', label: 'We told them' }], f.windowBy, v => { f.windowBy = v; dirty = true; }))),
           h('div.row', h('div.row-main', h('div.row-title', 'This window is')), h('div', { style: 'width:190px;flex:none' }, ui.segmented([{ value: false, label: 'Preferred' }, { value: true, label: 'Required' }], f.custStrict, v => { f.custStrict = v; dirty = true; })))]),
-        (asks('po') || asks('contract') || asks('signature')) && ui.section({ header: 'Billing', footer: 'PO and contract numbers print on the invoice. ' + (cust ? 'They come from the customer; changes here apply to this job only.' : 'They’re saved to the new customer.') },
-          asks('po') && inp('PO number', 'po', { placeholder: 'None' }), asks('contract') && inp('Contract', 'contract', { placeholder: 'None' }),
+        (asks('po') || asks('contract') || asks('signature')) && ui.section({ header: 'Billing', footer: poList().length ? 'This job uses the PO whose dates cover ' + fmt.day(f.day, 'md') + (WD.workflow.poFor({ poSchedule: poList() }, f.day).po ? ': ' + WD.workflow.poFor({ poSchedule: poList() }, f.day).po + '.' : ' (none does).') + ' The PO list is saved with the customer.' : 'PO and contract numbers print on the invoice. ' + (cust ? 'They come from the customer; changes here apply to this job only.' : 'They’re saved to the new customer.') },
+          asks('po') && WD.x.poRows({ st: poSt, getPO: () => f.po, setPO: v => { f.po = v; dirty = true; }, schedule: poList(), docs: cust ? cust.documents : null, required: req('po'), refresh: () => { dirty = true; blurAndRefresh(); } }), asks('contract') && inp('Contract', 'contract', { placeholder: 'None', required: req('contract') }),
           asks('signature') && ui.pickerRow({ title: 'Customer signature', value: f.sig, options: WD.SIG_POLICIES, onChange: v => { f.sig = v; dirty = true; p.refresh(); } })),
         !f.allDay && f.type !== 'meet' && headsUp(p),
         asks('notes') && ui.section('Notes', ui.inputRow({ multiline: true, placeholder: 'Access notes, contact, what to bring', value: f.notes, onInput: v => set('notes', v) })),
@@ -419,25 +449,37 @@ function openEditor(o = {}) {
 
 /* ================= Search ================= */
 function openSearch() {
-  let text = '', scope = 'jobs', loading = false, timer = null, box = null;
+  let text = '', scope = 'jobs', when = 'all', loading = false, timer = null, box = null, server = null;   // server: null | 'loading' | {n} once the server was asked for this text
   const routeIds = () => q.visibleRoutes().map(r => r.id);
+  const jobRow = j => ui.row({ leading: ui.dot(q.routeColor(j.routeId)), title: j.title, subtitle: fmt.day(j.day) + (j.day.slice(0, 4) !== D.today().slice(0, 4) ? ', ' + j.day.slice(0, 4) : '') + (j.allDay ? ' · note' : WD.calledOff(j) ? '' : ' · stop ' + q.position(j).n) + ' · ' + q.routeName(j.routeId) + (j.fromServer ? ' · from the server' : ''), trailing: icon(WD.jobStatuses[j.status].icon, 18, WD.jobStatuses[j.status].color), onTap: () => openDetails(j.id) });
+  async function askServer(p) {
+    if (S.offline) return ui.toast('Offline — older history needs a connection', 'wifi.slash', 2600);
+    const asked = text; server = 'loading'; fill(p); await WD.delay(900, 1500); if (asked !== text) return;
+    server = { n: WD.x.fetchHistory(asked) }; when = when === 'upcoming' ? 'all' : when; fill(p);
+  }
   function fill(p) {
     if (!box) return; const s = text.trim();
-    if (s.length < 2) return box.replaceChildren(ui.list(ui.section({ header: 'Recent', footer: scope === 'jobs' ? 'Searches every job on your ' + routeIds().length + ' selected routes, past and future: title, address, notes and route name.' : 'Matches customer name, contact, phone, email or address.' },
+    if (s.length < 2) return box.replaceChildren(ui.list(ui.section({ header: 'Recent', footer: scope === 'jobs' ? 'Searches jobs on your ' + routeIds().length + ' selected routes: title, address, notes and route name. This iPhone holds the last 10 days and everything upcoming; older history is fetched from the server when you ask for it.' : 'Matches customer name, contact, phone, email or address.' },
       ['Harlow', '555-0131', 'Bank St'].map(r => ui.row({ title: r, icon: 'clock', iconPlain: true, iconColor: 'var(--label2)', onTap: () => { text = r; const i = p.navbar.querySelector('.search-box input'); if (i) { i.value = r; i.parentNode.classList.add('filled'); } run(p); } })))));
     if (loading) return box.replaceChildren(h('div', { style: 'text-align:center;padding:40px' }, ui.spinner(26)));
     if (scope === 'customers') { const found = q.searchCustomers(s, 20);
       return box.replaceChildren(found.length ? ui.list(ui.section(found.length + (found.length === 1 ? ' customer' : ' customers'), found.map(m => ui.row({ leading: ui.avatar(m.customer.name, { size: 36 }), title: m.customer.name, subtitle: m.match, chevron: true, onTap: () => guard('customers', 'openDetail', m.customer.id) }))))
         : ui.empty({ icon: 'magnifyingglass', title: 'No customers', text: 'Nothing matches “' + s + '”.' })); }
-    const found = q.searchJobs(s, routeIds()).slice(0, 40), today = D.today(), groups = [['Today', j => j.day === today], ['Upcoming', j => j.day > today], ['Past', j => j.day < today]];
-    box.replaceChildren(found.length ? ui.list(groups.map(([name, test]) => ui.section(name, found.filter(test).map(j => ui.row({ leading: ui.dot(q.routeColor(j.routeId)), title: j.title, subtitle: fmt.day(j.day) + (j.allDay ? ' · note' : ' · stop ' + q.position(j).n) + ' · ' + q.routeName(j.routeId), trailing: icon(WD.jobStatuses[j.status].icon, 18, WD.jobStatuses[j.status].color), onTap: () => openDetails(j.id) })))))
-      : ui.empty({ icon: 'magnifyingglass', title: 'No jobs', text: 'Nothing on your selected routes matches “' + s + '”.' }));
+    const today = D.today(), all = q.searchJobs(s, routeIds()), past = all.filter(j => j.day < today).sort((a, b) => b.day.localeCompare(a.day) || q.order(a, b));
+    const groups = [['Today', all.filter(j => j.day === today), when !== 'history'], ['Upcoming', all.filter(j => j.day > today).slice(0, 30), when !== 'history'], ['History · ' + past.length + (past.length === 1 ? ' past job' : ' past jobs'), past.slice(0, 80), when !== 'upcoming']].filter(g => g[2]);
+    const serverRow = server === 'loading' ? h('div.row', ui.spinner(18), h('div.row-main.secondary', 'Asking the server for older jobs…'))
+      : server ? ui.row({ icon: 'cloud', iconPlain: true, iconColor: 'var(--label2)', title: server.n ? server.n + ' older ' + (server.n === 1 ? 'job' : 'jobs') + ' loaded from the server' : 'The server has nothing older for “' + s + '”', subtitle: server.n ? 'Shown under History above' : null })
+      : ui.row({ icon: 'cloud', iconPlain: true, title: 'Search older jobs on the server', subtitle: 'For history from before the jobs saved on this iPhone', tint: true, onTap: () => askServer(p) });
+    box.replaceChildren(ui.list(groups.map(([name, list]) => ui.section(name, list.map(jobRow))),
+      !groups.some(g => g[1].length) && ui.empty({ icon: 'magnifyingglass', title: 'No jobs on this iPhone', text: 'Nothing on your selected routes matches “' + s + '”' + (when === 'upcoming' ? ' today or later.' : '. Older jobs may still be on the server.') }),
+      when !== 'upcoming' && ui.section({ header: 'Older history', footer: 'Jobs from more than 10 days ago are kept on the server, not on this iPhone.' }, serverRow)));
   }
-  function run(p) { clearTimeout(timer); loading = text.trim().length >= 2; fill(p); if (loading) timer = setTimeout(() => { loading = false; fill(p); }, 300 + Math.random() * 350); }
+  function run(p) { clearTimeout(timer); server = null; loading = text.trim().length >= 2; fill(p); if (loading) timer = setTimeout(() => { loading = false; fill(p); }, 300 + Math.random() * 350); }
   ui.sheet({ title: 'Search', live: false, trailing: [{ label: 'Done', bold: true, onTap: p => p.dismiss() }], onClose: () => clearTimeout(timer),
     search: { placeholder: 'Jobs, customers, phone, address', autofocus: true, onInput: (v, p) => { text = v; run(p); } },
     render(p) { box = h('div'); setTimeout(() => fill(p), 0);
-      return [h('div.jb-seg', ui.segmented([{ value: 'jobs', label: 'Jobs' }, WD.can('crm.view') && { value: 'customers', label: 'Customers' }].filter(Boolean), scope, v => { scope = v; run(p); })), box]; } });
+      return [h('div.jb-seg', ui.segmented([{ value: 'jobs', label: 'Jobs' }, WD.can('crm.view') && { value: 'customers', label: 'Customers' }].filter(Boolean), scope, v => { scope = v; p.refresh(); })),
+        scope === 'jobs' && h('div.jb-seg', ui.segmented([{ value: 'all', label: 'All dates' }, { value: 'upcoming', label: 'Today and upcoming' }, { value: 'history', label: 'History' }], when, v => { when = v; fill(p); })), box]; } });
 }
 
 /* ================= AutoRoute ================= */

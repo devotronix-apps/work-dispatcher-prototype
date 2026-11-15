@@ -74,14 +74,17 @@ function root() {
         ui.pickerRow({ icon: 'arrow.triangle.turn.up.right', iconColor: 'var(--green)', title: 'Directions app', subtitle: 'Opens for Navigate and Directions', value: S.prefs.mapsApp, options: WD.MAPS_APPS, onChange: v => { S.prefs.mapsApp = v; WD.changed(); ui.toast('Directions open in ' + WD.workflow.mapsName(), 'checkmark'); } }),
         ui.row({ icon: 'columns', iconColor: 'var(--teal)', title: 'Single route', trailing: h('div.st-seg', ui.segmented([{ value: 1, label: '1 day' }, { value: 3, label: '3 days' }], S.board.dayCount, v => { S.board.dayCount = v; WD.changed(); })) })),
       ui.section({ header: 'Sync', footer: S.offline ? 'You’re offline. Changes are saved on this iPhone and sync when the connection returns.' : null },
+        ui.row({ icon: 'cloud', iconColor: 'var(--teal)', title: 'Offline data', subtitle: 'Jobs, customers, GPS coordinates and the map saved on this iPhone', chevron: true, onTap: () => push(WD.x.offlineSpec()) }),
         ui.row({ icon: 'sync', iconColor: issues ? 'var(--orange)' : 'var(--gray)', title: 'Pending changes', badge: issues ? ui.badge(issues + ' to review', 'var(--orange)') : null, detail: n ? String(n) : 'None', chevron: true, onTap: openPending })),
       ui.section('Administration',
         ui.row(gated('settings.manage', { icon: 'calendar', iconColor: 'var(--blue)', title: 'Google Calendar mirror', badge: S.googleMirror.errors ? ui.badge(String(S.googleMirror.errors), 'var(--red)', true) : null, detail: S.googleMirror.enabled ? 'On' : 'Off', chevron: true, onTap: () => push(mirrorSpec()) })),
         ui.row(gated('users.manage', { icon: 'person.2', iconColor: 'var(--green)', title: 'Team and roles', detail: String(data.users.filter(u => u.status === 'active').length), chevron: true, onTap: () => push(teamSpec()) })),
+        ui.row(gated('contracts.manage', { icon: 'signature', iconColor: 'var(--indigo)', title: 'Service agreements', detail: (n => n ? n + ' unsigned' : '')(data.agreements.filter(a => a.status === 'sent' || a.status === 'viewed').length), chevron: true, onTap: () => push(WD.x.agreementsSpec()) })),
+        (WD.can('hr.manage') || WD.can('users.manage')) && ui.row({ icon: 'calendar', iconColor: 'var(--red)', title: 'Time off', detail: (n => n ? n + ' to approve' : '')(data.timeOff.filter(t => t.status === 'pending').length), chevron: true, onTap: () => push(WD.x.timeOffSpec()) }),
         ui.row({ icon: 'truck', iconColor: 'var(--orange)', title: 'Vehicles', detail: String(data.vehicles.length), chevron: true, onTap: () => push(vehiclesSpec()) }),
         ui.row(gated('settings.manage', { icon: 'link', iconColor: 'var(--purple)', title: 'Integrations', detail: INTEG.filter(connected).length + ' connected', chevron: true, onTap: () => push(integrationsSpec()) })),
         ui.row({ icon: 'checklist', iconColor: 'var(--indigo)', title: 'Field workflow', subtitle: 'Arrival, Complete stop, invoices, job titles, shift limit', chevron: true, onTap: () => push(WD.workflow.workflowSpec()) }),
-        ui.row({ icon: 'tag', iconColor: 'var(--pink)', title: 'Job types and fields', chevron: true, onTap: () => WD.admin && push(WD.admin.typesSpec()) }),
+        ui.row({ icon: 'tag', iconColor: 'var(--pink)', title: 'Job types and fields', subtitle: 'Fields asked and required, by job type and customer type', chevron: true, onTap: () => WD.admin && push(WD.admin.typesSpec()) }),
         ui.row(gated('settings.manage', { icon: 'square.and.pencil', iconColor: 'var(--teal)', title: 'Import jobs', subtitle: 'Calendar file (.ics), Excel or CSV', chevron: true, onTap: () => WD.admin && push(WD.admin.importSpec()) })),
         ui.row({ icon: 'clock', iconColor: 'var(--orange)', title: 'Time clock and overtime', detail: WD.timeclock ? 'Over ' + data.timeRules.daily.hours + ' h/day · ' + data.timeRules.weekly.hours + ' h/wk' : '', chevron: true, onTap: () => WD.timeclock && push(WD.timeclock.rulesSpec()) })),
       ui.section('Privacy',
@@ -90,7 +93,7 @@ function root() {
         ui.row({ icon: 'questionmark.circle', iconColor: 'var(--teal)', title: 'Support', trailing: icon('arrow.up.right', 17, 'var(--label3)'), onTap: safari }),
         ui.row({ icon: 'trash', iconColor: 'var(--red)', title: 'Request account deletion', onTap: requestDeletion })),
       ui.section(ui.row({ title: 'Sign out', destructive: true, center: true, onTap: signOut })),
-      ui.section('About', ui.row({ title: 'Version', detail: '2.1 (prototype)' }), ui.row({ title: 'Acknowledgements', chevron: true, onTap: () => push(ackSpec()) })));
+      ui.section({ header: 'About', footer: 'The tutorial shows once after each update.' }, ui.row({ title: 'Version', detail: WD.version + ' (prototype)' }), ui.row({ icon: 'sparkles', iconPlain: true, title: 'Show the tutorial', subtitle: 'What’s new in version ' + WD.version, tint: true, onTap: () => WD.x.tutorial() }), ui.row({ title: 'Acknowledgements', chevron: true, onTap: () => push(ackSpec()) })));
   } };
 }
 function plan(o) {
@@ -174,7 +177,7 @@ function opCell(op) {
     h('div.st-op-head', h('div', h('div', op.title), h('div.footnote', (KIND[op.kind] || op.kind) + ' · ' + op.scope)), op.status === 'syncing' ? ui.spinner(18) : ui.badge(label, color)),
     h('div.footnote', op.message + ' · ' + fmt.rel(op.at)),
     h('div.st-op-actions',
-      op.status === 'conflict' && [btn('Keep server version', () => api.resolve(op.id, 'server')), btn('Reapply my change', () => api.resolve(op.id, 'mine'))],
+      op.status === 'conflict' && [btn('Compare versions', () => WD.x.compareOp(op), 'filled'), btn('Keep server version', () => api.resolve(op.id, 'server')), btn('Keep my version', () => api.resolve(op.id, 'mine'))],
       op.status === 'failed' && btn('Retry', () => api.retry(op.id)),
       btn('Cancel change', () => cancelOp(op), 'destructive')));
 }
@@ -189,7 +192,7 @@ const pendingSpec = () => ({ title: 'Pending changes', trailing: { label: 'Done'
     ui.button('Sync now', { kind: 'plain', block: false, disabled: !S.pending.length, onTap: () => { if (S.offline) ui.toast('Offline — changes send when you reconnect', 'wifi.slash', 2600); else api.retryAll(); } })),
   render: () => ui.list(
     S.offline && ui.section(ui.row({ icon: 'wifi.slash', iconColor: 'var(--gray)', title: 'You’re offline', subtitle: 'Changes are saved on this iPhone and sync automatically when the connection returns.' })),
-    S.pending.length ? ui.section({ header: 'Waiting to sync', footer: 'Changes sync in order. A change that needs review waits for you; the rest keep going.' }, S.pending.map(opCell))
+    S.pending.length ? ui.section({ header: 'Waiting to sync', footer: 'Changes sync in order. A change that needs review waits for you; the rest keep going. Compare versions shows the server’s copy next to yours with the differences highlighted.' }, S.pending.map(opCell))
       : ui.empty({ icon: 'checkmark.circle', title: 'All changes synced', text: 'Changes you make without a connection wait here until they reach the server.' }),
     ui.section({ header: 'Abandoned changes', footer: 'Cancelled changes are kept as a record. Check the board to see what reached the server.' },
       S.abandoned.map(op => ui.row({ icon: 'xmark.circle.fill', iconPlain: true, iconColor: 'var(--gray)', title: op.title, subtitle: (KIND[op.kind] || op.kind) + ' · ' + op.scope + ' · Cancelled ' + lower(fmt.rel(op.cancelledAt)) })))) });
@@ -243,12 +246,15 @@ const errorsSpec = () => ({ title: 'Mirror errors', trailing: () => mirrorErrors
     : ui.empty({ icon: 'checkmark.circle', title: 'No mirror errors', text: 'Google Calendar matches Work Dispatcher.' }) });
 
 /* ---------- Team and roles ---------- */
+/** Does this person's permission set differ from their role's defaults? */
+const isCustom = u => { const base = WD.roles[u.role].perms, mine = permsOf(u); return base.length !== mine.length || base.some(p => !mine.includes(p)); };
 function teamSpec() {
   return { title: 'Team and roles', trailing: () => WD.can('users.manage') ? { icon: 'person.badge.plus', label: 'Invite', onTap: inviteSheet } : null,
     render: page => !WD.can('users.manage') ? locked() : ui.list(
+      h('div', { style: 'padding:4px 4px 0' }, ui.note('Roles give a starting set of permissions. Tap a person to turn individual permissions on or off just for them.')),
       [['active', 'Active'], ['invited', 'Invited'], ['deactivated', 'Deactivated']].map(([st, header]) => ui.section(header, data.users.filter(u => u.status === st).map(u => ui.row({
         leading: ui.avatar(u.name, { size: 36 }), title: u.name + (u === S.me ? ' (you)' : ''), subtitle: st === 'active' ? u.email : u.lastSeen,
-        trailing: roleBadge(u.role), chevron: true, onTap: () => page.push(memberSpec(u)) }))))) };
+        trailing: h('span.hstack', { style: 'gap:6px' }, isCustom(u) && ui.badge('Custom', 'var(--indigo)'), roleBadge(u.role)), chevron: true, onTap: () => page.push(memberSpec(u)) }))))) };
 }
 function memberSpec(u) {
   if (!u.perms) u.perms = WD.roles[u.role].perms.slice();
@@ -258,10 +264,10 @@ function memberSpec(u) {
     const self = u === S.me, roleLocked = self || (u.role === 'owner' && S.me.role !== 'owner'), base = WD.roles[u.role].perms, custom = base.length !== permsOf(u).length || base.some(p => !permsOf(u).includes(p));
     const roles = Object.keys(WD.roles).filter(r => r !== 'owner' || S.me.role === 'owner').map(r => ({ value: r, label: WD.roles[r].title }));
     return ui.list(
-      h('div.st-member', ui.avatar(u.name, { size: 72 }), h('div.title2', u.name), h('div.footnote', [u.email, u.phone && fmt.phone(u.phone)].filter(Boolean).join(' · ')), custom && ui.badge('Custom permissions', 'var(--indigo)')),
+      h('div.st-member', ui.avatar(u.name, { size: 72 }), h('div.title2', u.name), h('div.footnote', [u.email, u.phone && fmt.phone(u.phone, u.ext)].filter(Boolean).join(' · ')), custom && ui.badge('Custom permissions', 'var(--indigo)')),
       ui.section({ header: 'Role', footer: self ? (u.role === 'owner' ? 'You’re the owner. Transfer ownership from the web dashboard.' : 'You can’t change your own role.') : ROLE_INFO[u.role] + ' Changing the role resets permissions.' },
         ui.pickerRow({ title: 'Role', value: u.role, options: roles, disabled: roleLocked, onChange: r => { u.role = r; u.perms = WD.roles[r].perms.slice(); WD.changed(); } })),
-      ui.section({ header: 'Permissions', footer: 'Starts from the role. Turn individual permissions on or off for this person.' },
+      ui.section({ header: 'Permissions for ' + u.name.split(' ')[0], footer: 'Starts from the ' + WD.roles[u.role].title + ' role. Anything you turn on or off here applies to this person only.' },
         WD.permissionList.map(([id, title, sub]) => ui.toggleRow({ title, subtitle: sub, value: permsOf(u).includes(id), disabled: self || u.role === 'owner', onChange: v => setPerm(id, v) })),
         custom && !self && ui.row({ title: 'Reset to ' + WD.roles[u.role].title + ' defaults', tint: true, onTap: () => { u.perms = base.slice(); WD.changed(); } })),
       u.status === 'invited' ? ui.section('Invitation',

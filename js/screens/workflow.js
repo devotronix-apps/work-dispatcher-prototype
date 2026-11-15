@@ -386,7 +386,7 @@ function workflowSpec() {
   [c9, c17].forEach(c => { if (!c) return; const prev = openNotes(c.id).filter(n => monthKey(n.day) < monthKey(today)); if (prev.length) { const mi = createMaster(c, prev); mi.at = +D.parse(D.add(today, -(D.parse(today).getDate() - 1))); const rec = data.invoices && data.invoices.find(x => x.id === 'inv-' + mi.id); if (rec) { rec.at = mi.at; rec.day = D.key(new Date(mi.at)); } } });
 })();
 
-const api2 = { billed, dimmed, needsAction, missed, billingLabel, titleDetails, titleNode, titleText, poFor, poAlert, poAlerts, alertRow, customerSections, docsEditor, poScheduleSpec, BILLING_MODES,
+const api2 = { billed, dimmed, needsAction, missed, billingLabel, titleDetails, titleNode, titleText, poFor, poAlert, poAlerts, alertRow, customerSections, docsEditor, poScheduleSpec, editPO, BILLING_MODES,
   addServiceNote, masterSpec, invoicesSpec, invoiceActionRows, markPaid, invRecFor, openInvoiceRec, openDirections, mapsName, completeStop, afterBilling, paidNoInvoice, missedSheet, workflowSpec, nextStop };
 WD.workflow = WD.screens.workflow = api2;
 

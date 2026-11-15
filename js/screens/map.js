@@ -3,7 +3,7 @@
 (function () {
 'use strict';
 const WD = window.WD, { h, ui, icon, state: S, data, q, fmt, date: D, nav } = WD;
-const NS = 'http://www.w3.org/2000/svg', SMAX = 4, SPEED = 3.2 /* map units per second, compressed for the demo */, DWELL = 240 /* seconds on site, so a route day lasts roughly 15–20 minutes of preview */, MI = 0.03;
+const NS = 'http://www.w3.org/2000/svg', SMAX = 9, ZOUT = 0.3 /* how far out: 0.3 shows about three times the service area's width */, SPEED = 3.2 /* map units per second, compressed for the demo */, DWELL = 240 /* seconds on site, so a route day lasts roughly 15–20 minutes of preview */, MI = 0.03;
 const DONE = WD.closed;
 const STATE = { driving: { title: 'Driving', color: 'var(--blue)' }, 'on site': { title: 'On site', color: 'var(--orange)' }, parked: { title: 'Parked', color: 'var(--gray)' } };
 const hash = s => { let n = 7; for (const c of String(s)) n = (n * 31 + c.charCodeAt(0)) >>> 0; return n; };
@@ -270,8 +270,10 @@ function createMap() {
   const unsub = [];
 
   /* ---------- View: scale + world offset, clamped to the 1000 × 1000 world ---------- */
-  const clampS = s => Math.min(SMAX, Math.max(W / 1000, s));
-  const clampV = v => { const s = clampS(v.s), ax = (o, span) => span >= 1000 ? 500 - span / 2 : Math.min(1000 - span, Math.max(0, o)); return { s, x0: ax(v.x0, W / s), y0: ax(v.y0, H / s) }; };
+  /* Zoom from a third of the service-area width out to street level, and pan freely: the only limit is that a strip of the
+     mapped area stays on screen, so the map can't be lost. (The real app uses Apple Maps, which has no edge.) */
+  const clampS = s => Math.min(SMAX, Math.max(W / 1000 * ZOUT, s));
+  const clampV = v => { const s = clampS(v.s), ax = (o, span) => Math.min(1000 - span * 0.15, Math.max(-span * 0.85, o)); return { s, x0: ax(v.x0, W / s), y0: ax(v.y0, H / s) }; };
   const proj = (x, y) => [(x - view.x0) * view.s, (y - view.y0) * view.s];
   const put = (e, x, y) => { const [X, Y] = proj(x, y); e.style.transform = 'translate3d(' + X.toFixed(1) + 'px,' + Y.toFixed(1) + 'px,0)'; };
   const center = v => [v.x0 + W / 2 / v.s, v.y0 + H / 2 / v.s];

@@ -17,6 +17,12 @@ WD.jobStatuses = {
 /** Jobs that are finished for the day: done, skipped, or called off by the customer. Struck-through statuses show a line through the title. */
 WD.closed = { completed: 1, skipped: 1, canceled: 1, rescheduled: 1, postponed: 1 };
 WD.struck = { skipped: 1, canceled: 1, rescheduled: 1, postponed: 1 };
+/** Called off before anyone drove there (canceled, rescheduled to another day, postponed). These stay on the original day, struck through,
+    but sink to the bottom of the list, carry no stop number, and are left off the map and out of AutoRoute. */
+WD.calledOff = j => j.status === 'canceled' || j.status === 'rescheduled' || j.status === 'postponed';
+/** Customer type is separate from job type: who the customer is, not what the visit is. */
+WD.custTypes = [{ id: 'business', title: 'Business' }, { id: 'government', title: 'Government' }, { id: 'residential', title: 'Residential' }];
+WD.custType = id => WD.custTypes.find(t => t.id === id) || WD.custTypes[0];
 /** Containers and pricing. A customer (and each job) holds items [{id, qty, rate}]; rates start from the price book and can be changed per customer and per job. */
 data.priceBook = [
   { id: 'console', name: 'Console service', unit: 'console', rate: 30 }, { id: 'bin64', name: 'Bin service (64 gal)', unit: 'bin (64 gal)', rate: 45 }, { id: 'bin96', name: 'Bin service (96 gal)', unit: 'bin (96 gal)', rate: 60 },
@@ -66,6 +72,20 @@ const ROUTE_FIELDS = ['contact', 'phone', 'email', 'billingEmail', 'address', 'h
 data.fieldConfig = { regular: ROUTE_FIELDS, setup: ROUTE_FIELDS, creditCard: ROUTE_FIELDS.filter(f => f !== 'po' && f !== 'contract'), government: ROUTE_FIELDS,
   purge: ['contact', 'phone', 'email', 'address', 'items', 'pricing', 'window', 'signature', 'notes'], meet: ['phone', 'notes'] };
 WD.asks = (type, field) => (data.fieldConfig[type] || ROUTE_FIELDS).includes(field);
+/* Required fields (Settings → Job types and fields). A field can be required for a job type, for a customer type, or both —
+   e.g. email for government customers. Pricing and the signature policy always have a value, so they can't be required. */
+WD.REQUIRABLE = WD.fieldDefs.map(x => x[0]).filter(k => k !== 'pricing' && k !== 'signature');
+data.required = { job: { regular: ['phone'], setup: ['phone'], creditCard: ['phone'], government: ['phone'], purge: ['phone'], meet: ['phone'] }, cust: { business: [], government: ['email'], residential: [] } };
+WD.requires = (jobType, custType, field) => ((data.required.job[jobType] || []).includes(field) && WD.asks(jobType, field)) || (data.required.cust[custType] || []).includes(field);
+WD.fieldLabel = k => (WD.fieldDefs.find(x => x[0] === k) || [k, k])[1];
+/* What each job type needs to know about where the job is: a street address, just a city or ZIP (meet-the-truck customers come to us), or nothing. */
+data.addressRules = { regular: 'address', setup: 'address', creditCard: 'address', government: 'address', purge: 'address', meet: 'cityzip' };
+WD.ADDRESS_RULES = [{ value: 'address', label: 'Street address' }, { value: 'cityzip', label: 'City or ZIP only' }, { value: 'none', label: 'Not needed' }];
+/** null when the job has the location its type needs, else what's missing ('No address' / 'No city or ZIP'). Day notes never need one. */
+WD.addressIssue = j => { if (!j || j.allDay) return null; const rule = data.addressRules[j.type] || 'address', has = String(j.address || '').trim();
+  return rule === 'none' || has ? null : rule === 'cityzip' ? (String(j.cityZip || '').trim() ? null : 'No city or ZIP') : 'No address'; };
+/** Upcoming jobs (today onward, still open) missing the location their type needs and not marked ignored. */
+WD.missingAddresses = () => data.jobs.filter(j => j.day >= D.today() && !WD.closed[j.status] && !j.addrIgnored && WD.addressIssue(j)).sort((a, b) => a.day.localeCompare(b.day) || WD.q.order(a, b));
 /* Time clock: overtime rules and location stays (Settings → Time clock and overtime). */
 /* Field workflow (Settings → Field workflow): company-wide choices for how drivers move through a stop. */
 data.workflow = {
@@ -131,7 +151,7 @@ const C = (id, name, route, x, y, address, o = {}) => ({ id, name, kind: o.kind 
   contacts: o.contacts || [], locations: [{ id: id + 'l1', label: o.label || 'Main office', address: address + ', Lakemont', x, y, containers: o.containers || '2 consoles', bizOpen: o.open || '08:00', bizClose: o.close || '17:00', notes: o.notes || '',
     lunchFrom: o.lunch ? o.lunch[0] : '', lunchUntil: o.lunch ? o.lunch[1] : '', closedDays: o.closed || [], callAhead: o.call || 0 }],
   owner: o.owner || 'u3', nextAction: o.next || null, notes: o.cnotes || '', tags: o.tags || [], stats: null,
-  billingEmail: o.billing || '', po: o.po || '', contract: o.contract || '', signature: o.sig || (o.type === 'government' ? 'always' : 'optional'), billingMode: o.mode || 'invoice', documents: [], poSchedule: [] });
+  custType: o.kind === 'household' ? 'residential' : o.type === 'government' ? 'government' : 'business', billingEmail: o.billing || '', po: o.po || '', contract: o.contract || '', signature: o.sig || (o.type === 'government' ? 'always' : 'optional'), billingMode: o.mode || 'invoice', documents: [], poSchedule: [] });
 /** Customer signature policy: 'always' (required on every invoice), 'optional' (driver asks if needed) or 'never' (not asked). */
 WD.sigPolicy = c => !c ? 'optional' : c.signature || (c.requiresSignature ? 'always' : 'optional');
 WD.SIG_POLICIES = [{ value: 'always', label: 'Always required' }, { value: 'optional', label: 'Optional — driver decides' }, { value: 'never', label: 'Never needed' }];
@@ -187,7 +207,7 @@ const nextSeq = (routeId, day) => data.jobs.reduce((m, j) => j.routeId === route
 function makeJob(o) {
   const c = o.customerId && data.customers.find(x => x.id === o.customerId), loc = c && c.locations[0];
   const j = Object.assign({ id: 'j' + (++jobSeq), routeId: 'r1', day: today, allDay: false, seq: null, dur: 30, title: c ? c.name : 'Job', customerId: null, locationId: loc ? loc.id : null,
-    address: loc ? loc.address : '', located: loc ? loc.located !== false : false, x: loc ? loc.x : null, y: loc ? loc.y : null, notes: loc ? loc.notes : '', type: c ? c.type : 'regular', containers: loc ? loc.containers : '',
+    address: loc ? loc.address : '', located: loc ? loc.located !== false : false, x: loc ? loc.x : null, y: loc ? loc.y : null, notes: loc ? loc.notes : '', type: c ? c.type : 'regular', custType: c ? c.custType : 'business', cityZip: '', containers: loc ? loc.containers : '',
     bizOpen: loc ? loc.bizOpen : '', bizClose: loc ? loc.bizClose : '', custFrom: '', custUntil: '', custStrict: false, windowBy: 'customer', needsWindow: false, purge: null, lunchFrom: loc ? loc.lunchFrom : '', lunchUntil: loc ? loc.lunchUntil : '', closedDays: loc ? loc.closedDays.slice() : [], callAhead: loc ? loc.callAhead : 0, flags: {}, billing: null, items: loc ? WD.copyItems(loc.items) : [], po: c ? c.po : '', contract: c ? c.contract : '', status: 'scheduled', recurring: null, version: 1, pending: false, attachments: [], events: [], invoice: null, arrivedAt: null, departedAt: null }, o);
   if (j.purge && j.type === 'purge') j.dur = WD.purgeEstimate(j.purge).minutes || j.dur;
   delete j.start; if (j.seq == null) j.seq = j.allDay ? 0 : nextSeq(j.routeId, j.day);
@@ -235,16 +255,18 @@ function generate() {
     if (n === 0) { makeJob({ routeId: 'r4', day, dur: 60, customerId: 'c22', status: 'completed', arrivedAt: 9 * 60 + 4, departedAt: 10 * 60 + 2, invoice: { number: 'INV-2391', status: 'Sent', amount: 320 }, attachments: [{ id: 'a1', name: 'Before – garage.jpg', kind: 'photo', size: '2.1 MB' }, { id: 'a2', name: 'Certificate of destruction.pdf', kind: 'doc', size: '84 KB' }] });
       makeJob({ routeId: 'r4', day, dur: 13, customerId: 'c21', custFrom: '13:00', custUntil: '17:00', custStrict: false, callAhead: 30, purge: { std: 9, legal: 3 }, items: [{ id: 'box', qty: 14, rate: 8 }] });
       makeJob({ routeId: 'r4', day, allDay: true, title: 'Truck 9 — oil change after route', type: 'regular', notes: 'Drop at Lakemont Fleet Service by 4:30.' });
-      makeJob({ routeId: 'r4', day, dur: 30, title: 'Meet the truck — Dr. Alvarez', type: 'meet', notes: 'Customer brings 3 boxes to the shop. Call when 10 minutes out: (512) 555-0290.', items: [{ id: 'box', qty: 3, rate: 8 }] }); }
+      makeJob({ routeId: 'r4', day, dur: 30, title: 'Meet the truck — Dr. Alvarez', type: 'meet', custType: 'residential', phone: '+15125550290', contactName: 'Dr. Alvarez', notes: 'Customer brings 3 boxes to the shop. Call when 10 minutes out: (512) 555-0290.', items: [{ id: 'box', qty: 3, rate: 8 }] }); }
     else if (n > 0 && n % 2 === 1) { const pd = { std: 40, stairs: 'down', haul: false }, e = WD.purgeEstimate(pd); makeJob({ routeId: 'r4', day, dur: e.minutes, customerId: 'c23', title: 'Vista Medical Billing — purge', purge: pd, needsWindow: true, items: [{ id: 'box', qty: e.billable, rate: 8 }, ...WD.purgeExtras(pd, e.billable)], notes: 'Boxes are in the upstairs storage room. Said “about 40” — confirm the count on site.' }); }
     else if (n < 0 && n % 3 === 0) { const j = makeJob({ routeId: 'r4', day, dur: 60, customerId: 'c22', status: 'completed', arrivedAt: 9 * 60 + 33, departedAt: 10 * 60 + 40 }); j.title = 'Tanaka — estate boxes'; }
     if (n === 1) { makeJob({ routeId: 'r2', day, allDay: true, title: 'Tony out — Sam covers South', notes: 'Route assignment override for the day.' });
-      makeJob({ routeId: 'r4', day, dur: 10, title: 'Raj Patel — home purge', type: 'purge', address: '5 Heron Ct, Lakemont', located: true, x: 880, y: 400, items: [{ id: 'box', qty: 6, rate: 8 }], purge: { std: 6 }, custFrom: '08:00', custUntil: '10:00', custStrict: true, windowBy: 'us', notes: 'Must be done before he leaves for work at 10.' }); }
+      makeJob({ routeId: 'r4', day, dur: 10, title: 'Raj Patel — home purge', type: 'purge', custType: 'residential', phone: '+15125550281', contactName: 'Raj Patel', address: '5 Heron Ct, Lakemont', located: true, x: 880, y: 400, items: [{ id: 'box', qty: 6, rate: 8 }], purge: { std: 6 }, custFrom: '08:00', custUntil: '10:00', custStrict: true, windowBy: 'us', notes: 'Must be done before he leaves for work at 10.' }); }
+    if (n === 2) makeJob({ routeId: 'r4', day, dur: 20, title: 'Dana Kim — garage purge', type: 'purge', custType: 'residential', phone: '+15125550274', contactName: 'Dana Kim', items: [{ id: 'box', qty: 15, rate: 8 }], purge: { std: 15 }, notes: 'Booked by phone. She will call back with the address.', events: [{ at: +new Date(D.parse(today).setHours(9, 41, 0, 0)), actor: 'Colleen Abbott', text: 'Created · saved without an address' }] });
     if (n === 2) { const j = data.jobs.find(x => x.day === day && x.routeId === 'r3' && !x.allDay); if (j) { j.status = 'canceled'; j.events.push({ at: +new Date(D.parse(today).setHours(9, 2, 0, 0)), actor: 'Colleen Abbott', text: 'Customer canceled — called the office' }); } }
     if (n === 3) { const j = data.jobs.filter(x => x.day === day && x.routeId === 'r2' && !x.allDay)[1]; if (j) { j.status = 'rescheduled'; j.rescheduledTo = D.add(day, 2); j.events.push({ at: +new Date(D.parse(today).setHours(8, 40, 0, 0)), actor: 'Colleen Abbott', text: 'Customer rescheduled to ' + WD.fmt.day(D.add(day, 2)) }); } }
   }
   /* Heads-up details shown after job titles: one-off flags on today's and upcoming visits. */
   const flag = (cid, f, days) => data.jobs.filter(j => j.customerId === cid && days.includes(D.diff(j.day, today))).forEach(j => Object.assign(j.flags, f));
+  data.jobs.filter(j => j.customerId === 'c1' && [0, 1, 2].includes(D.diff(j.day, today))).forEach(j => j.events.push({ at: +new Date(D.parse(today).setHours(8, 12, 0, 0)), actor: 'Colleen Abbott', text: 'Edited', changes: [{ label: 'Heads-up', from: 'None', to: 'Bring an extra container' }, { label: 'Notes', from: 'Check in at reception.', to: 'Check in at reception. Service elevator is around back.' }] }));
   flag('c1', { extraBin: true }, [0, 1, 2]); flag('c3', { extraShred: true }, [0, 1]); flag('c12', { early: true }, [0, 1, 2, 3]); flag('c7', { extraShred: true }, [1, 2]);
   data.jobs.filter(j => ['c14', 'c27', 'c10'].includes(j.customerId) && D.diff(j.day, today) > 0 && D.diff(j.day, today) <= 3).forEach(j => { j.needsWindow = true; });
   const first = data.jobs.find(j => j.day === today && j.routeId === 'r1' && j.status === 'completed'); if (first) first.attachments.push({ id: 'a3', name: 'Console key tag.jpg', kind: 'photo', size: '1.4 MB' });
@@ -259,6 +281,41 @@ data.customers.forEach(c => {
   c.stats = { jobs: base + done.length, invoiced, paid: invoiced - balance, balance, lastService: done.length ? done[done.length - 1].day : null, firstInvoice: isCust ? D.add(today, -(60 + Math.floor(rnd() * 900))) : null, rate: per };
   c.successful = !!c.stats.firstInvoice; if (c.nextAction != null) c.nextAction = D.add(today, c.nextAction);
 });
+
+/* ---------- Pricing history, contract anniversaries, service agreements, time off (mock) ---------- */
+(function () {
+  const md = k => k.slice(5), nextMonth = (() => { const d = D.parse(today); d.setDate(1); d.setMonth(d.getMonth() + 1); return D.key(d); })();
+  /* Three accounts started service in next month's calendar month, so the anniversary report has something to show. */
+  [['c1', 2, 4], ['c4', 1, 12], ['c16', 3, 20]].forEach(([id, years, dom]) => { const c = data.customers.find(x => x.id === id), d = D.parse(nextMonth); d.setFullYear(d.getFullYear() - years); d.setDate(dom); c.stats.firstInvoice = D.key(d); c.successful = true; });
+  /* Change history: every price, container-count and frequency change, with who made it and the service date it took effect. */
+  data.customers.forEach(c => { c.changes = []; const since = c.stats.firstInvoice; if (!since) return;
+    const it = c.locations[0].items[0]; if (!it) return; const pb = data.priceBook.find(x => x.id === it.id), yr = Math.floor(D.diff(today, since) / 365);
+    c.changes.push({ at: +D.parse(since), by: 'Dana Whitfield', kind: 'start', text: 'Service started · ' + WD.itemsLabel(c.locations[0].items) + ' · ' + c.freq, effective: since });
+    if (yr >= 1) { const day = D.add(since, 365); c.changes.push({ at: +D.parse(D.add(day, -31)), by: 'Dana Whitfield', kind: 'price', item: pb.name, from: Math.round(it.rate * 0.92 * 100) / 100, to: it.rate, effective: day, letter: true }); }
+    if (c.id === 'c1') c.changes.push({ at: +D.parse(D.add(today, -140)), by: 'Colleen Abbott', kind: 'qty', item: pb.name, from: 3, to: 4, effective: D.add(today, -133) }, { at: +D.parse(D.add(today, -210)), by: 'Colleen Abbott', kind: 'freq', from: 'Every 2 weeks', to: 'Weekly', effective: D.add(today, -203) });
+    if (c.id === 'c16') c.changes.push({ at: +D.parse(D.add(today, -64)), by: 'Priya Raman', kind: 'qty', item: pb.name, from: 6, to: 8, effective: D.add(today, -60) });
+  });
+  /* Service agreements. status: draft → sent → viewed → signed. method: how it was signed ('link' or 'inperson'). */
+  let n = 0; const ag = (customerId, status, o = {}) => { const c = data.customers.find(x => x.id === customerId), p = c.contacts[0] || {};
+    data.agreements.push(Object.assign({ id: 'ag' + (++n), number: 'SA-' + (1040 + n), customerId, status, term: 12, start: status === 'signed' ? c.stats.firstInvoice || today : today, createdBy: 'Colleen Abbott', createdAt: +D.parse(D.add(today, -6)), sentVia: null, sentAt: null, viewedAt: null, signedAt: null, signer: '', sig: null, method: null, to: p.email || '' }, o)); };
+  data.agreements = [];
+  ag('c1', 'signed', { term: 36, createdAt: +D.parse(D.add(today, -400)), sentVia: 'Email', sentAt: +D.parse(D.add(today, -400)), viewedAt: +D.parse(D.add(today, -399)), signedAt: +D.parse(D.add(today, -398)), signer: 'Renee Harlow', method: 'link' });
+  ag('c16', 'signed', { term: 24, createdAt: +D.parse(D.add(today, -300)), sentVia: 'Email', sentAt: +D.parse(D.add(today, -300)), signedAt: +D.parse(D.add(today, -296)), signer: 'Ian Cho', method: 'inperson' });
+  ag('c3', 'viewed', { sentVia: 'Email', sentAt: +D.parse(D.add(today, -3)), viewedAt: +D.parse(D.add(today, -2)) });
+  ag('c7', 'sent', { sentVia: 'Text', sentAt: +D.parse(D.add(today, -1)) });
+  ag('c15', 'sent', { start: today, sentVia: 'Email', sentAt: +D.parse(D.add(today, -2)), createdAt: +D.parse(D.add(today, -2)) });
+  ag('c25', 'draft', { start: D.add(today, 14), createdAt: +D.parse(D.add(today, -1)) });
+  /* Time off: requested from the Shift tab, approved by HR or whoever manages the team; approved days show on the dispatch board. */
+  let tomorrow = D.add(today, 1); if (D.parse(tomorrow).getDay() === 0) tomorrow = D.add(tomorrow, 1);
+  data.timeOff = [
+    { id: 'to1', userId: 'u5', from: tomorrow, to: tomorrow, fromTime: '', untilTime: '', reason: 'Family appointment', status: 'approved', decidedBy: 'Dana Whitfield', at: +D.parse(D.add(today, -5)) },
+    { id: 'to2', userId: 'u6', from: D.add(today, 8), to: D.add(today, 9), fromTime: '', untilTime: '', reason: 'Out of town', status: 'pending', decidedBy: null, at: +D.parse(D.add(today, -1)) },
+    { id: 'to3', userId: 'u4', from: D.add(today, 4), to: D.add(today, 4), fromTime: '13:00', untilTime: '17:00', reason: 'Dentist', status: 'pending', decidedBy: null, at: +D.parse(today) },
+  ];
+})();
+/** The approved time off covering a person's day, if any. */
+WD.offOn = (userId, day) => userId ? (data.timeOff || []).find(t => t.userId === userId && t.status === 'approved' && t.from <= day && day <= t.to) || null : null;
+WD.timeOffLabel = t => (t.from === t.to ? WD.fmt.day(t.from) : WD.fmt.day(t.from, 'md') + ' – ' + WD.fmt.day(t.to, 'md')) + (t.fromTime ? ' · ' + WD.fmt.time(WD.fmt.fromHHMM(t.fromTime)) + '–' + WD.fmt.time(WD.fmt.fromHHMM(t.untilTime || '17:00')) : ' · all day');
 
 /* ---------- Time clock: this week's punches and today's location stays (mock) ---------- */
 /* Hours per day this week (Mon → today) for each employee who clocks in. Drivers run long days, so daily and weekly overtime both show up. */
@@ -292,16 +349,16 @@ const q = WD.q = {
   routeColor: r => (r = typeof r === 'string' ? q.route(r) : r) ? (r.colorOverride || r.color) : '#8E8E93',
   job: id => data.jobs.find(j => j.id === id), customer: id => data.customers.find(c => c.id === id), user: id => data.users.find(u => u.id === id), vehicle: id => data.vehicles.find(v => v.id === id),
   jobType: id => WD.jobTypes.find(t => t.id === id) || WD.jobTypes[0],
-  /** Board order: day notes first, then the job list in order (seq), then stable id. */
+  /** Board order: day notes first, then the job list in order (seq) with called-off visits last, then stable id. */
   jobsFor: (routeId, day) => data.jobs.filter(j => j.routeId === routeId && j.day === day).sort(q.order),
-  order: (a, b) => (b.allDay - a.allDay) || (a.seq - b.seq) || a.id.localeCompare(b.id, undefined, { numeric: true }),
+  order: (a, b) => (b.allDay - a.allDay) || (WD.calledOff(a) - WD.calledOff(b)) || (a.seq - b.seq) || a.id.localeCompare(b.id, undefined, { numeric: true }),
   /** The ordered job list for a route's day (notes excluded). */
   stopList: (routeId, day) => q.jobsFor(routeId, day).filter(j => !j.allDay),
   /** A job's place in its day's list: { n, of }. */
-  position: job => { const list = q.stopList(job.routeId, job.day); return { n: list.indexOf(job) + 1, of: list.length }; },
+  position: job => { const list = q.stopList(job.routeId, job.day).filter(j => !WD.calledOff(j) || j === job); return { n: list.indexOf(job) + 1, of: list.length - (WD.calledOff(job) ? 1 : 0) }; },
   jobsOn: day => data.jobs.filter(j => j.day === day),
   /** Located stops for the map, numbered from 1 per route (addressless jobs and all-day notes are excluded). */
-  stops: (routeId, day) => q.jobsFor(routeId, day).filter(j => j.located && j.x != null).map((j, i) => ({ job: j, number: i + 1 })),
+  stops: (routeId, day) => q.jobsFor(routeId, day).filter(j => j.located && j.x != null && !WD.calledOff(j)).map((j, i) => ({ job: j, number: i + 1 })),
   jobsForCustomer: id => data.jobs.filter(j => j.customerId === id).sort((a, b) => a.day.localeCompare(b.day) || q.order(a, b)),
   driverFor: routeId => { const r = q.route(routeId); return r && r.driverId ? q.user(r.driverId) : null; },
   /** One search box: customer name, contact name, phone digits, email or address. Returns [{customer, match}] best first. */

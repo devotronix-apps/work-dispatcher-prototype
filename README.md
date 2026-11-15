@@ -22,13 +22,13 @@ The panel beside the phone (a **Controls** button on narrower windows) drives th
 
 Completing a stop: **Complete** works from any status (no need for Start driving or I’ve arrived — arrival is taken from GPS). By default it opens the billing details; from there **Get signature** and **Create invoice** (or **Paid — no invoice**, or a signed **service note** for master-invoice customers), then the next customer comes up. Completed jobs fade only once billed; unbilled ones show **Not billed** and are listed before clock-out. Settings → Field workflow changes all of this per company.
 
-Board and map colors: the job type fills each card and pin (purge yellow, government indigo, card-on-file blue, setup red, meet-the-truck pink, route service graphite) and the route's calendar color rims it. Skipped, canceled, rescheduled and postponed jobs stay on the list with a line through the title and a label.
+Board and map colors: the job type fills each card and pin (purge yellow, government indigo, card-on-file blue, setup red, meet-the-truck pink, route service graphite) and the route's calendar color rims it. Skipped, canceled, rescheduled and postponed jobs stay on the list with a line through the title and a label; canceled, rescheduled and postponed ones (`WD.calledOff`) sink to the bottom with no stop number and are left off the map and out of AutoRoute.
 
-Jobs have no scheduled times: each route's day is an ordered list, and stop 1 is done first. Cards leave the address off and show the key facts (containers or boxes, window, time on site); pinch vertically on the board (or ⌘/ctrl-scroll, or the routes menu) to switch between less and more detail. AutoRoute recommends when to leave the truck's parking place for a day that hasn't started, which you can accept or replace with your own time, and gives a window to each stop marked **Needs a window**. On the board, drag a job up or down to reorder it or into another column to reassign it, and tap a column's empty space (or **Add stop**) to add a job at the end. Notes for the day sit above the list. The prototype clock starts at 10:24 AM; other drivers' trucks move and complete their stops on their own, faster than real life, so the board and map change while you watch.
+Jobs have no scheduled times: each route's day is an ordered list, and stop 1 is done first. Cards leave the address off and show the key facts (containers or boxes, window, time on site); pinch on the board (or ⌘/ctrl-scroll, the − / + buttons, or the routes menu) to switch between less and more detail. Every card carries all three levels and the board’s `lvl0`–`lvl2` class picks one, so pinching never rebuilds the list. AutoRoute recommends when to leave the truck's parking place for a day that hasn't started, which you can accept or replace with your own time, and gives a window to each stop marked **Needs a window**. On the board, drag a job up or down to reorder it or into another column to reassign it, and tap a column's empty space (or **Add stop**) to add a job at the end. Notes for the day sit above the list. The prototype clock starts at 10:24 AM; other drivers' trucks move and complete their stops on their own, faster than real life, so the board and map change while you watch.
 
 ## Version
 
-Settings → About → Version shows the prototype version (`js/screens/settings.js`). Increment it every time the prototype is republished to the public site.
+Settings → About → Version shows the prototype version, `WD.version` in `js/core.js`. Increment it every time the prototype is republished to the public site. A short “what’s new” tutorial (the `TOUR` steps in `js/screens/extras.js`) shows once per version after sign-in; update its steps with each release. Add `?notour` to the address to suppress it, or replay it from Settings → About.
 
 ## Files
 
@@ -47,6 +47,8 @@ Settings → About → Version shows the prototype version (`js/screens/settings
 | `js/screens/billing.js` | Billing details / invoice editor (lines, service date, pounds, PO by service date), signature per customer policy, paid on site, service-note mode, the invoice document (company layout: service summary by location, page subtotals, certificate of destruction) |
 | `js/screens/workflow.js` | Field workflow: Complete stop from any status → billing → next customer (optionally start directions), arrival from GPS, details after job titles, paid–no invoice, missed-invoice check, Invoices list (search by number, my route / all routes), invoice actions, service notes saved to the database and the monthly master invoice built from them, customer documents and dated PO schedules, directions app, Settings → Field workflow |
 | `js/screens/team.js` | Overtime rules (daily, weekly, double time), pay period, federal overtime (over 40/workweek), hours and overtime reports for pay periods, months or custom dates, HR shift corrections and missed shifts (reason required, change history), team locations map with stays over N minutes |
+| `js/screens/extras.js` | `WD.x`: customer pricing, change history and price-change letters, anniversaries report, service agreements, time off, side-by-side conflict review, missing-address list, dated POs in forms, older job history from the server, offline data page, call summary, the tutorial |
+| `sw.js` | Service worker: keeps a copy of the prototype for offline use (network first, saved copy as fallback) |
 | `js/screens/admin.js` | Sign-in policy, job types and the fields each asks for, import from .ics or Excel/CSV, new-company “connect your tools” step |
 
 ## Screen-module contract
@@ -116,6 +118,7 @@ A page is a spec object:
 | `WD.screens.billing.openEditor(jobId, {pay, lines, note})`, `.openInvoice(jobId)`, `.signaturePad(o)` | billing.js |
 | `WD.timeclock.week(userId)`, `.teamMapSpec()`, `.rulesSpec()`, `.timesheetsSpec()` | team.js |
 | `WD.admin.signInSpec()`, `.typesSpec()`, `.importSpec()`, `.connectPage(from, done)` | admin.js |
+| `WD.x.poRows(o)`, `.pricingSection(c)`, `.historySection(c)`, `.agreementSection(c)`, `.jobAgreementSection(job, push)`, `.timeOffSection()`, `.compareOp(op)`, `.missingSheet()`, `.fetchHistory(text)`, `.diffJob(before, after)`, `.tutorial()` | extras.js |
 | `WD.miniMap({points, lines, aspect})`, `WD.pinStyle(job)` | map.js |
 | `WD.screens.map.root()`, `WD.screens.shift.root()` | map.js, shift.js |
 

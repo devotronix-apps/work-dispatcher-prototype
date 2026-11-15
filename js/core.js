@@ -3,6 +3,8 @@
 (function () {
 'use strict';
 const WD = window.WD = { screens: {}, data: {} };
+/** Prototype version (Settings → About). Bump on every publish; the “what’s new” tutorial shows once per version. */
+WD.version = '2.2';
 const $ = (s, r) => (r || document).querySelector(s);
 
 /* ================= DOM helper ================= */
@@ -82,7 +84,13 @@ const F = WD.fmt = {
     const x = new Date(t); return MO[x.getMonth()] + ' ' + x.getDate();
   },
   money: (n, cents) => '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: cents ? 2 : 0, maximumFractionDigits: cents ? 2 : 0 }),
-  phone(p) { const d = String(p || '').replace(/\D/g, '').slice(-10); return d.length === 10 ? '(' + d.slice(0, 3) + ') ' + d.slice(3, 6) + '-' + d.slice(6) : p; },
+  /** "559-968-4175" (plus " ext. 12" when given). Anything that isn't exactly 10 digits is returned as typed. */
+  phone(p, ext) { const d = F.phoneDigits(p); return d.length === 10 ? d.slice(0, 3) + '-' + d.slice(3, 6) + '-' + d.slice(6) + (ext ? ' ext. ' + ext : '') : (p || ''); },
+  /** The 10 digits of a US number: drops punctuation and a leading country code 1. */
+  phoneDigits(p) { let d = String(p || '').replace(/\D/g, ''); if (d.length === 11 && d[0] === '1') d = d.slice(1); return d; },
+  /** Format while typing: at most 10 digits, dashes added as they go. */
+  phoneTyping(p) { let d = String(p || '').replace(/\D/g, ''); if (d.length > 10 && d[0] === '1') d = d.slice(1); d = d.slice(0, 10); return d.length > 6 ? d.slice(0, 3) + '-' + d.slice(3, 6) + '-' + d.slice(6) : d.length > 3 ? d.slice(0, 3) + '-' + d.slice(3) : d; },
+  phoneValid: p => F.phoneDigits(p).length === 10,
   initials: n => String(n || '?').split(/\s+/).filter(w => /[A-Za-z]/.test(w[0])).slice(0, 2).map(w => w[0].toUpperCase()).join(''),
 };
 
@@ -181,11 +189,11 @@ WD.addIcons = map => Object.assign(I, map);
 WD.textOn = hex => { const m = /^#?([0-9a-f]{6})$/i.exec(hex || ''); if (!m) return '#fff'; const n = parseInt(m[1], 16), c = [n >> 16, n >> 8 & 255, n & 255].map(v => { v /= 255; return v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); }); return .2126 * c[0] + .7152 * c[1] + .0722 * c[2] > .4 ? '#1C1C1E' : '#fff'; };
 
 /* ================= State and permissions ================= */
-const ALL = ['analytics.view', 'tracking.view_live', 'team.locations', 'crm.view', 'crm.edit', 'billing.view', 'billing.field', 'billing.manage', 'jobs.edit', 'users.manage', 'hr.manage', 'settings.manage'];
+const ALL = ['analytics.view', 'tracking.view_live', 'team.locations', 'crm.view', 'crm.edit', 'billing.view', 'billing.field', 'billing.manage', 'jobs.edit', 'users.manage', 'hr.manage', 'settings.manage', 'contracts.manage', 'comms.view'];
 WD.roles = {
   owner: { title: 'Owner', perms: ALL }, admin: { title: 'Admin', perms: ALL },
-  dispatcher: { title: 'Dispatcher', perms: ['jobs.edit', 'tracking.view_live', 'team.locations', 'crm.view', 'crm.edit', 'analytics.view', 'billing.field'] },
-  office: { title: 'Office', perms: ['jobs.edit', 'team.locations', 'crm.view', 'crm.edit', 'billing.view', 'billing.field', 'billing.manage'] },
+  dispatcher: { title: 'Dispatcher', perms: ['jobs.edit', 'tracking.view_live', 'team.locations', 'crm.view', 'crm.edit', 'analytics.view', 'billing.field', 'comms.view'] },
+  office: { title: 'Office', perms: ['jobs.edit', 'team.locations', 'crm.view', 'crm.edit', 'billing.view', 'billing.field', 'billing.manage', 'contracts.manage', 'comms.view'] },
   driver: { title: 'Driver', perms: ['billing.field'] },
   staff: { title: 'Staff', perms: [] },
 };
@@ -195,6 +203,7 @@ WD.permissionList = [
   ['crm.view', 'View customers', 'Customer records and history'], ['crm.edit', 'Edit customers', 'Change customers, notes and follow-ups'],
   ['analytics.view', 'Analytics', 'Driver, stop and route reports'], ['billing.view', 'View billing', 'Invoices and payments'],
   ['billing.field', 'Field invoicing', 'Edit job charges, collect signatures and payment on site'], ['billing.manage', 'Manage billing', 'Create invoices and charge cards'], ['users.manage', 'Manage team', 'Invite people and change roles'], ['hr.manage', 'HR and payroll', 'Fix clock-in/out times, add missed shifts, and run hours and overtime reports for any dates'], ['settings.manage', 'Company settings', 'Integrations and the Google mirror'],
+  ['contracts.manage', 'Service agreements', 'Create, send and track service agreements to signature'], ['comms.view', 'Call and message history', 'Call transcripts and summaries of past calls, texts and emails when a customer calls'],
 ];
 const S = WD.state = {
   signedIn: false, role: 'owner', me: null, org: null,
@@ -260,6 +269,18 @@ ui.inputRow = o => {
   const lab = o.label && h('div.field-label' + (o.required ? '.req' + (String(o.value || '').trim() ? '' : '.missing') : o.suggested ? '.sugg' : ''), o.label);
   if (o.required && lab) input.addEventListener('input', () => lab.classList.toggle('missing', !input.value.trim()));
   return h('div.row', o.icon && h('div.row-icon.plain', { style: { color: o.iconColor || 'var(--label2)' } }, WD.icon(o.icon, 22)), lab, input, o.trailing);
+};
+/** Phone number field: formats as 559-968-4175 while typing, accepts exactly 10 digits, with a small extension box.
+    {label, value, ext, onInput(phone, ext), required, placeholder}. The label turns red while the number is incomplete. */
+ui.phoneRow = o => {
+  let ext = o.ext || '';
+  const extIn = h('input.field.ext', { type: 'text', inputmode: 'numeric', placeholder: 'Ext.', 'aria-label': 'Extension', value: ext, autocomplete: 'off', oninput: e => { ext = e.target.value = e.target.value.replace(/\D/g, '').slice(0, 6); o.onInput && o.onInput(input.value, ext); } });
+  const row = ui.inputRow({ label: o.label === undefined ? 'Phone' : o.label, type: 'tel', inputmode: 'tel', placeholder: o.placeholder || '559-555-0100', value: F.phoneTyping(o.value), required: o.required, trailing: extIn,
+    onInput: (v, el) => { const t = F.phoneTyping(v); if (t !== v) el.value = t; o.onInput && o.onInput(t, ext); } });
+  const input = row.querySelector('input.field'), lab = row.querySelector('.field-label');
+  const mark = () => { const d = F.phoneDigits(input.value).length; row.classList.toggle('bad', d > 0 && d < 10); if (lab && o.required) lab.classList.toggle('missing', d !== 10); };
+  input.maxLength = 14; input.addEventListener('input', mark); mark();   // added last, so it has the final say on the label after inputRow's own required check
+  return row;
 };
 /** Pop-up picker. {title, options: [{value, label, icon}] | ['a','b'], value, onChange(value), icon, iconColor} */
 ui.pickerRow = o => {
@@ -517,7 +538,7 @@ const api = WD.api = {
     const all = new Set(jobs.map(j => j.id));
     if (o.apply) o.apply();
     const created = WD.data.jobs.filter(j => !all.has(j.id)).map(j => j.id);
-    const op = { id: 'op' + (++opSeq), kind: o.kind, title: o.title, scope: o.scope || 'This job', jobIds: ids.concat(created), status: 'queued', message: S.offline ? 'Waiting for a connection' : 'Waiting to sync', at: +WD.now(),
+    const op = { id: 'op' + (++opSeq), kind: o.kind, title: o.title, scope: o.scope || 'This job', jobIds: ids.concat(created), status: 'queued', message: S.offline ? 'Waiting for a connection' : 'Waiting to sync', at: +WD.now(), before,
       revert() { WD.data.jobs = WD.data.jobs.filter(j => !created.includes(j.id) && !existed.has(j.id)).concat(before.map(clone)); } };
     op.jobIds.forEach(id => { const j = WD.q.job(id); if (j) j.pending = true; });
     S.pending.push(op); WD.changed(); api.flush();
@@ -532,6 +553,14 @@ const api = WD.api = {
       j.events.push({ at: +WD.now(), actor: S.me.name, text: label + (note ? ' — ' + note : '') });
     } });
   },
+  /** What the server holds for a conflicting change (mock): the jobs as they were before your change, plus what the other person did meanwhile. */
+  serverVersion(op) {
+    const mine = op.jobIds.map(id => WD.q.job(id)).filter(Boolean);
+    const jobs = (op.before.length ? op.before : mine).map(clone), by = 'Priya Raman', first = jobs[0];
+    if (first) { first.notes = (first.notes ? first.notes + ' ' : '') + 'Customer called: use the side entrance today.'; if (!op.before.length) first.seq = (first.seq || 1) + 1; }
+    if (jobs.length > 1) { const a = jobs[0].seq; jobs[0].seq = jobs[1].seq; jobs[1].seq = a; }
+    return { by, at: +WD.now() - 4 * 60000, jobs, deleted: [] };
+  },
   finish(op) { S.pending = S.pending.filter(x => x !== op); op.jobIds.forEach(id => { const j = WD.q.job(id); if (j && !S.pending.some(x => x.jobIds.includes(id))) { j.pending = false; j.version = (j.version || 1) + 1; } }); },
   async flush() {
     if (api.busy || S.offline) return; api.busy = true;
@@ -542,7 +571,7 @@ const api = WD.api = {
         await WD.delay(600, 1500);
         if (!S.pending.includes(op)) continue;
         if (S.offline) { op.status = 'queued'; op.message = 'Waiting for a connection'; break; }
-        if (S.sim.conflictNext) { S.sim.conflictNext = false; syncPanel(); op.status = 'conflict'; op.message = 'Priya Raman changed this job on another device after you opened it.';
+        if (S.sim.conflictNext) { S.sim.conflictNext = false; syncPanel(); op.status = 'conflict'; op.message = 'Priya Raman changed this job on another device after you opened it.'; op.server = api.serverVersion(op);
           ui.banner({ title: 'Change needs review', text: op.title + ' was changed by someone else. Choose which version to keep.', icon: 'exclamationmark.triangle', color: 'var(--orange)', onTap: () => WD.screens.settings && WD.screens.settings.openPending && WD.screens.settings.openPending() }); continue; }
         api.finish(op); WD.changed();
       }

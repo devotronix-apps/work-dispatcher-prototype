@@ -185,6 +185,8 @@ function openEditor(jobId, o = {}) {
   async function submit(p, draft) {
     if (!f.lines.length) return ui.alert({ title: 'No charges', message: 'Add at least one line, even if it’s $0.' });
     if (!draft) {
+      /* A price changed on the invoice can become the customer's price for this and all future visits. */
+      if (!o.lines && !(await WD.x.priceChangePrompt(job, f.lines))) return;
       if (sigMissing()) {
         const v = await ui.actionSheet({ title: (cust ? cust.name : 'This customer') + ' requires a signature', message: note ? 'Service notes are always signed by the site contact.' : 'Set in the customer’s settings: always required.', buttons: [{ label: 'Get signature', value: 'sign' }] });
         if (v !== 'sign' || !(await getCustomerSig(p))) return;

@@ -16,8 +16,8 @@ WD.css(`
 .bd-date .nav-btn { min-width: 30px; padding: 0 2px; }
 .bd-today { width: 24px; height: 24px; border: 1.7px solid currentColor; border-radius: 5px; font-size: 12px; font-weight: 700; display: grid; place-items: center; letter-spacing: 0; }
 .bd-mode { display: flex; align-items: center; gap: 8px; padding: 0 12px 8px; flex: none; }
-.bd-mode .segmented { width: 204px; flex: none; }
-.bd-pill { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; height: 32px; padding: 0 10px; border-radius: 16px; border: 0; background: var(--fill3); color: var(--label); font-size: 14px; font-weight: 500; letter-spacing: -.15px; cursor: pointer; max-width: 150px; }
+.bd-mode .segmented { width: 168px; flex: none; }
+.bd-pill { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; height: 32px; padding: 0 10px; border-radius: 16px; border: 0; background: var(--fill3); color: var(--label); font-size: 14px; font-weight: 500; letter-spacing: -.15px; cursor: pointer; max-width: 150px; min-width: 0; }
 .bd-pill span.n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bd-strip { flex: none; display: flex; align-items: center; gap: 6px; padding: 6px 14px; font-size: 13px; font-weight: 500; letter-spacing: -.08px; cursor: pointer; background: color-mix(in srgb, var(--c) 14%, var(--cell)); color: var(--c); border-top: .5px solid var(--sep); }
 .bd-strip .spacer { flex: 1; }
@@ -45,8 +45,16 @@ WD.css(`
 .bd-job-title { font-weight: 600; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; word-break: break-word; }
 .bd-job-title .ic { margin: -2px 2px 0 0; }
 .bd-job-sub { font-size: 11px; line-height: 14px; opacity: .9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: 0; margin-top: 1px; }
-.bd-job-in.lvl0 { padding: 2px 4px; align-items: center; } .bd-job-in.lvl0 .bd-job-title { -webkit-line-clamp: 1; } .bd-job-in.lvl0 .bd-num { width: 17px; height: 17px; font-size: 10px; }
-.bd-job-in.lvl2 .bd-job-title { -webkit-line-clamp: 4; } .bd-job-in.lvl2 .bd-job-sub { white-space: normal; }
+.lvl0 .bd-job-in { padding: 2px 4px; align-items: center; } .lvl0 .bd-job-title { -webkit-line-clamp: 1; } .lvl0 .bd-num { width: 17px; height: 17px; font-size: 10px; }
+.lvl2 .bd-job-title { -webkit-line-clamp: 4; } .lvl2 .bd-job-sub { white-space: normal; }
+/* Every card carries all three detail levels; the board's class picks one, so pinching never rebuilds the list. */
+.lvl0 .d12, .lvl0 .d1, .lvl0 .d2, .lvl1 .d0, .lvl1 .d2, .lvl2 .d0, .lvl2 .d1 { display: none; }
+.bd-tag.na { background: #fff; color: #D70015; }
+.bd-job.calledoff .bd-num { background: rgba(0,0,0,.35); box-shadow: none; }
+.bd-colhead { flex-wrap: wrap; row-gap: 2px; } .bd-offrow { flex-basis: 100%; order: 9; display: flex; }
+.bd-off { flex: none; font-size: 10px; line-height: 14px; font-weight: 800; text-transform: uppercase; letter-spacing: .2px; border-radius: 4px; padding: 0 4px; background: var(--red); color: #fff; }
+.bd-zoombtns { margin-left: 2px; display: inline-flex; border-radius: 16px; background: var(--fill3); overflow: hidden; flex: none; }
+.bd-zoombtns button { border: 0; background: none; width: 30px; height: 32px; color: var(--label); cursor: pointer; display: grid; place-items: center; padding: 0; } .bd-zoombtns button:disabled { opacity: .3; }
 .bd-job-sub .ic { margin-top: -2px; }
 .bd-job-note { font-size: 11px; line-height: 14px; opacity: .85; margin-top: 2px; font-style: italic; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; letter-spacing: 0; }
 .bd-zoom { position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); background: var(--material); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-radius: 12px; padding: 10px 16px; font-size: 15px; font-weight: 600; z-index: 30; pointer-events: none; box-shadow: 0 4px 18px rgba(0,0,0,.18); }
@@ -141,7 +149,8 @@ function modeRow() {
         { label: 'Show 1 day', checked: b.dayCount === 1, onTap: () => { b.dayCount = 1; refresh(); } }, { label: 'Show 3 days', checked: b.dayCount === 3, onTap: () => { b.dayCount = 3; refresh(); } }, 'divider', { header: 'Card detail · or pinch the board' }, ...DETAIL.map((t, i) => ({ label: t, checked: b.detail === i, onTap: () => setDetail(i) })), 'divider', ...syncItems()]) },
         ui.dot(q.routeColor(route)), h('span.n', q.routeName(route)), icon('chevron.down', 13))
     : h('button.bd-pill', { onclick: e => boardMenu(e.currentTarget) }, h('span.n', q.visibleRoutes().length + ' of ' + q.routes().length + ' routes'), icon('chevron.down', 13));
-  return h('div.bd-mode', ui.segmented([{ value: 'routes', label: 'Routes' }, { value: 'days', label: 'Days' }, { value: 'month', label: 'Month' }], b.mode, v => { b.mode = v; keep(undefined, 0); refresh(); }), pill);
+  const zoom = b.mode !== 'month' && h('span.bd-zoombtns', h('button', { 'aria-label': 'Less detail', disabled: b.detail <= 0, onclick: () => setDetail(S.board.detail - 1, true) }, icon('minus', 16)), h('button', { 'aria-label': 'More detail', disabled: b.detail >= DETAIL.length - 1, onclick: () => setDetail(S.board.detail + 1, true) }, icon('plus', 16)));
+  return h('div.bd-mode', ui.segmented([{ value: 'routes', label: 'Routes' }, { value: 'days', label: 'Days' }, { value: 'month', label: 'Month' }], b.mode, v => { b.mode = v; keep(undefined, 0); refresh(); }), pill, zoom);
 }
 function statusStrip() {
   const conflicts = S.pending.filter(o => o.status === 'conflict').length, n = S.pending.length;
@@ -151,6 +160,19 @@ function statusStrip() {
   if (S.offline) return h('div.bd-strip', { style: { '--c': 'var(--orange)' }, onclick: open }, icon('wifi.slash', 16), n ? 'Offline · ' + n + (n === 1 ? ' change' : ' changes') + ' saved on this iPhone' : 'Offline · showing saved jobs', h('span.spacer'), n ? icon('chevron.right', 13) : null);
   return h('div.bd-strip', { style: { '--c': 'var(--gray)' }, onclick: open }, ui.spinner(14), 'Syncing ' + n + (n === 1 ? ' change…' : ' changes…'));
 }
+/** Upcoming jobs saved without the address their type needs: review, fix or ignore them. */
+function addressStrip() {
+  const n = WD.missingAddresses().length; if (!n) return null;
+  return h('div.bd-strip', { style: { '--c': 'var(--red)' }, onclick: () => WD.x.missingSheet() }, icon('mappin', 16), n + (n === 1 ? ' upcoming job is' : ' upcoming jobs are') + ' missing an address', h('span.spacer'), 'Review', icon('chevron.right', 13));
+}
+/** Approved time off for the driver of a column's route on its day. */
+const offFor = c => WD.offOn((q.route(c.routeId) || {}).driverId, c.day);
+const offText = (c, t) => (q.user(t.userId) || { name: 'Driver' }).name.split(' ')[0] + ' off' + (t.fromTime ? ' ' + shortT(fmt.fromHHMM(t.fromTime)) + '–' + shortT(fmt.fromHHMM(t.untilTime || '17:00')) : '');
+/** With a single column there is no header row, so time off shows as a bar instead. */
+function offStrip() {
+  const cols = S.board.mode === 'month' ? [] : columns(); if (cols.length !== 1) return null; const t = offFor(cols[0]); if (!t) return null;
+  return h('div.bd-strip', { style: { '--c': 'var(--red)', cursor: 'default' } }, icon('person', 16), (q.user(t.userId) || { name: 'The driver' }).name + ' has approved time off · ' + WD.timeOffLabel(t));
+}
 
 /* ---------- Ordered lists ---------- */
 /* Colors: the job type fills the card and the route (calendar) color rims it. */
@@ -159,35 +181,35 @@ const cardStyle = job => { const c = q.jobType(job.type).color; return { '--c': 
 const DETAIL = ['Less detail', 'Standard', 'More detail'];
 if (S.board.detail == null) S.board.detail = 1;
 const shortT = m => { const hh = Math.floor(m / 60), mm = m % 60; return (hh % 12 || 12) + (mm ? ':' + String(mm).padStart(2, '0') : '') + (hh < 12 ? 'a' : 'p'); };
-function facts(job) {
+function facts(job, full) {
   const out = [], items = WD.itemsLabel(job.items, job.type === 'purge'), est = job.type === 'purge' && job.purge && WD.purgeEstimate(job.purge), m = fmt.fromHHMM;
   if (items) out.push(['shippingbox', items]); else if (job.containers) out.push(['shippingbox', job.containers]);
   if (job.custFrom || job.custUntil) out.push(['clock', (job.windowBy === 'us' ? 'Told ' : 'Asked ') + (job.custFrom ? shortT(m(job.custFrom)) : 'any') + '–' + (job.custUntil ? shortT(m(job.custUntil)) : 'any') + (job.custStrict ? ' · required' : '')]);
   else if (job.needsWindow) out.push(['clock', 'Needs window']);
-  if (est && est.minutes) out.push(['timer', (est.guess ? est.low + '–' + est.high : est.minutes) + ' min on site']); else if (job.dur && S.board.detail > 1) out.push(['timer', '~' + q.visitStats(job).median + ' min on site']);
+  if (est && est.minutes) out.push(['timer', (est.guess ? est.low + '–' + est.high : est.minutes) + ' min on site']); else if (job.dur && full) out.push(['timer', '~' + q.visitStats(job).median + ' min on site']);
   return out;
 }
 function details(job) {
   const c = job.customerId && q.customer(job.customerId), p = c && c.contacts[0], out = [];
   out.push(h('div.bd-job-sub', q.jobType(job.type).title));
-  facts(job).forEach(([ic, t]) => out.push(h('div.bd-job-sub', icon(ic, 10), ' ', t)));
+  facts(job, true).forEach(([ic, t]) => out.push(h('div.bd-job-sub', icon(ic, 10), ' ', t)));
   if (job.callAhead) out.push(h('div.bd-job-sub', icon('phone', 10), ' Call ' + (job.callAhead === 60 ? '1 hr' : job.callAhead + ' min') + ' ahead'));
-  if (p || job.phone) out.push(h('div.bd-job-sub', icon('person', 10), ' ', p ? p.name : job.contactName || fmt.phone(job.phone)));
+  if (p || job.phone) out.push(h('div.bd-job-sub', icon('person', 10), ' ', p ? p.name : job.contactName || fmt.phone(job.phone, job.ext)));
   if (job.po) out.push(h('div.bd-job-sub', 'PO ' + job.po));
   if (job.notes) out.push(h('div.bd-job-note', job.notes));
   return out;
 }
 function cell(job, number) {
-  const type = q.jobType(job.type), lvl = S.board.detail, st = { enroute: 'truck', arrived: 'mappin', completed: 'checkmark', skipped: 'xmark', canceled: 'xmark', rescheduled: 'calendar', postponed: 'clock' }[job.status], struck = WD.struck[job.status];
+  const type = q.jobType(job.type), st = { enroute: 'truck', arrived: 'mappin', completed: 'checkmark', skipped: 'xmark', canceled: 'xmark', rescheduled: 'calendar', postponed: 'clock' }[job.status], struck = WD.struck[job.status];
   const tag = { skipped: 'Skipped', canceled: 'Canceled', rescheduled: 'Rescheduled', postponed: 'Postponed' }[job.status];
-  const wf = WD.workflow, notBilled = job.status === 'completed' && !wf.billed(job) && job.type !== 'meet';
-  return h('div.bd-job.' + job.status + (struck ? '.struck' : '') + (wf.dimmed(job) ? '.faded' : '') + (job.pending ? '.pending' : '') + (drag && drag.job.id === job.id ? '.dragging' : '') + (flashId === job.id ? '.flash' : ''),
+  const wf = WD.workflow, notBilled = job.status === 'completed' && !wf.billed(job) && job.type !== 'meet', noAddr = !WD.closed[job.status] && WD.addressIssue(job);
+  return h('div.bd-job.' + job.status + (struck ? '.struck' : '') + (WD.calledOff(job) ? '.calledoff' : '') + (wf.dimmed(job) ? '.faded' : '') + (job.pending ? '.pending' : '') + (drag && drag.job.id === job.id ? '.dragging' : '') + (flashId === job.id ? '.flash' : ''),
     { 'data-job': job.id, style: cardStyle(job) },
-    h('div.bd-job-in.lvl' + lvl, h('span.bd-num', number),
-      h('div.bd-job-main', h('div.bd-job-title', !job.located && job.address && job.type !== 'meet' ? h('span.bd-q', '?') : null, st && icon(st, 12), job.pending && icon('sync', 11), lvl ? wf.titleNode(job) : job.title, job.recurring ? h('span', { style: 'opacity:.8;font-weight:400' }, ' ↻') : null),
-        tag ? h('div.bd-tag', tag + (job.rescheduledTo ? ' · ' + fmt.day(job.rescheduledTo, 'md') : '')) : notBilled ? h('div.bd-tag.nb', 'Not billed') : null,
-        lvl === 1 && !tag && h('div.bd-job-sub', facts(job).map(x => x[1]).join(' · ') || type.title),
-        lvl === 2 && !tag && details(job))));
+    h('div.bd-job-in', h('span.bd-num', number),
+      h('div.bd-job-main', h('div.bd-job-title', !job.located && job.address && job.type !== 'meet' ? h('span.bd-q', '?') : null, st && icon(st, 12), job.pending && icon('sync', 11), h('span.d0', job.title), h('span.d12', wf.titleNode(job)), job.recurring ? h('span', { style: 'opacity:.8;font-weight:400' }, ' ↻') : null),
+        tag ? h('div.bd-tag', tag + (job.rescheduledTo ? ' · ' + fmt.day(job.rescheduledTo, 'md') : '')) : notBilled ? h('div.bd-tag.nb', 'Not billed') : noAddr ? h('div.bd-tag.na', noAddr) : null,
+        !tag && h('div.bd-job-sub.d1', facts(job).map(x => x[1]).join(' · ') || type.title),
+        !tag && h('div.d2', details(job)))));
 }
 function grid() {
   const b = S.board, cols = columns(), W = page.body.clientWidth || 393;
@@ -196,18 +218,18 @@ function grid() {
   layout = { cols, colW };
   const lists = cols.map(c => ({ notes: q.jobsFor(c.routeId, c.day).filter(j => j.allDay), stops: q.stopList(c.routeId, c.day) }));
   const head = showHead && h('div.bd-head', h('div.bd-hrow', cols.map((c, i) => h('div.bd-colhead' + (c.today && b.mode === 'days' ? '.today' : ''), { style: { width: colW + 'px' } },
-    c.color && ui.dot(c.color), h('span.n', c.title), h('span.c', (d => d ? 'Leave ' + shortT(d.depart) + ' · ' : '')(data.routeDays[c.routeId + '|' + c.day]) + lists[i].stops.length)))));
+    c.color && ui.dot(c.color), h('span.n', c.title), (t => t && h('span.bd-offrow', h('span.bd-off', { title: WD.timeOffLabel(t) }, offText(c, t))))(offFor(c)), h('span.c', (d => d ? 'Leave ' + shortT(d.depart) + ' · ' : '')(data.routeDays[c.routeId + '|' + c.day]) + lists[i].stops.filter(j => !WD.calledOff(j)).length)))));
   const body = h('div.bd-body', cols.map((c, i) => {
     const { notes, stops } = lists[i];
     return h('div.bd-col' + (c.day < today ? '.past' : ''), { 'data-i': i, style: { width: colW + 'px' } },
       notes.map(j => h('div.bd-chip', { style: { '--c': q.routeColor(j.routeId) }, onclick: () => jobsScreen().openDetails && jobsScreen().openDetails(j.id) }, icon('note', 11), j.title)),
-      stops.map((j, n) => cell(j, n + 1)),
+      stops.map((j, n) => cell(j, WD.calledOff(j) ? '–' : n + 1)),
       !stops.length && h('div.bd-empty', 'No stops'),
       canEdit && h('div.bd-add', { 'data-add': i }, icon('plus', 13), 'Add stop'));
   }));
-  const el = scroller = h('div.bd-scroll', h('div.bd-content', { style: { width: colW * cols.length + 'px' } }, head, body));
-  el.addEventListener('pointerdown', pinchDown); el.addEventListener('pointerdown', onPointerDown); el.addEventListener('wheel', onWheel, { passive: false });
-  el.addEventListener('touchmove', e => { if (drag) e.preventDefault(); }, { passive: false });
+  const el = scroller = h('div.bd-scroll.lvl' + S.board.detail, h('div.bd-content', { style: { width: colW * cols.length + 'px' } }, head, body));
+  el.addEventListener('pointerdown', onPointerDown); el.addEventListener('wheel', onWheel, { passive: false });
+  el.addEventListener('touchstart', touchStart, { passive: false }); el.addEventListener('touchmove', touchMove, { passive: false }); el.addEventListener('touchend', touchEnd); el.addEventListener('touchcancel', touchEnd);
   const top = saved.top, left = saved.left, reveal = revealId; revealId = null;
   requestAnimationFrame(() => {
     if (!el.isConnected) return; el.scrollTop = top == null ? 0 : top; el.scrollLeft = left;
@@ -219,24 +241,28 @@ function grid() {
   return el;
 }
 
-/* ---------- Pinch: vertical pinch changes how much each card shows ---------- */
-let pinch = null, pinchAt = 0, wheelAcc = 0, wheelAt = 0;
-const touchPts = new Map();
+/* ---------- Pinch: changes how much each card shows ----------
+   The level follows the size of the pinch from where it started (each 35% wider or narrower is one step), so the same motion always
+   gives the same result and it can be reversed without lifting. It reads the live touch list, so a finger that lifted is never counted,
+   and the board is not rebuilt while two fingers are down. */
+let pinch = null, pinchAt = 0, staleWhilePinching = false, wheelAcc = 0, wheelAt = 0;
+const PINCH_STEP = Math.log(1.35);
+const spread = e => Math.max(40, Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY));
 function setDetail(n, hud) {
-  n = clamp(n, 0, DETAIL.length - 1); if (n === S.board.detail) return; S.board.detail = n; keep(); refresh();
+  n = clamp(n, 0, DETAIL.length - 1); if (n === S.board.detail) return; S.board.detail = n;
+  const el = scroller && scroller.isConnected ? scroller : null;
+  if (el) { const at = el.scrollHeight > el.clientHeight ? el.scrollTop / (el.scrollHeight - el.clientHeight) : 0; el.classList.remove('lvl0', 'lvl1', 'lvl2'); el.classList.add('lvl' + n); el.scrollTop = at * Math.max(0, el.scrollHeight - el.clientHeight); } else refresh();
+  if (page) page.body.querySelectorAll('.bd-zoombtns button').forEach((b, i) => { b.disabled = i ? n >= DETAIL.length - 1 : n <= 0; });
   if (hud && page) { const old = page.body.querySelector('.bd-zoom'); if (old) old.remove(); const z = h('div.bd-zoom', DETAIL[n]); page.body.style.position = 'relative'; page.body.appendChild(z); setTimeout(() => z.remove(), 700); }
 }
-function pinchDown(e) {
-  if (e.pointerType !== 'touch') return; touchPts.set(e.pointerId, e.clientY);
-  if (touchPts.size === 2 && !drag) { const [a, b] = [...touchPts.values()]; pinch = { d0: Math.abs(a - b) || 1 }; pinchAt = Date.now(); }
+function endPinch() { if (!pinch) return; pinch = null; pinchAt = Date.now(); if (staleWhilePinching) { staleWhilePinching = false; refresh(); } }
+function touchStart(e) { if (e.touches.length === 2 && !drag) { pinch = { d0: spread(e), level: S.board.detail }; pinchAt = Date.now(); if (e.cancelable) e.preventDefault(); } else endPinch(); }
+function touchMove(e) {
+  if (drag) { if (e.cancelable) e.preventDefault(); return; } if (!pinch) return; if (e.touches.length !== 2) return endPinch();
+  if (e.cancelable) e.preventDefault(); pinchAt = Date.now(); const steps = Math.log(spread(e) / pinch.d0) / PINCH_STEP;
+  setDetail(pinch.level + (steps >= 0 ? Math.floor(steps) : Math.ceil(steps)), true);
 }
-document.addEventListener('pointermove', e => {
-  if (!touchPts.has(e.pointerId)) return; touchPts.set(e.pointerId, e.clientY);
-  if (pinch && touchPts.size === 2) { const [a, b] = [...touchPts.values()], d = Math.abs(a - b) || 1, r = d / pinch.d0; pinchAt = Date.now();
-    if (r > 1.3) { pinch.d0 = d; setDetail(S.board.detail + 1, true); } else if (r < 0.77) { pinch.d0 = d; setDetail(S.board.detail - 1, true); } }
-});
-const pinchUp = e => { touchPts.delete(e.pointerId); if (touchPts.size < 2) pinch = null; };
-document.addEventListener('pointerup', pinchUp); document.addEventListener('pointercancel', pinchUp);
+function touchEnd(e) { if (e.touches.length < 2) endPinch(); }
 /** Trackpad pinch (ctrl-wheel) does the same on a Mac. */
 function onWheel(e) {
   if (!e.ctrlKey && !e.metaKey) return; e.preventDefault(); const t = Date.now(); if (t - wheelAt > 400) wheelAcc = 0; wheelAt = t; wheelAcc += e.deltaY;
@@ -270,6 +296,7 @@ function onPointerDown(e) {
 }
 function lockedReason(job) {
   if (job.pending) return 'This stop is still syncing. Try again in a moment.';
+  if (job.status === 'rescheduled' && job.rescheduledTo) return 'Rescheduled to ' + fmt.day(job.rescheduledTo) + '. Move the new visit on that day instead.';
   return { completed: 'Completed stops can’t be moved', arrived: 'The driver is at this stop, so it can’t be moved', skipped: 'Skipped stops can’t be moved', canceled: 'Canceled stops can’t be moved', rescheduled: 'Rescheduled stops can’t be moved', postponed: 'Postponed stops can’t be moved' }[job.status] || 'This stop can’t be moved';
 }
 /** Tapping a column's empty space (or its Add stop button) adds a job at the end of that list. */
@@ -289,13 +316,14 @@ function dragMove(ev) {
   /* Compare with the cards where they are on screen; while the finger is over the landing slot it stays put, so it never jitters. */
   const inCol = slot.parentNode === colEl, onSlot = inCol && p.y >= slot.offsetTop - 2 && p.y <= slot.offsetTop + slot.offsetHeight + 2;
   let index = onSlot && drag.target && drag.target.routeId === cols[i].routeId && drag.target.day === cols[i].day ? drag.target.index : cards.findIndex(c => p.y < c.offsetTop + c.offsetHeight / 2); if (index < 0) index = cards.length;
-  const locked = list.reduce((n, j, k) => j && !['scheduled', 'enroute'].includes(j.status) ? k + 1 : n, 0); index = Math.max(index, locked);
+  /* Called-off visits sit at the bottom: nothing lands below them, and they don't hold later stops in place. */
+  const live = list.filter(j => j && !WD.calledOff(j)).length, locked = list.reduce((n, j, k) => j && !WD.calledOff(j) && !['scheduled', 'enroute'].includes(j.status) ? k + 1 : n, 0); index = clamp(index, locked, live);
   const prev = drag.target; drag.target = { routeId: cols[i].routeId, day: cols[i].day, index };
   if (!prev || prev.index !== index || prev.routeId !== drag.target.routeId || prev.day !== drag.target.day || slot.parentNode !== colEl) {
     /* The ghost of where the job will land: the list makes room and every stop shows its new number. */
     colEl.insertBefore(slot, cards[index] || colEl.querySelector('.bd-empty') || colEl.querySelector('.bd-add'));
     slot.style.setProperty('--ring', q.routeColor(cols[i].routeId));
-    [...body.children].forEach(col => { let n = 0; [...col.children].forEach(el => { if (el.classList.contains('bd-slot') || (el.classList.contains('bd-job') && !el.classList.contains('dragging') && !el.classList.contains('bd-ghost'))) { const num = el.querySelector('.bd-num'); if (num) num.textContent = ++n; } }); });
+    [...body.children].forEach(col => { let n = 0; [...col.children].forEach(el => { if (el.classList.contains('bd-slot') || (el.classList.contains('bd-job') && !el.classList.contains('dragging') && !el.classList.contains('bd-ghost') && !el.classList.contains('calledoff'))) { const num = el.querySelector('.bd-num'); if (num) num.textContent = ++n; } }); });
   }
   Object.assign(drag.ghost.style, { left: i * colW + 4 + 'px', width: colW - 8 + 'px', top: p.y - drag.grabY + 'px' });
   drag.ghost.style.setProperty('--ring', q.routeColor(cols[i].routeId));
@@ -375,10 +403,10 @@ function render(p) {
   page = p; const b = S.board;
   if (scroller && scroller.isConnected) saved = { top: scroller.scrollTop, left: scroller.scrollLeft };
   if (!q.route(b.routeId)) { const mine = data.routes.find(r => r.driverId === S.me.id); b.routeId = (mine || q.visibleRoutes()[0] || q.routes()[0]).id; }
-  return [topBar(), modeRow(), statusStrip(), b.mode === 'month' ? monthView() : grid()];
+  return [topBar(), modeRow(), statusStrip(), addressStrip(), offStrip(), b.mode === 'month' ? monthView() : grid()];
 }
 WD.screens.board = {
-  root: () => ({ title: 'Dispatch', navbar: false, noScroll: true, live: false, render, onChange: p => { if (!drag) p.refresh(); }, onReappear: p => p.refresh() }),
+  root: () => ({ title: 'Dispatch', navbar: false, noScroll: true, live: false, render, onChange: p => { if (pinch) staleWhilePinching = true; else if (!drag) p.refresh(); }, onReappear: p => p.refresh() }),
   /** Show a day (and optionally one job, highlighted) on the board. */
   show(day, jobId) { S.board.day = day; if (S.board.mode === 'month') S.board.mode = 'routes'; keep(null); flashId = jobId || null; const j = jobId && q.job(jobId); if (j) { const r = q.route(j.routeId); if (r && !r.visible) r.visible = true; revealId = j.id; } WD.nav.switchTab('board'); refresh(); },
 };

@@ -46,6 +46,11 @@
 <script src="js/screens/workflow.js"></script>
 <script src="js/screens/team.js"></script>
 <script src="js/screens/admin.js"></script>
+<script src="js/screens/extras.js"></script>
 <script>WD.app.start();</script>
+<script>
+/* Offline: a service worker keeps a copy of the prototype so it opens with no connection. It asks the network first, so a new version always wins. */
+if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register('sw.js').catch(function () {});
+</script>
 </body>
 </html>

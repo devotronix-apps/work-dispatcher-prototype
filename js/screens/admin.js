@@ -26,17 +26,34 @@ function signInSpec() {
 
 /* ---------- Job types and fields ---------- */
 function typesSpec() {
-  return { title: 'Job types and fields', render: page => ui.list(ui.section({ header: 'Job types', footer: 'Each type has its own color on the board and map (the route color rims it) and its own list of fields in the job editor.' },
-    WD.jobTypes.map(t => { const n = (data.fieldConfig[t.id] || []).length; return ui.row({ leading: h('span.ad-swatch', { style: { background: t.color } }), title: t.title, subtitle: n + ' of ' + WD.fieldDefs.length + ' fields', chevron: true, onTap: () => page.push(typeSpec(t)) }); }))) };
+  const reqN = list => (list || []).length;
+  return { title: 'Job types and fields', render: page => ui.list(
+    ui.section({ header: 'Job types', footer: 'Each type has its own color on the board and map (the route color rims it), its own list of fields in the job editor, which of them are required, and whether it needs an address.' },
+      WD.jobTypes.map(t => { const n = (data.fieldConfig[t.id] || []).length, r = reqN((data.required.job[t.id] || []).filter(k => WD.asks(t.id, k)));
+        return ui.row({ leading: h('span.ad-swatch', { style: { background: t.color } }), title: t.title, subtitle: n + ' of ' + WD.fieldDefs.length + ' fields · ' + r + ' required · ' + ({ address: 'street address', cityzip: 'city or ZIP', none: 'no address' })[data.addressRules[t.id] || 'address'], chevron: true, onTap: () => page.push(typeSpec(t)) }); })),
+    ui.section({ header: 'Customer types', footer: 'Customer type is separate from job type. Fields required here are required for every job and record of that kind of customer — for example email for government customers.' },
+      WD.custTypes.map(t => ui.row({ icon: t.id === 'residential' ? 'house' : 'building', iconColor: 'var(--indigo)', title: t.title, subtitle: reqN(data.required.cust[t.id]) ? 'Requires ' + data.required.cust[t.id].map(WD.fieldLabel).join(', ').toLowerCase() : 'Nothing extra required', chevron: true, onTap: () => page.push(custTypeSpec(t)) })))) };
 }
+const STATES = [{ value: 'off', label: 'Hide' }, { value: 'ask', label: 'Ask' }, { value: 'req', label: 'Require' }];
 function typeSpec(t) {
-  return { title: t.title, render: page => { const edit = WD.can('settings.manage'), on = new Set(data.fieldConfig[t.id] || []);
-    const set = (k, v) => { v ? on.add(k) : on.delete(k); data.fieldConfig[t.id] = WD.fieldDefs.map(x => x[0]).filter(x => on.has(x)); };
+  return { title: t.title, render: page => { const edit = WD.can('settings.manage'), on = new Set(data.fieldConfig[t.id] || []), req = new Set(data.required.job[t.id] || []);
+    const set = (k, v) => { v === 'off' ? on.delete(k) : on.add(k); v === 'req' ? req.add(k) : req.delete(k);
+      data.fieldConfig[t.id] = WD.fieldDefs.map(x => x[0]).filter(x => on.has(x)); data.required.job[t.id] = WD.REQUIRABLE.filter(x => req.has(x)); page.refresh(); };
+    const state = k => !on.has(k) ? 'off' : req.has(k) ? 'req' : 'ask';
     return ui.list(
-      ui.section({ header: 'Ask for', footer: 'Customer name is always asked. Turning a field off only hides it in the editor; information already saved stays on the customer.' + (t.id === 'meet' ? ' Meet-the-truck jobs usually only need a name and phone.' : '') },
-        ui.row({ title: 'Customer name', detail: 'Always' }),
-        WD.fieldDefs.map(([k, label]) => ui.toggleRow({ title: label, value: on.has(k), disabled: !edit, onChange: v => set(k, v) }))),
+      ui.section({ header: 'Fields', footer: 'Hide leaves a field out of the editor (information already saved stays on the customer). Ask shows it. Require shows it in red and the job can’t be saved without it.' + (t.id === 'meet' ? ' Meet-the-truck jobs usually only need a name and phone.' : '') },
+        ui.row({ title: 'Customer name', detail: 'Always required' }),
+        WD.fieldDefs.map(([k, label]) => { const can = WD.REQUIRABLE.includes(k), opts = can ? STATES : STATES.slice(0, 2);
+          return h('div.row', h('div.row-main', h('div.row-title', label)), edit ? h('div', { style: 'width:' + (can ? 176 : 118) + 'px;flex:none' }, ui.segmented(opts, state(k), v => set(k, v))) : h('div.row-detail', STATES.find(s => s.value === state(k)).label)); })),
+      ui.section({ header: 'Address', footer: 'A job missing what its type needs can still be saved after a warning, is marked on the board, and is listed in the missing-address notice until it’s fixed or ignored.' },
+        ui.pickerRow({ title: 'This job type needs', value: data.addressRules[t.id] || 'address', options: WD.ADDRESS_RULES, disabled: !edit, onChange: v => { data.addressRules[t.id] = v; WD.changed(); page.refresh(); } })),
       edit && ui.section(ui.row({ title: 'Preview the job editor', tint: true, onTap: () => WD.screens.jobs && WD.screens.jobs.openEditor({ day: D.today(), routeId: 'r1', type: t.id }) })));
+  } };
+}
+function custTypeSpec(t) {
+  return { title: t.title + ' customers', render: page => { const edit = WD.can('settings.manage'), req = new Set(data.required.cust[t.id] || []);
+    return ui.list(ui.section({ header: 'Required for ' + t.title.toLowerCase() + ' customers', footer: 'These are required on top of what the job type requires, on new customers and on their jobs.' },
+      WD.REQUIRABLE.map(k => ui.toggleRow({ title: WD.fieldLabel(k), value: req.has(k), disabled: !edit, onChange: v => { v ? req.add(k) : req.delete(k); data.required.cust[t.id] = WD.REQUIRABLE.filter(x => req.has(x)); } }))));
   } };
 }
 
