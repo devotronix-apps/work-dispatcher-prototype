@@ -20,6 +20,8 @@ WD.struck = { skipped: 1, canceled: 1, rescheduled: 1, postponed: 1 };
 /** Called off before anyone drove there (canceled, rescheduled to another day, postponed). These stay on the original day, struck through,
     but sink to the bottom of the list, carry no stop number, and are left off the map and out of AutoRoute. */
 WD.calledOff = j => j.status === 'canceled' || j.status === 'rescheduled' || j.status === 'postponed';
+/** Whether a called-off job drops to the bottom of its day's list (Settings → Routing assumptions). Off: it stays where it was, still without a stop number. */
+WD.sinks = j => WD.calledOff(j) && data.workflow.sinkCalledOff !== false;
 /** Customer type is separate from job type: who the customer is, not what the visit is. */
 WD.custTypes = [{ id: 'business', title: 'Business' }, { id: 'government', title: 'Government' }, { id: 'residential', title: 'Residential' }];
 WD.custType = id => WD.custTypes.find(t => t.id === id) || WD.custTypes[0];
@@ -28,6 +30,7 @@ data.priceBook = [
   { id: 'console', name: 'Console service', unit: 'console', rate: 30 }, { id: 'bin64', name: 'Bin service (64 gal)', unit: 'bin (64 gal)', rate: 45 }, { id: 'bin96', name: 'Bin service (96 gal)', unit: 'bin (96 gal)', rate: 60 },
   { id: 'box', name: 'Purge, per box', unit: 'box', rate: 8 }, { id: 'trip', name: 'Trip charge', unit: 'trip', rate: 25 }, { id: 'cod', name: 'Certificate of destruction', unit: 'certificate', rate: 0 },
   { id: 'stairsDown', name: 'Stairs — carried down, per box', unit: 'box', rate: 3 }, { id: 'stairsUp', name: 'Stairs — carried up, per box', unit: 'box', rate: 4 }, { id: 'haul', name: 'Haul away empty boxes, per box', unit: 'box', rate: 2 },
+  { id: 'hdd', name: 'Hard drive destruction', unit: 'hard drive', rate: 10 },
 ];
 /** Purge estimating (Settings → Purge estimates). Box sizes count as standard banker boxes (10×12×15"); bins, pallets, gaylords and cabinets convert to boxes.
     Time on site: a 10-minute minimum covers up to 10 boxes, then 100 boxes an hour. Stairs take 2–3× as long; hauling the empties away doubles the time.
@@ -52,6 +55,21 @@ WD.purgeExtras = (p, boxes) => { const out = [], pb = id => data.priceBook.find(
   if (p && p.haul) out.push({ id: 'haul', qty: boxes, rate: pb('haul').rate }); return out; };
 /** ETA windows given to customers who asked for one: 2 hours before 10 AM, 3 hours from 10 to 1, 4 hours after 1 PM. */
 WD.etaWindow = eta => { const E = data.workflow.eta, len = eta < 10 * 60 ? E.early : eta < 13 * 60 ? E.mid : E.late, from = Math.max(6 * 60, Math.round((eta - len / 2) / 30) * 30); return { from, until: from + len }; };
+/** Time on site for a stop with no recorded visits (Settings → Time on site). Route service: a minimum stop time plus minutes per container.
+    A new setup adds setupExtra minutes to whatever the stop would otherwise take. pace is the time a truck takes as a percentage of normal
+    (120 = 20% longer); a vehicle's own pace wins over the overall one. Purge jobs use data.purgeRules instead. */
+data.siteRules = { route: { min: 10, console: 2, bin64: 3, bin96: 4 }, setupExtra: 10, pace: 100 };
+WD.paceFor = routeId => { const r = WD.q.route(routeId), v = r && WD.q.vehicle(r.vehicleId); return ((v && v.pace) || data.siteRules.pace || 100) / 100; };
+WD.routeFormula = job => { const R = data.siteRules.route, n = id => +(((job.items || []).find(i => i.id === id) || {}).qty) || 0, c = n('console'), b = n('bin64'), g = n('bin96');
+  return c + b + g ? { minutes: R.min + c * R.console + b * R.bin64 + g * R.bin96, counted: true } : { minutes: data.workflow.defaultStopMin, counted: false }; };
+/** Minutes on site AutoRoute plans for a job, and where the number came from: 'purge' (box estimate), 'history' (median of recorded visits) or 'formula'. */
+WD.siteMinutes = job => {
+  const pace = WD.paceFor(job.routeId), setup = job.type === 'setup' || (job.flags && job.flags.setup) ? data.siteRules.setupExtra : 0;
+  if (job.type === 'purge' && job.purge) { const e = WD.purgeEstimate(job.purge); if (e.minutes) return { minutes: Math.round(e.minutes * pace), source: 'purge', est: e, pace, setup: 0 }; }
+  const c = job.customerId && WD.q.customer(job.customerId);
+  if (c && ['customer', 'serviced'].includes(c.lifecycle) && job.type !== 'setup') { const s = WD.q.visitStats(job); return { minutes: s.median + setup, source: 'history', n: s.n, pace: 1, setup }; }
+  const f = WD.routeFormula(job); return { minutes: Math.round(f.minutes * pace) + setup, source: 'formula', counted: f.counted, pace, setup };
+};
 /** Planned departure per route and day: key routeId + '|' + day → { depart (minutes), manual }. */
 data.routeDays = {};
 WD.CONTAINERS = ['console', 'bin64', 'bin96', 'box'];
@@ -102,6 +120,7 @@ data.workflow = {
   dayStartMin: 7 * 60 + 30, // when a driver's day starts if AutoRoute has nothing better to go on
   eta: { early: 120, mid: 180, late: 240 }, // minutes of arrival window given to customers: before 10 AM, 10 to 1, after 1 PM
   defaultStopMin: 20,       // minutes on site assumed for a stop with no history
+  sinkCalledOff: true,      // canceled, postponed and rescheduled jobs drop to the bottom of the day's list
   speedPct: 100,            // drive-time estimate, as a percentage of the map's normal estimate (110 = allow 10% longer)
 };
 WD.state.prefs = { mapsApp: 'apple' };
@@ -355,7 +374,7 @@ const q = WD.q = {
   jobType: id => WD.jobTypes.find(t => t.id === id) || WD.jobTypes[0],
   /** Board order: day notes first, then the job list in order (seq) with called-off visits last, then stable id. */
   jobsFor: (routeId, day) => data.jobs.filter(j => j.routeId === routeId && j.day === day).sort(q.order),
-  order: (a, b) => (b.allDay - a.allDay) || (WD.calledOff(a) - WD.calledOff(b)) || (a.seq - b.seq) || a.id.localeCompare(b.id, undefined, { numeric: true }),
+  order: (a, b) => (b.allDay - a.allDay) || (WD.sinks(a) - WD.sinks(b)) || (a.seq - b.seq) || a.id.localeCompare(b.id, undefined, { numeric: true }),
   /** The ordered job list for a route's day (notes excluded). */
   stopList: (routeId, day) => q.jobsFor(routeId, day).filter(j => !j.allDay),
   /** A job's place in its day's list: { n, of }. */

@@ -82,6 +82,7 @@ function details(job, p) {
     h('div.jb-line', ui.dot(q.routeColor(route)), h('span', q.routeName(route) + (driver ? ' · ' + driver.name : '') + (vehicle ? ' · ' + vehicle.name : ''))),
     line('calendar', fmt.day(job.day, 'long')),
     line('list.bullet', job.allDay ? 'Note for the day (not a stop)' : WD.calledOff(job) ? 'Not on the stop list, the map or AutoRoute' + (job.rescheduledTo ? ' · moved to ' + fmt.day(job.rescheduledTo) : '') : (p => 'Stop ' + p.n + ' of ' + p.of + ' on the list')(q.position(job))),
+    job.offWindow && !WD.closed[job.status] && line('exclamationmark.triangle', 'Outside its time window: ' + job.offWindow),
     job.recurring && line('repeat', job.recurring.rule));
 
   const setStatus = (s, note) => api.setStatus(job.id, s, note);
@@ -254,11 +255,13 @@ function addressSuggestions(text) {
     : ['Lakemont', 'North Lakemont'].map((c, i) => ({ title: st, sub: c + (i ? '' : ' · near you'), address: st + ', ' + c, l: { x: 200 + ((h1 >> (i * 4)) % 600), y: 200 + ((h1 >> (i * 6 + 3)) % 600) } }));
   return [{ title: 'Use “' + t + '”', sub: 'Exactly as typed', address: t, typed: true }].concat(known.slice(0, 4), made).slice(0, 10);
 }
+/* Hard drives: scanning each drive's barcode or serial number is decided job by job; the company default is in Settings → Barcode scanning. */
+const hddDefault = () => !!(data.settings && data.settings.barcodes && data.settings.barcodes.hddDefault), hddRate = () => (data.priceBook.find(x => x.id === 'hdd') || { rate: 10 }).rate;
 function openEditor(o = {}) {
   const job = o.jobId ? q.job(o.jobId) : null, isNew = !job;
-  const f = job ? { title: job.title, address: job.address, notes: job.notes, routeId: job.routeId, day: job.day, allDay: job.allDay, pos: (p => p.n < p.of ? p.n : 0)(q.position(job)), dur: job.dur, type: job.type, items: WD.copyItems(job.items), bizOpen: job.bizOpen, bizClose: job.bizClose, custFrom: job.custFrom, custUntil: job.custUntil, custStrict: !!job.custStrict, customerId: job.customerId, located: job.located, x: job.x, y: job.y, po: job.po || '', contract: job.contract || '', contact: job.contactName || '', phone: job.phone ? fmt.phone(job.phone) : '', ext: job.ext || '', email: job.email || '', billingEmail: '', custType: job.custType || 'business', cityZip: job.cityZip || '', sig: WD.sigPolicy(q.customer(job.customerId)), windowBy: job.windowBy || 'customer', lunchFrom: job.lunchFrom || '', lunchUntil: job.lunchUntil || '', closedDays: (job.closedDays || []).slice(), callAhead: job.callAhead || 0, needsWindow: !!job.needsWindow, purge: job.purge ? { ...job.purge } : null, flags: { ...(job.flags || {}) }, ...parseRule(job.recurring && job.recurring.rule) }
+  const f = job ? { title: job.title, address: job.address, notes: job.notes, routeId: job.routeId, day: job.day, allDay: job.allDay, pos: (p => p.n < p.of ? p.n : 0)(q.position(job)), dur: job.dur, type: job.type, items: WD.copyItems(job.items), bizOpen: job.bizOpen, bizClose: job.bizClose, custFrom: job.custFrom, custUntil: job.custUntil, custStrict: !!job.custStrict, customerId: job.customerId, located: job.located, x: job.x, y: job.y, po: job.po || '', contract: job.contract || '', contact: job.contactName || '', phone: job.phone ? fmt.phone(job.phone) : '', ext: job.ext || '', email: job.email || '', billingEmail: '', custType: job.custType || 'business', cityZip: job.cityZip || '', sig: WD.sigPolicy(q.customer(job.customerId)), windowBy: job.windowBy || 'customer', lunchFrom: job.lunchFrom || '', lunchUntil: job.lunchUntil || '', closedDays: (job.closedDays || []).slice(), callAhead: job.callAhead || 0, needsWindow: !!job.needsWindow, purge: job.purge ? { ...job.purge } : null, flags: { ...(job.flags || {}) }, hdd: ((job.items || []).find(i => i.id === 'hdd') || {}).qty || 0, hddScan: job.hddScan != null ? job.hddScan : hddDefault(), ...parseRule(job.recurring && job.recurring.rule) }
     : { title: '', address: '', notes: '', routeId: o.routeId || (q.visibleRoutes()[0] || q.routes()[0]).id, day: o.day || S.board.day, allDay: false, pos: o.pos || 0, dur: 30, type: o.type || 'purge', items: (o.type || 'purge') === 'purge' ? [{ id: 'box', qty: 0, rate: 8 }] : [], bizOpen: '', bizClose: '', custFrom: '', custUntil: '', custStrict: false, customerId: null, located: false, x: null, y: null, po: '', contract: '', contact: '', phone: '', ext: '', email: '', billingEmail: '', custType: (o.type || 'purge') === 'government' ? 'government' : 'business', cityZip: '', sig: 'optional', windowBy: 'customer', lunchFrom: '', lunchUntil: '', closedDays: [], callAhead: 0, needsWindow: false, purge: null, flags: {}, repeat: 'none', interval: 1 };
-  Object.assign(f, { ends: 'never', count: 10, until: D.add(f.day, 90), attachments: [], poSchedule: [] });
+  Object.assign(f, { ends: 'never', count: 10, until: D.add(f.day, 90), attachments: [], poSchedule: [] }); if (f.hdd == null) Object.assign(f, { hdd: 0, hddScan: hddDefault() });
   const poSt = { multi: false }, linked = () => q.customer(f.customerId), custTypeOf = () => (linked() ? linked().custType : f.custType) || 'business';
   /** The PO list being edited: the linked customer's schedule, or one kept in the form for a customer that doesn't exist yet. */
   const poList = () => linked() ? linked().poSchedule : f.poSchedule;
@@ -310,6 +313,10 @@ function openEditor(o = {}) {
     /* A job can be saved without an address (the customer may call back with it), but only after saying so. */
     const noAddr = WD.addressIssue({ type: f.type, allDay: f.allDay, address: f.address, cityZip: f.cityZip });
     if (noAddr && !(await ui.actionSheet({ title: noAddr === 'No address' ? 'This job has no address' : 'This job has no city or ZIP', message: 'It can’t be put on the map or routed until one is added. It will be marked on the board and listed under “missing an address” until it’s fixed.', buttons: [{ label: 'Save without it', value: true }], cancel: noAddr === 'No address' ? 'Add the address' : 'Add it now' }))) return;
+    /* A day marked as a holiday, “do not schedule” or “large purge jobs only” (Holidays and schedule changes) warns before a job is put on it. */
+    const mark = !f.allDay && (isNew || job.day !== f.day || job.routeId !== f.routeId) && WD.dayMark && WD.dayMark(f.routeId, f.day);
+    if (mark && !(mark.kind === 'purgeOnly' && f.type === 'purge') && !(await ui.actionSheet({ title: fmt.day(f.day, 'long') + ' is marked “' + mark.label + '”', message: mark.kind === 'holiday' ? 'The company is closed that day.' : mark.kind === 'purgeOnly' ? q.routeName(f.routeId) + ' is being kept for large purge jobs that day.' : q.routeName(f.routeId) + ' is not taking jobs that day.', buttons: [{ label: 'Schedule it anyway', value: true }], cancel: 'Pick another day' }))) return;
+    f.items = f.items.filter(i => i.id !== 'hdd'); if (f.hdd > 0 && !f.allDay) f.items.push({ id: 'hdd', qty: f.hdd, rate: hddRate() });
     if (f.type === 'purge' && f.purge) { const e = WD.purgeEstimate(f.purge); if (e.minutes) f.dur = e.minutes;
       const box = f.items.find(i => i.id === 'box'), rate = box ? box.rate : data.priceBook.find(x => x.id === 'box').rate;
       f.items = f.items.filter(i => !['box', 'stairsDown', 'stairsUp', 'haul'].includes(i.id)).concat(e.billable ? [{ id: 'box', qty: e.billable, rate }] : [], WD.purgeExtras(f.purge, e.billable)); }
@@ -325,9 +332,10 @@ function openEditor(o = {}) {
       data.customers.push(newCustomer); f.customerId = newCustomer.id;
     } else if (f.customerId && q.customer(f.customerId) && asks('signature')) q.customer(f.customerId).signature = f.sig;
     if (f.customerId && q.customer(f.customerId)) { const l = q.customer(f.customerId).locations[0]; if (l) Object.assign(l, { lunchFrom: f.lunchFrom, lunchUntil: f.lunchUntil, closedDays: f.closedDays.slice(), callAhead: f.callAhead }); }
-    const fields = { title: f.title.trim(), address: f.address.trim(), notes: f.notes, routeId: f.routeId, day: f.day, allDay: f.allDay, dur: f.dur, type: f.type, containers, items: WD.copyItems(f.items), bizOpen: f.bizOpen, bizClose: f.bizClose, custFrom: f.custFrom, custUntil: f.custUntil, custStrict: f.custStrict, customerId: f.customerId, locationId: null, located: f.located, x: f.x, y: f.y, po: f.po.trim(), contract: f.contract.trim(), phone: f.customerId ? '' : phone, ext: f.customerId ? '' : ext, email: f.customerId ? '' : f.email.trim().toLowerCase(), contactName: f.customerId ? '' : f.contact.trim(), custType: custTypeOf(), cityZip: f.cityZip.trim(), windowBy: f.windowBy, needsWindow: f.needsWindow && !(f.custFrom || f.custUntil), purge: f.type === 'purge' && f.purge ? { ...f.purge } : null, lunchFrom: f.lunchFrom, lunchUntil: f.lunchUntil, closedDays: f.closedDays.slice(), callAhead: f.callAhead, flags: { ...f.flags } };
+    const fields = { title: f.title.trim(), address: f.address.trim(), notes: f.notes, routeId: f.routeId, day: f.day, allDay: f.allDay, dur: f.dur, type: f.type, containers, items: WD.copyItems(f.items), bizOpen: f.bizOpen, bizClose: f.bizClose, custFrom: f.custFrom, custUntil: f.custUntil, custStrict: f.custStrict, customerId: f.customerId, locationId: null, located: f.located, x: f.x, y: f.y, po: f.po.trim(), contract: f.contract.trim(), phone: f.customerId ? '' : phone, ext: f.customerId ? '' : ext, email: f.customerId ? '' : f.email.trim().toLowerCase(), contactName: f.customerId ? '' : f.contact.trim(), custType: custTypeOf(), cityZip: f.cityZip.trim(), windowBy: f.windowBy, needsWindow: f.needsWindow && !(f.custFrom || f.custUntil), purge: f.type === 'purge' && f.purge ? { ...f.purge } : null, lunchFrom: f.lunchFrom, lunchUntil: f.lunchUntil, closedDays: f.closedDays.slice(), callAhead: f.callAhead, flags: { ...f.flags }, hddScan: f.hdd > 0 ? !!f.hddScan : null };
     const series = job ? seriesJobs(job, scope) : [], me = S.me.name, changes = job ? WD.x.diffJob(job, fields) : [];
     if (job && !job.allDay && !fields.allDay && job.routeId === fields.routeId && job.day === fields.day) { const cur = q.position(job), to = f.pos || cur.of; if (to !== cur.n) changes.push({ label: 'Stop', from: String(cur.n), to: String(to) }); }
+    let firstMade = null;
     api.op({ kind: isNew ? 'create' : 'edit', title: fields.title, scope: isNew ? (f.repeat === 'none' ? 'New job' : 'New recurring job') : scope, jobIds: job ? [job.id, ...series.map(j => j.id)] : [], apply() {
       const recurring = f.repeat === 'none' ? null : { rule: ruleLabel(f), seriesId: job && job.recurring && scope === 'All jobs' ? job.recurring.seriesId : 's-' + Date.now() };
       if (job) {
@@ -335,13 +343,15 @@ function openEditor(o = {}) {
         if (fields.allDay) { job.routeId = fields.routeId; job.day = fields.day; job.seq = 0; WD.renumber(from.routeId, from.day); } else WD.placeJob(job, fields.routeId, fields.day, f.pos ? f.pos - 1 : Infinity); job.events.push({ at: +WD.now(), actor: me, text: 'Edited' + (scope !== 'This job' ? ' (' + scope.toLowerCase() + ')' : ''), changes }); if (fields.address || fields.cityZip) job.addrIgnored = false;
         series.forEach(j => Object.assign(j, { title: fields.title, address: fields.address, notes: fields.notes, dur: fields.dur, allDay: fields.allDay, type: fields.type, containers: fields.containers, items: WD.copyItems(fields.items), purge: fields.purge, needsWindow: fields.needsWindow, po: fields.po, contract: fields.contract, recurring: recurring || j.recurring })); series.forEach(j => { if (j.routeId !== fields.routeId) WD.placeJob(j, fields.routeId, j.day, Infinity); });
       } else {
-        const make = (day, pos) => { const j = WD.makeJob({ ...fields, items: WD.copyItems(fields.items), day, recurring, seq: fields.allDay ? 0 : null, attachments: f.attachments.slice(), events: [{ at: +WD.now(), actor: me, text: 'Created' + (noAddr ? ' · saved without ' + (noAddr === 'No address' ? 'an address' : 'a city or ZIP') : '') }] }); if (pos && !j.allDay) WD.placeJob(j, j.routeId, day, pos - 1); }; make(f.day, f.pos);
+        const make = (day, pos) => { const j = WD.makeJob({ ...fields, items: WD.copyItems(fields.items), day, recurring, seq: fields.allDay ? 0 : null, attachments: f.attachments.slice(), events: [{ at: +WD.now(), actor: me, text: 'Created' + (noAddr ? ' · saved without ' + (noAddr === 'No address' ? 'an address' : 'a city or ZIP') : '') }] }); firstMade = firstMade || j; if (pos && !j.allDay) WD.placeJob(j, j.routeId, day, pos - 1); }; make(f.day, f.pos);
         if (recurring) { const stepDays = { daily: 1, weekly: 7, monthly: 28 }[f.repeat] * f.interval, max = f.ends === 'count' ? f.count : 60; for (let i = 1; i < max && i * stepDays <= 548; i++) { const day = D.add(f.day, i * stepDays); if (f.ends === 'until' && day > f.until) break; make(day); } }
       }
     } });
     p.dismiss();
     if (newCustomer) setTimeout(() => ui.toast('New customer created: ' + newCustomer.name, 'person.badge.plus', 2600), 500);
-    guard('board', 'show', f.day, job ? job.id : (data.jobs[data.jobs.length - 1] || {}).id);
+    guard('board', 'show', f.day, job ? job.id : (firstMade || data.jobs[data.jobs.length - 1] || {}).id);
+    /* A new job can confirm itself to the customer by text or email (Settings → Job confirmations). */
+    if (isNew && firstMade && !firstMade.allDay && WD.ops) setTimeout(() => WD.ops.confirmJob(firstMade), newCustomer ? 3300 : 900);
   }
   /** Labels of required fields that are still empty. Required comes from the job type and the customer type (Settings → Job types and fields). */
   function missingRequired() {
@@ -431,6 +441,9 @@ function openEditor(o = {}) {
           f.repeat !== 'none' && f.ends === 'count' && ui.row({ title: 'Visits', detail: f.count, trailing: ui.stepper(f.count, 1, 60, v => set('count', v, true)) }),
           f.repeat !== 'none' && f.ends === 'until' && ui.dateRow({ title: 'Last visit by', value: f.until, onChange: v => set('until', v) })),
         asks('items') && ui.section({ header: f.type === 'purge' ? 'Boxes' : 'Containers', footer: f.type === 'creditCard' ? 'Card-on-file jobs are charged automatically when the stop is completed.' : asks('pricing') ? 'Rates start from ' + (cust ? cust.name + '’s pricing' : 'the price book') + ' and print on the invoice. Changes here apply to this job.' : null }, itemsRows(p)),
+        !f.allDay && f.type !== 'meet' && ui.section({ header: 'Hard drives', footer: f.hdd > 0 ? (f.hddScan ? 'The driver scans each drive’s barcode or serial number before it is destroyed, and the numbers print on the invoice.' : 'Drives are counted and destroyed without scanning. Some customers need the serial numbers recorded; switch scanning on for those.') + ' ' + fmt.money(hddRate(), true) + ' each to start; change the price on the invoice or the customer.' : 'Add a count if this job includes hard drives to destroy.' },
+          ui.row({ icon: 'barcode', iconColor: 'var(--indigo)', title: 'Hard drives to destroy', detail: String(f.hdd), trailing: ui.stepper(f.hdd, 0, 500, v => { f.hdd = v; dirty = true; p.refresh(); }) }),
+          f.hdd > 0 && ui.toggleRow({ title: 'Scan each drive', subtitle: 'Barcode or serial number, for this job', value: !!f.hddScan, onChange: v => { f.hddScan = v; dirty = true; p.refresh(); } })),
         asks('hours') && ui.section({ header: 'Office hours', footer: 'When the business is open. AutoRoute never plans a stop outside these hours.' },
           ui.quarterRow({ title: 'Opens', value: f.bizOpen, onChange: v => set('bizOpen', v) }), ui.quarterRow({ title: 'Closes', value: f.bizClose, onChange: v => set('bizClose', v) })),
         showWindow && ui.section({ header: 'Requested time window', footer: f.needsWindow ? 'They want a window but don’t mind when. When the route is finalized (usually the day before), AutoRoute gives them one around the planned arrival — 2 hours before 10 AM, 3 hours from 10 to 1, 4 hours after 1 — and reminds you to let them know.' : 'A time the customer asked for on this visit — for example a homeowner who is only home 1–3 PM. Preferred: AutoRoute fits it in when it can. Required: AutoRoute plans around it and warns if it can’t be met.' },
@@ -494,15 +507,17 @@ function windowsOf(j) {
   return { hard, soft: from != null || until != null ? { from: from != null ? from : 0, until: until != null ? until : 24 * 60 } : null, open, close };
 }
 /** Walk an order from a start point and time. Returns legs with ETAs and window checks, total drive, finish time and a cost (drive + waiting + window penalties). */
+/* Ignore time windows (a switch on the AutoRoute sheet): plan the shortest drive, never wait for a door to open, and flag every stop that lands outside its hours or requested window. */
+let ignoreWin = false;
 function simulate(order, from, end) {
   let at = from.at, t = from.t, drive = 0, cost = 0; const legs = [];
   order.forEach(j => {
-    const d = driveMin(at, j), w = windowsOf(j), est = j.type === 'purge' && j.purge && WD.purgeEstimate(j.purge), svc = est && est.minutes ? est.minutes : q.visitStats(j).median, arrive = t + d;
-    const start = Math.max(arrive, w.hard.from), latest = w.hard.until - Math.min(svc, 15);
-    const hardLate = Math.max(0, start - latest); let softOff = 0;
+    const d = driveMin(at, j), w = windowsOf(j), sm = WD.siteMinutes(j), svc = sm.minutes, arrive = t + d;
+    const start = ignoreWin ? arrive : Math.max(arrive, w.hard.from), latest = w.hard.until - Math.min(svc, 15);
+    const hardLate = Math.max(0, start - latest), early = Math.max(0, w.hard.from - start); let softOff = 0;
     if (w.soft) softOff = start < w.soft.from ? w.soft.from - start : start > w.soft.until ? start - w.soft.until : 0;
-    drive += d; cost += d + (start - arrive) * 0.35 + (hardLate ? 600 + hardLate * 20 : 0) + softOff * (start > (w.soft ? w.soft.until : 0) ? 1.4 : 0.6);
-    legs.push({ job: j, drive: d, arrive, start, svc, w, hardLate, softOff, stats: q.visitStats(j), est: est && est.minutes ? est : null });
+    drive += d; cost += ignoreWin ? d : d + (start - arrive) * 0.35 + (hardLate ? 600 + hardLate * 20 : 0) + softOff * (start > (w.soft ? w.soft.until : 0) ? 1.4 : 0.6);
+    legs.push({ job: j, drive: d, arrive, start, svc, w, hardLate, early, softOff, out: ignoreWin && !!(hardLate || early || softOff), sm, est: sm.est || null });
     t = start + svc; at = j;
   });
   const back = driveMin(at, end); drive += back; cost += back;
@@ -527,9 +542,12 @@ function optimize(list, from, end) {
 }
 const winLabel = w => fmt.time(w.from).replace(':00', '') + '–' + fmt.time(w.until).replace(':00', '');
 const hhmm = m => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+/** Why a stop planned with windows ignored falls outside its window. */
+const outText = l => (l.early ? 'opens ' + fmt.time(l.w.hard.from) : l.hardLate ? (l.job.custStrict ? 'required ' : 'open ') + winLabel(l.w.hard) : 'prefers ' + winLabel(l.w.soft)) + ', ETA ' + fmt.time(l.start);
 function windowNote(l) {
   const w = l.w, hasHard = w.hard.from > 0 || w.hard.until < 24 * 60;
   if (l.job.needsWindow && !l.job.custFrom && !l.job.custUntil) return h('div.jb-win.soft', icon('clock', 13), 'Needs a window → they’ll be told ' + winLabel(WD.etaWindow(l.start)));
+  if (ignoreWin) return l.out ? h('div.jb-win.bad', icon('exclamationmark.triangle', 13), 'Outside its window — ' + outText(l)) : (hasHard || w.soft) ? h('div.jb-win.ok', icon('checkmark', 13), 'Inside its window ✓') : null;
   if (l.hardLate) return h('div.jb-win.bad', icon('exclamationmark.triangle', 13), (l.job.custStrict ? 'Required ' : 'Open ') + winLabel(w.hard) + ' — can’t make it (ETA ' + fmt.time(l.start) + ')');
   if (w.soft && l.softOff) return h('div.jb-win.soft', icon('clock', 13), 'Prefers ' + winLabel(w.soft) + ' — ETA ' + fmt.time(l.start) + (l.start < w.soft.from ? ', early' : ', late') + '. Preference, not a requirement');
   if (w.soft) return h('div.jb-win.ok', icon('checkmark', 13), 'Prefers ' + winLabel(w.soft) + ' ✓');
@@ -544,7 +562,7 @@ async function openAutoRoute(routeId, o = {}) {
   const route = q.route(routeId), all = q.stopList(routeId, day), todo = all.filter(j => j.status === 'scheduled' && !j.pending);
   const stops = todo.filter(j => j.located && j.x != null), unrouted = todo.filter(j => !stops.includes(j)), done = all.filter(j => ['enroute', 'arrived', 'completed', 'skipped'].includes(j.status) && j.located).pop();   // canceled / rescheduled / postponed stops were never visited
   const isToday = day === D.today(), stages = ['Driving times from Apple Maps', 'Time on site: median of each customer’s recorded visits', 'Office hours and requested windows'];
-  let stage = 0, plan = null, pinnedAt = -1, view = 'after';
+  let stage = 0, plan = null, pinnedAt = -1, view = 'after'; ignoreWin = false;
   /* Start time: for a day that hasn't started, AutoRoute recommends when to leave where the truck is parked so it reaches the first stop as it opens.
      The dispatcher accepts it or picks their own time; either is saved with the route's day. */
   const dayKey = routeId + '|' + day, pretrip = data.workflow.pretripMin, plansDepart = !done && !isToday;
@@ -605,13 +623,14 @@ async function openAutoRoute(routeId, o = {}) {
   }
   const sheet = ui.sheet({ title: 'AutoRoute', live: false, leading: [{ label: 'Cancel', onTap: p => p.dismiss() }],
     trailing: () => plan && plan.order.length ? [{ label: 'Accept', bold: true, onTap: async p => {
-      const bad = plan.sim.legs.filter(l => l.hardLate);
+      const bad = ignoreWin ? [] : plan.sim.legs.filter(l => l.hardLate), outs = plan.sim.legs.filter(l => l.out).map(l => ({ j: l.job, text: outText(l) })), ign = ignoreWin;
       if (bad.length && !(await ui.actionSheet({ title: bad.length + (bad.length === 1 ? ' stop misses' : ' stops miss') + ' a required time', message: bad.map(l => l.job.title).join(', ') + '. Accept anyway, or keep adjusting the order.', buttons: [{ label: 'Accept anyway', value: true, role: 'destructive' }], cancel: 'Keep adjusting' }))) return;
       const order = plan.order, give = plan.sim.legs.filter(l => l.job.needsWindow && !l.job.custFrom && !l.job.custUntil).map(l => ({ j: l.job, w: WD.etaWindow(l.start) })), dep = depart && { depart: depart.depart, manual: depart.manual }, me = S.me.name;
-      api.op({ kind: 'batch', title: q.routeName(route) + ' · AutoRoute', scope: order.length + ' jobs · all or nothing', jobIds: order.map(j => j.id), apply() { newList().forEach((j, i) => { j.seq = i + 1; }); order.forEach(j => j.events.push({ at: +WD.now(), actor: me, text: 'AutoRoute: moved to stop ' + j.seq }));
+      api.op({ kind: 'batch', title: q.routeName(route) + ' · AutoRoute', scope: order.length + ' jobs · all or nothing', jobIds: order.map(j => j.id), apply() { newList().forEach((j, i) => { j.seq = i + 1; }); order.forEach(j => { j.offWindow = null; j.events.push({ at: +WD.now(), actor: me, text: 'AutoRoute' + (ign ? ' (time windows ignored)' : '') + ': moved to stop ' + j.seq }); });
+        outs.forEach(({ j, text }) => { j.offWindow = text; j.events.push({ at: +WD.now(), actor: me, text: 'Flagged: outside its time window (' + text + ')' }); });
         if (dep) data.routeDays[dayKey] = dep;
         give.forEach(({ j, w }) => { Object.assign(j, { custFrom: hhmm(w.from), custUntil: hhmm(w.until), windowBy: 'us', custStrict: false, needsWindow: false, windowToSend: true }); j.events.push({ at: +WD.now(), actor: me, text: 'Window set by AutoRoute: ' + winLabel(w) }); }); } });
-      p.dismiss(); ui.toast('Route accepted' + (dep ? ' · leave ' + fmt.time(dep.depart) : ''), 'checkmark', 2200); if (!o.stay) guard('board', 'show', day);
+      p.dismiss(); ui.toast('Route accepted' + (dep ? ' · leave ' + fmt.time(dep.depart) : '') + (outs.length ? ' · ' + outs.length + ' flagged outside their window' : ''), outs.length ? 'exclamationmark.triangle' : 'checkmark', outs.length ? 3400 : 2200); if (!o.stay) guard('board', 'show', day);
       if (give.length) setTimeout(async () => { const v = await ui.actionSheet({ title: give.length + (give.length === 1 ? ' customer gets a window' : ' customers get a window'), message: give.map(x => x.j.title + ' · ' + winLabel(x.w)).join('\n'), buttons: [{ label: 'Text them their window now', value: true }], cancel: 'Later' });
         if (v) { give.forEach(x => { x.j.windowToSend = false; }); ui.toast('Texts sent · ' + give.length, 'message'); WD.changed(); } }, 700);
     } }] : [],
@@ -619,20 +638,22 @@ async function openAutoRoute(routeId, o = {}) {
       if (!plan) return ui.list(ui.section({ header: q.routeName(route) + ' · ' + fmt.day(day), footer: 'Planning ' + stops.length + ' remaining stops' + (done ? ' from ' + done.title : ' from ' + ends().start.name) + '.' },
         stages.map((s, i) => h('div.jb-stage' + (i > stage ? '.wait' : ''), i < stage ? icon('checkmark.circle.fill', 22, 'var(--green)') : i === stage ? ui.spinner(20) : icon('circle', 22), s))));
       if (!plan.order.length) return ui.empty({ icon: 'route', title: 'Nothing to route', text: 'There are no unstarted, located jobs left on this route for ' + fmt.day(day) + '.' });
-      const saved = plan.cur.drive - plan.sim.drive, e = ends(), base = all.length - todo.length, misses = plan.sim.legs.filter(l => l.hardLate).length, curMiss = plan.cur.legs.filter(l => l.hardLate).length, onSite = plan.sim.legs.reduce((s, l) => s + l.svc, 0);
+      const saved = plan.cur.drive - plan.sim.drive, e = ends(), base = all.length - todo.length, misses = ignoreWin ? 0 : plan.sim.legs.filter(l => l.hardLate).length, outN = plan.sim.legs.filter(l => l.out).length, curMiss = plan.cur.legs.filter(l => l.hardLate).length, onSite = plan.sim.legs.reduce((s, l) => s + l.svc, 0);
       return ui.list(
         ui.section(null, h('div.jb-plan', h('div.caption', q.routeName(route) + ' · ' + fmt.day(day, 'long')), h('div.big', fmt.dur(plan.sim.drive) + ' driving'),
-          h('div.subhead', saved > 0 ? h('span.save', 'Saves ' + fmt.dur(saved)) : h('span.secondary', saved < 0 ? fmt.dur(-saved) + ' more driving, to meet time windows' : 'Same driving as now'), h('span.secondary', ' · ' + plan.order.length + ' stops · ~' + fmt.dur(onSite) + ' on site · back about ' + fmt.time(plan.sim.finish))),
-          misses ? h('div.jb-win.bad', { style: 'margin-top:6px' }, icon('exclamationmark.triangle', 14), misses + (misses === 1 ? ' required time can’t be met' : ' required times can’t be met')) : curMiss ? h('div.jb-win.ok', { style: 'margin-top:6px' }, icon('checkmark', 14), 'Fixes ' + curMiss + (curMiss === 1 ? ' stop' : ' stops') + ' the current order would reach outside its hours') : null),
+          h('div.subhead', saved > 0 ? h('span.save', 'Saves ' + fmt.dur(saved)) : h('span.secondary', saved < 0 ? fmt.dur(-saved) + ' more driving' + (ignoreWin ? '' : ', to meet time windows') : 'Same driving as now'), h('span.secondary', ' · ' + plan.order.length + ' stops · ~' + fmt.dur(onSite) + ' on site · back about ' + fmt.time(plan.sim.finish))),
+          ignoreWin ? h('div.jb-win.' + (outN ? 'bad' : 'ok'), { style: 'margin-top:6px' }, icon(outN ? 'exclamationmark.triangle' : 'checkmark', 14), outN ? (outN === 1 ? '1 stop falls outside its time window' : outN + ' stops fall outside their time windows') + ' — flagged below and on the board' : 'Every stop still lands inside its window') : misses ? h('div.jb-win.bad', { style: 'margin-top:6px' }, icon('exclamationmark.triangle', 14), misses + (misses === 1 ? ' required time can’t be met' : ' required times can’t be met')) : curMiss ? h('div.jb-win.ok', { style: 'margin-top:6px' }, icon('checkmark', 14), 'Fixes ' + curMiss + (curMiss === 1 ? ' stop' : ' stops') + ' the current order would reach outside its hours') : null),
           h('div.jb-ends', icon('truck', 15), h('span', 'Starts ' + (done ? 'after ' + done.title : 'at ' + e.start.name + (depart ? ' · leaves ' + fmt.time(depart.depart) : '')) + ' · ends at ' + e.end.name), h('button', { onclick: ev => changeEnds(ev.currentTarget, page) }, 'Change')),
           maps()),
+        ui.section({ footer: ignoreWin ? 'Planned for the shortest drive. The truck does not wait for anyone to open, and every stop that lands outside its office hours or requested window is flagged here and on the board so you can call ahead or move it.' : 'Turn on to plan the shortest drive and see which stops would fall outside their office hours or requested window.' },
+          ui.toggleRow({ icon: 'clock', iconColor: 'var(--orange)', title: 'Ignore time windows', subtitle: 'Then flag the stops that fall outside theirs', value: ignoreWin, onChange: v => { ignoreWin = v; optimizeAll(); page.refresh(); } })),
         startSection(page),
         ui.section({ header: h('div.cu-sechead', h('span', 'Proposed order'), pinnedAt >= 0 && h('button.cu-link', { onclick: () => { optimizeAll(); page.refresh(); } }, 'Re-optimize all')),
-          footer: 'Drag ≡ to move a stop. Stops before it stay as you placed them and everything after it is re-optimized. Time on site is the median of recorded visits, so one unusually long visit doesn’t skew it. Office hours and required windows are never broken on purpose; preferred windows are met when possible. Accepting reorders every job together or none of them.' },
+          footer: 'Drag ≡ to move a stop. Stops before it stay as you placed them and everything after it is re-optimized. Time on site is the median of recorded visits, so one unusually long visit doesn’t skew it; a stop with no history uses the formula in Settings → Time on site. Office hours and required windows are never broken on purpose; preferred windows are met when possible. Accepting reorders every job together or none of them.' },
           plan.sim.legs.map((l, i) => { const j = l.job, n = base + i + 1, was = q.position(j).n, label = WD.itemsLabel(j.items, j.type === 'purge');
             const row = ui.row({ class: 'jb-ar', leading: h('div.jb-num', { style: WD.pinStyle(j) }, n),
               title: h('span', j.title, label && h('span.jb-qty', label), i <= pinnedAt && i === pinnedAt ? h('span.jb-pin', 'MOVED') : null),
-              subtitle: h('div', h('div', ['ETA ' + fmt.time(l.start), n !== was ? 'was stop ' + was : 'same place', l.drive + ' min drive', l.est ? '~' + l.svc + ' min on site (' + l.est.billable + ' boxes' + (l.est.guess ? ', rough count' : '') + ')' : '~' + l.svc + ' min on site (median of ' + l.stats.n + ')'].join(' · ')), windowNote(l)),
+              subtitle: h('div', h('div', ['ETA ' + fmt.time(l.start), n !== was ? 'was stop ' + was : 'same place', l.drive + ' min drive', '~' + l.svc + ' min on site (' + (l.est ? l.est.billable + ' boxes' + (l.est.guess ? ', rough count' : '') : l.sm.source === 'history' ? 'median of ' + l.sm.n : l.sm.counted ? 'formula, no history yet' : 'default, no history yet') + (l.sm.setup ? ', +' + l.sm.setup + ' new setup' : '') + (l.sm.pace !== 1 ? ', truck pace ' + Math.round(l.sm.pace * 100) + '%' : '') + ')'].join(' · ')), windowNote(l)),
               trailing: h('span.jb-grip', { 'aria-label': 'Reorder', onpointerdown: ev => startDrag(ev, i, page) }, icon('line.3', 20)) });
             return row; })),
         unrouted.length > 0 && ui.section({ header: 'Not routed', footer: 'These move to the end of the list. Stops without a confirmed address never get routing coordinates.' },

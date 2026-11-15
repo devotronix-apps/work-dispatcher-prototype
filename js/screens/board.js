@@ -52,6 +52,7 @@ WD.css(`
 .bd-tag.na { background: #fff; color: #D70015; }
 .bd-job.calledoff .bd-num { background: rgba(0,0,0,.35); box-shadow: none; }
 .bd-colhead { flex-wrap: wrap; row-gap: 2px; } .bd-offrow { flex-basis: 100%; order: 9; display: flex; }
+.bd-off.purgeOnly { background: #B8860B; } .bd-off.closed { background: #636366; }
 .bd-off { flex: none; font-size: 10px; line-height: 14px; font-weight: 800; text-transform: uppercase; letter-spacing: .2px; border-radius: 4px; padding: 0 4px; background: var(--red); color: #fff; }
 .bd-zoombtns { margin-left: 2px; display: inline-flex; border-radius: 16px; background: var(--fill3); overflow: hidden; flex: none; }
 .bd-zoombtns button { border: 0; background: none; width: 30px; height: 32px; color: var(--label); cursor: pointer; display: grid; place-items: center; padding: 0; } .bd-zoombtns button:disabled { opacity: .3; }
@@ -129,7 +130,7 @@ function topBar() {
     btn(null, 'Today', () => { b.day = today; keep(null); refresh(); }, h('span.bd-today', D.parse(today).getDate())),
     WD.can('jobs.edit') && btn('plus', 'New job', () => jobsScreen().openEditor && jobsScreen().openEditor({ day: b.day, routeId: b.mode === 'days' ? b.routeId : (q.visibleRoutes()[0] || q.routes()[0]).id })));
 }
-const syncItems = () => [{ label: 'Pending changes' + (S.pending.length ? ' (' + S.pending.length + ')' : ''), icon: 'sync', onTap: () => WD.screens.settings && WD.screens.settings.openPending && WD.screens.settings.openPending() },
+const syncItems = () => [WD.can('jobs.edit') && WD.ops && { label: 'Holidays and schedule changes', icon: 'calendar', onTap: () => WD.ops.openSchedule() }, { label: 'Pending changes' + (S.pending.length ? ' (' + S.pending.length + ')' : ''), icon: 'sync', onTap: () => WD.screens.settings && WD.screens.settings.openPending && WD.screens.settings.openPending() },
   { label: 'Refresh', icon: 'arrow.clockwise', onTap: async () => { if (S.offline) return ui.toast('Offline — showing saved jobs', 'wifi.slash'); ui.toast('Checking for changes…'); await WD.delay(900, 1400); ui.toast('Up to date', 'checkmark'); } }];
 function boardMenu(anchor) {
   const b = S.board, n = S.pending.length;
@@ -137,9 +138,7 @@ function boardMenu(anchor) {
     { header: S.org.name + ' · routes on the board' },
     ...q.routes().map(r => ({ label: q.routeName(r), checked: r.visible, onTap: () => { r.visible = !r.visible; WD.changed(); } })),
     'divider', { header: 'Card detail · or pinch the board' }, ...DETAIL.map((t, i) => ({ label: t, checked: b.detail === i, onTap: () => setDetail(i) })),
-    'divider',
-    { label: 'Pending changes' + (n ? ' (' + n + ')' : ''), icon: 'sync', onTap: () => WD.screens.settings && WD.screens.settings.openPending && WD.screens.settings.openPending() },
-    { label: 'Refresh', icon: 'arrow.clockwise', onTap: async () => { if (S.offline) return ui.toast('Offline — showing saved jobs', 'wifi.slash'); ui.toast('Checking for changes…'); await WD.delay(900, 1400); ui.toast('Up to date', 'checkmark'); } },
+    'divider', ...syncItems(),
   ]);
 }
 function modeRow() {
@@ -169,6 +168,10 @@ function addressStrip() {
 const offFor = c => WD.offOn((q.route(c.routeId) || {}).driverId, c.day);
 const offText = (c, t) => (q.user(t.userId) || { name: 'Driver' }).name.split(' ')[0] + ' off' + (t.fromTime ? ' ' + shortT(fmt.fromHHMM(t.fromTime)) + '–' + shortT(fmt.fromHHMM(t.untilTime || '17:00')) : '');
 /** With a single column there is no header row, so time off shows as a bar instead. */
+function markStrip() {
+  const cols = S.board.mode === 'month' ? [] : columns(); if (cols.length !== 1 || !WD.dayMark) return null; const m = WD.dayMark(cols[0].routeId, cols[0].day); if (!m) return null;
+  return h('div.bd-strip', { style: { '--c': m.kind === 'holiday' ? 'var(--red)' : m.kind === 'purgeOnly' ? 'var(--orange)' : 'var(--gray)' }, onclick: () => WD.ops && WD.ops.openSchedule() }, icon('calendar', 16), m.label + (m.kind === 'holiday' ? ' · holiday' : ''), h('span.spacer'), icon('chevron.right', 13));
+}
 function offStrip() {
   const cols = S.board.mode === 'month' ? [] : columns(); if (cols.length !== 1) return null; const t = offFor(cols[0]); if (!t) return null;
   return h('div.bd-strip', { style: { '--c': 'var(--red)', cursor: 'default' } }, icon('person', 16), (q.user(t.userId) || { name: 'The driver' }).name + ' has approved time off · ' + WD.timeOffLabel(t));
@@ -186,7 +189,7 @@ function facts(job, full) {
   if (items) out.push(['shippingbox', items]); else if (job.containers) out.push(['shippingbox', job.containers]);
   if (job.custFrom || job.custUntil) out.push(['clock', (job.windowBy === 'us' ? 'Told ' : 'Asked ') + (job.custFrom ? shortT(m(job.custFrom)) : 'any') + '–' + (job.custUntil ? shortT(m(job.custUntil)) : 'any') + (job.custStrict ? ' · required' : '')]);
   else if (job.needsWindow) out.push(['clock', 'Needs window']);
-  if (est && est.minutes) out.push(['timer', (est.guess ? est.low + '–' + est.high : est.minutes) + ' min on site']); else if (job.dur && full) out.push(['timer', '~' + q.visitStats(job).median + ' min on site']);
+  if (est && est.minutes) out.push(['timer', (est.guess ? est.low + '–' + est.high : est.minutes) + ' min on site']); else if (job.dur && full) out.push(['timer', '~' + WD.siteMinutes(job).minutes + ' min on site']);
   return out;
 }
 function details(job) {
@@ -207,7 +210,7 @@ function cell(job, number) {
     { 'data-job': job.id, style: cardStyle(job) },
     h('div.bd-job-in', h('span.bd-num', number),
       h('div.bd-job-main', h('div.bd-job-title', !job.located && job.address && job.type !== 'meet' ? h('span.bd-q', '?') : null, st && icon(st, 12), job.pending && icon('sync', 11), h('span.d0', job.title), h('span.d12', wf.titleNode(job)), job.recurring ? h('span', { style: 'opacity:.8;font-weight:400' }, ' ↻') : null),
-        tag ? h('div.bd-tag', tag + (job.rescheduledTo ? ' · ' + fmt.day(job.rescheduledTo, 'md') : '')) : notBilled ? h('div.bd-tag.nb', 'Not billed') : noAddr ? h('div.bd-tag.na', noAddr) : null,
+        tag ? h('div.bd-tag', tag + (job.rescheduledTo ? ' · ' + fmt.day(job.rescheduledTo, 'md') : '')) : notBilled ? h('div.bd-tag.nb', 'Not billed') : noAddr ? h('div.bd-tag.na', noAddr) : job.offWindow && !WD.closed[job.status] ? h('div.bd-tag.na', { title: job.offWindow }, 'Outside window') : null,
         !tag && h('div.bd-job-sub.d1', facts(job).map(x => x[1]).join(' · ') || type.title),
         !tag && h('div.d2', details(job)))));
 }
@@ -218,12 +221,12 @@ function grid() {
   layout = { cols, colW };
   const lists = cols.map(c => ({ notes: q.jobsFor(c.routeId, c.day).filter(j => j.allDay), stops: q.stopList(c.routeId, c.day) }));
   const head = showHead && h('div.bd-head', h('div.bd-hrow', cols.map((c, i) => h('div.bd-colhead' + (c.today && b.mode === 'days' ? '.today' : ''), { style: { width: colW + 'px' } },
-    c.color && ui.dot(c.color), h('span.n', c.title), (t => t && h('span.bd-offrow', h('span.bd-off', { title: WD.timeOffLabel(t) }, offText(c, t))))(offFor(c)), h('span.c', (d => d ? 'Leave ' + shortT(d.depart) + ' · ' : '')(data.routeDays[c.routeId + '|' + c.day]) + lists[i].stops.filter(j => !WD.calledOff(j)).length)))));
+    c.color && ui.dot(c.color), h('span.n', c.title), (t => t && h('span.bd-offrow', h('span.bd-off', { title: WD.timeOffLabel(t) }, offText(c, t))))(offFor(c)), (m => m && h('span.bd-offrow', h('span.bd-off.' + m.kind, { title: m.label }, m.label)))(WD.dayMark && WD.dayMark(c.routeId, c.day)), h('span.c', (d => d ? 'Leave ' + shortT(d.depart) + ' · ' : '')(data.routeDays[c.routeId + '|' + c.day]) + lists[i].stops.filter(j => !WD.calledOff(j)).length)))));
   const body = h('div.bd-body', cols.map((c, i) => {
     const { notes, stops } = lists[i];
     return h('div.bd-col' + (c.day < today ? '.past' : ''), { 'data-i': i, style: { width: colW + 'px' } },
       notes.map(j => h('div.bd-chip', { style: { '--c': q.routeColor(j.routeId) }, onclick: () => jobsScreen().openDetails && jobsScreen().openDetails(j.id) }, icon('note', 11), j.title)),
-      stops.map((j, n) => cell(j, WD.calledOff(j) ? '–' : n + 1)),
+      (k => stops.map(j => cell(j, WD.calledOff(j) ? '–' : ++k)))(0),
       !stops.length && h('div.bd-empty', 'No stops'),
       canEdit && h('div.bd-add', { 'data-add': i }, icon('plus', 13), 'Add stop'));
   }));
@@ -403,7 +406,7 @@ function render(p) {
   page = p; const b = S.board;
   if (scroller && scroller.isConnected) saved = { top: scroller.scrollTop, left: scroller.scrollLeft };
   if (!q.route(b.routeId)) { const mine = data.routes.find(r => r.driverId === S.me.id); b.routeId = (mine || q.visibleRoutes()[0] || q.routes()[0]).id; }
-  return [topBar(), modeRow(), statusStrip(), addressStrip(), offStrip(), b.mode === 'month' ? monthView() : grid()];
+  return [topBar(), modeRow(), statusStrip(), addressStrip(), offStrip(), markStrip(), b.mode === 'month' ? monthView() : grid()];
 }
 WD.screens.board = {
   root: () => ({ title: 'Dispatch', navbar: false, noScroll: true, live: false, render, onChange: p => { if (pinch) staleWhilePinching = true; else if (!drag) p.refresh(); }, onReappear: p => p.refresh() }),

@@ -46,17 +46,17 @@ Object.assign(W, { defaultStopMin: W.defaultStopMin || 30 });
 const ST = data.settings = {
   timeOff: { auto: false, limitDays: 0 },                     // message lives in the “Time off — auto-approval” template
   onMyWay: { mode: 'off', byJob: {}, byCust: {} },            // off | text | call | ask | auto; overrides by job type and customer type
-  barcodes: { on: false, require: false, onInvoice: true },
+  barcodes: { on: false, require: false, onInvoice: true, hddDefault: false },
   books: { provider: 'ninja', autoPaid: true, everyMin: 15, lastCheck: +WD.now() - 11 * 60000 },
   reviews: { on: true, when: 'first', nth: 4, delayHours: 2, positiveFrom: 4,
     sites: [{ id: 'google', name: 'Google Maps', url: 'https://g.page/r/discount-shred/review', on: true }, { id: 'yelp', name: 'Yelp', url: 'https://www.yelp.com/writeareview/biz/discount-shred-lakemont', on: true },
       { id: 'apple', name: 'Apple Maps', url: 'https://maps.apple.com/place?id=discount-shred', on: false }, { id: 'chatgpt', name: 'ChatGPT business reviews', url: '', on: false }],
     qr: { url: 'https://g.page/r/discount-shred/review', caption: 'Scan to leave a review', image: null } },
   crm: { features: { followups: true, reminders: true, quotes: true, referrals: true, territories: true, sources: true, feedback: true },
-    sources: { phone: true, text: true, email: true, form: true, sheet: false, manual: true, referral: true },
+    sources: { phone: true, text: true, email: true, form: true, yelp: true, sheet: false, manual: true, referral: true },
     remindDays: 3, referralReward: '$25 credit on their next invoice', territories: { u2: { mode: 'zip', values: ['78641', '78642'] } } },
 };
-const BOOKS = [{ value: 'ninja', label: 'Invoice Ninja' }, { value: 'qbo', label: 'QuickBooks Online' }, { value: 'xero', label: 'Xero' }, { value: 'freshbooks', label: 'FreshBooks' }, { value: 'none', label: 'None — track payments here' }];
+const BOOKS = [{ value: 'ninja', label: 'Invoice Ninja' }, { value: 'qbo', label: 'QuickBooks Online' }, { value: 'zoho', label: 'Zoho Books' }, { value: 'xero', label: 'Xero' }, { value: 'freshbooks', label: 'FreshBooks' }, { value: 'none', label: 'None — track payments here' }];
 CO.booksName = () => (BOOKS.find(b => b.value === ST.books.provider) || BOOKS[0]).label.replace(/ —.*/, '');
 CO.hasBooks = () => ST.books.provider !== 'none';
 
@@ -65,7 +65,7 @@ const CHANNELS = [{ value: 'text', label: 'Text message' }, { value: 'email', la
 const CH_ICON = { text: ['message', 'var(--green)'], email: ['envelope', 'var(--blue)'], letter: ['doc.text', 'var(--indigo)'], app: ['bell', 'var(--orange)'] };
 const FIELDS = [['{first}', 'Contact’s first name'], ['{contact}', 'Contact’s full name'], ['{customer}', 'Customer name'], ['{company}', 'Your company'], ['{phone}', 'Your phone number'], ['{sender}', 'Whoever sends it'], ['{owner}', 'The owner'],
   ['{driver}', 'The driver'], ['{date}', 'Service date'], ['{window}', 'Arrival window'], ['{eta}', 'Estimated arrival'], ['{invoice}', 'Invoice number'], ['{amount}', 'Amount'], ['{effective}', 'Date a change starts'], ['{changes}', 'Table of price or service changes'],
-  ['{link}', 'Signing or quote link'], ['{portal}', 'Customer payment portal'], ['{review_links}', 'Links to your review sites'], ['{employee}', 'Employee’s first name']];
+  ['{olddate}', 'The day a visit was moved from'], ['{reason}', 'Why a visit was moved'], ['{link}', 'Signing or quote link'], ['{portal}', 'Customer payment portal'], ['{review_links}', 'Links to your review sites'], ['{employee}', 'Employee’s first name']];
 const G = { svc: 'Service messages', bill: 'Billing and price changes', rev: 'Reviews and feedback', lead: 'Leads and follow-ups', team: 'Team' };
 const T = (id, group, name, channel, subject, body) => ({ id, group, name, channel, subject, body, builtin: true, def: { name, channel, subject, body } });
 data.templates = [
@@ -125,7 +125,7 @@ CO.templatesSpec = () => ({ title: 'Templates', trailing: () => admin() ? [{ ico
         badge: edited(t) ? ui.badge('Edited', 'var(--indigo)') : !t.builtin ? ui.badge('Yours', 'var(--teal)') : null, chevron: true, onTap: () => CO.editTemplate(t) })))),
       ui.section(null, ui.row({ icon: 'plus.circle.fill', iconPlain: true, iconColor: 'var(--green)', title: 'New template', tint: true, onTap: () => CO.editTemplate(null) })));
   } });
-const tplRow = (id, page) => { const t = tpl(id); return ui.row({ icon: (CH_ICON[t.channel] || CH_ICON.text)[0], iconPlain: true, title: 'Wording: ' + t.name, subtitle: t.body.replace(/\s+/g, ' ').slice(0, 70) + '…', tint: true, chevron: true, onTap: () => CO.editTemplate(t, { onSave: () => page && page.refresh() }) }); };
+const tplRow = CO.tplRow = (id, page) => { const t = tpl(id); return ui.row({ icon: (CH_ICON[t.channel] || CH_ICON.text)[0], iconPlain: true, title: 'Wording: ' + t.name, subtitle: t.body.replace(/\s+/g, ' ').slice(0, 70) + '…', tint: true, chevron: true, onTap: () => CO.editTemplate(t, { onSave: () => page && page.refresh() }) }); };
 
 /** The price or service change letter, laid out from the “Price or service change” template. A paragraph that is just {changes} becomes the table. */
 CO.letterDoc = (c, changes, effective) => {
@@ -211,9 +211,11 @@ CO.routingSpec = () => ({ title: 'Routing assumptions', render: page => { if (!a
     ui.section({ header: 'Start of the day', footer: 'AutoRoute recommends leaving in time to reach the first stop when it opens: the drive, plus the time to get rolling. With nothing else to go on, the day starts at the time above.' },
       ui.quarterRow({ title: 'Drivers start at', optional: false, value: hhmm(W.dayStartMin), onChange: v => { if (v) set('dayStartMin', fmt.fromHHMM(v)); } }),
       step('Time to get rolling', 'Pre-trip check and loading before the truck leaves', W.pretripMin + ' min', W.pretripMin / 5, 0, 18, v => set('pretripMin', v * 5))),
-    ui.section({ header: 'Driving and time on site', footer: 'Time on site comes from each customer’s recorded visits. The default is used until a customer has history. Purge jobs use the box estimate instead.' },
+    ui.section({ header: 'Driving and time on site', footer: 'Time on site comes from each customer’s recorded visits. Until a customer has history, a formula is used; purge jobs use the box estimate.' },
       step('Drive-time allowance', 'Added to or taken off the map’s estimate', (W.speedPct === 100 ? 'As estimated' : (W.speedPct > 100 ? '+' : '−') + Math.abs(W.speedPct - 100) + '%'), W.speedPct / 5, 16, 30, v => set('speedPct', v * 5)),
-      step('Stop with no history', 'Minutes on site assumed', W.defaultStopMin + ' min', W.defaultStopMin / 5, 1, 24, v => set('defaultStopMin', v * 5))),
+      ui.row({ icon: 'timer', iconColor: 'var(--orange)', title: 'Time on site formulas', subtitle: 'Stops with no history, new setups, purge jobs and each truck’s pace', chevron: true, onTap: () => page.push(WD.ops.siteSpec()) })),
+    ui.section({ header: 'Called-off jobs', footer: W.sinkCalledOff !== false ? 'They stay on their day with a line through them, below the stops still to do.' : 'They stay where they were in the list, with a line through them and no stop number.' },
+      ui.toggleRow({ title: 'Drop to the bottom of the list', subtitle: 'Canceled, postponed and rescheduled jobs', value: W.sinkCalledOff !== false, onChange: v => { W.sinkCalledOff = v; data.routes.forEach(r => [...new Set(data.jobs.filter(j => j.routeId === r.id).map(j => j.day))].forEach(d => WD.renumber(r.id, d))); WD.changed(); page.refresh(); } })),
     ui.section({ header: 'Ordinary business hours', footer: 'Assumed for a customer with no hours on file, and hours outside these show after the job title.' },
       ui.quarterRow({ title: 'Opens', optional: false, value: W.normalOpen, onChange: v => { if (v) set('normalOpen', v); } }), ui.quarterRow({ title: 'Closes', optional: false, value: W.normalClose, onChange: v => { if (v) set('normalClose', v); } })),
     ui.section({ header: 'Arrival windows given to customers', footer: 'The length of the window AutoRoute gives a customer who asked for one, by the time of day the truck is expected.' },
@@ -255,10 +257,10 @@ CO.onMyWay = job => {
   if (mode === 'auto') { log('On-my-way text sent to ' + p.name); return ui.toast('On-my-way text sent to ' + first(p.name) + ' · ETA ' + fmt.time(eta), 'message', 2800); }
   setTimeout(() => ui.sheet({ title: 'On my way', leading: [{ label: 'Skip', onTap: pg => pg.dismiss() }],
     render: pg => [h('div.co-eta', h('small', 'Arriving at ' + job.title + ' about'), h('b', fmt.time(eta)), h('span', fmt.dur(mins) + ' drive from ' + (prev ? prev.title : from.name || 'the start'))),
-      ui.list(mode !== 'call' && ui.section({ header: 'Text to ' + p.name + ' · ' + fmt.phone(p.phone), footer: 'From the “On my way” template. Change the wording here before sending if you need to.' }, ui.inputRow({ multiline: true, value: text, onInput: v => { text = v; } }))),
+      ui.list(mode !== 'call' && ui.section({ header: 'Text to ' + p.name + ' · ' + fmt.phone(p.phone), footer: 'From the “On my way” template. Change the wording here before sending if you need to.' + (WD.ops ? ' Sent from ' + WD.ops.senderFor(c, S.me, 'text').text + '.' : '') }, ui.inputRow({ multiline: true, value: text, onInput: v => { text = v; } }))),
       h('div.co-acts',
         mode !== 'call' && ui.button('Send text', { icon: 'message', onTap: async () => { if (await ui.run('Sending…', () => log('On-my-way text sent to ' + p.name), { done: 'Text sent', offlineOK: true })) pg.dismiss(); } }),
-        mode !== 'text' && ui.button('Call ' + first(p.name), { kind: mode === 'call' ? 'filled' : 'gray', icon: 'phone.fill', onTap: () => { log('Called ' + p.name + ' on the way'); pg.dismiss(); ui.toast('Calling ' + first(p.name) + ' · ' + fmt.phone(p.phone), 'phone.fill', 2600); } }),
+        mode !== 'text' && ui.button('Call ' + first(p.name), { kind: mode === 'call' ? 'filled' : 'gray', icon: 'phone.fill', onTap: () => { log('Called ' + p.name + ' on the way'); pg.dismiss(); ui.toast('Calling ' + first(p.name) + (WD.ops ? ' from ' + WD.ops.senderFor(c, S.me, 'call').text : ' · ' + fmt.phone(p.phone)), 'phone.fill', 3000); } }),
         ui.button('Not this time', { kind: 'plain', onTap: () => pg.dismiss() }))] }, { detent: 'medium' }), 450);
 };
 CO.omwSpec = () => ({ title: 'On-my-way notices', render: page => { if (!admin()) return locked(); const o = ST.onMyWay, any = [{ value: '', label: 'Same as above' }].concat(OMW);
@@ -289,12 +291,14 @@ CO.scanSheet = (job, scans, onDone) => {
           ui.button('Enter a code by hand', { kind: 'gray', onTap: async () => { const r = await ui.alert({ title: 'Barcode number', message: 'For a label that is worn or won’t scan.', input: { placeholder: 'e.g. DS-41872' }, buttons: [{ label: 'Cancel', value: null }, { label: 'Add', value: true, bold: true }] });
             if (r && r.value && r.text.trim()) { const code = r.text.trim().toUpperCase(), x = all.find(y => y.code === code); add(x || { code, kind: 'Container' }); } } }))]; } }, { detent: 'large' });
 };
-CO.barcodeSpec = () => ({ title: 'Container barcodes', render: page => { if (!admin()) return locked(); const o = ST.barcodes, sample = data.jobs.find(j => j.day === today() && CO.containers(j).length);
+CO.barcodeSpec = () => ({ title: 'Barcode scanning', render: page => { if (!admin()) return locked(); const o = ST.barcodes, sample = data.jobs.find(j => j.day === today() && CO.containers(j).length);
   return ui.list(
     ui.section({ header: 'Scanning', footer: o.on ? 'Billing details gets a Scan containers step. Each container’s barcode is scanned to prove it was serviced.' : 'For companies that put a barcode on every container. Off: drivers enter quantities as they do now.' },
       ui.toggleRow({ icon: 'barcode', iconColor: 'var(--indigo)', title: 'Scan container barcodes at each stop', value: o.on, onChange: v => { o.on = v; WD.changed(); page.refresh(); } }),
       o.on && ui.toggleRow({ title: 'Require every container to be scanned', subtitle: 'Or a reason, when a label is missing or damaged', value: o.require, onChange: v => { o.require = v; WD.changed(); } }),
       o.on && ui.toggleRow({ title: 'Print the scans on the invoice', subtitle: 'Container numbers and the time each was scanned', value: o.onInvoice, onChange: v => { o.onInvoice = v; WD.changed(); } })),
+    ui.section({ header: 'Hard drives', footer: 'Some customers need every drive’s serial number recorded and some don’t, so each job with hard drives has its own “Scan each drive” switch, on the job and again in billing details. This sets how that switch starts on a new job.' },
+      ui.toggleRow({ icon: 'barcode', iconColor: 'var(--gray)', title: 'New hard drive jobs start with scanning on', value: !!o.hddDefault, onChange: v => { o.hddDefault = v; WD.changed(); } })),
     o.on && sample && ui.section({ header: 'Example · ' + sample.title, footer: 'Barcodes are assigned to a customer’s containers when they are delivered, and stay on the customer’s record.' }, CO.containers(sample).slice(0, 4).map(x => ui.row({ icon: 'barcode', iconPlain: true, title: x.code, subtitle: x.kind }))));
 } });
 
@@ -315,10 +319,11 @@ CO.syncPayments = async manual => {
 CO.booksSection = () => { if (!CO.hasBooks()) return null; const b = ST.books, n = unpaidRecs().length;
   return ui.section(null, ui.row({ icon: 'sync', iconColor: 'var(--green)', title: 'Payment status · ' + CO.booksName(), subtitle: n + ' open · checked ' + fmt.rel(b.lastCheck).toLowerCase() + (b.autoPaid ? ' · every ' + b.everyMin + ' min' : ' · automatic check is off'),
     trailing: ui.button('Check now', { kind: 'gray', small: true, block: false, onTap: () => CO.syncPayments(true) }) })); };
-CO.booksSpec = () => ({ title: 'Bookkeeping', render: page => { if (!admin()) return locked(); const b = ST.books, name = CO.booksName(), on = CO.hasBooks();
+CO.booksSpec = () => ({ title: 'Invoicing and bookkeeping', render: page => { if (!admin()) return locked(); const b = ST.books, name = CO.booksName(), on = CO.hasBooks(), integ = on && (WD.integrations || []).find(x => x.id === b.provider);
   return ui.list(
-    ui.section({ header: 'Bookkeeping program', footer: on ? 'Invoices created here are sent to ' + name + ', and payments recorded there come back. Connect the account in Settings → Integrations.' : 'Invoices and payments are kept only in Work Dispatcher.' },
-      ui.pickerRow({ title: 'We use', icon: 'doc.text', iconColor: 'var(--green)', value: b.provider, options: BOOKS, onChange: v => { b.provider = v; WD.changed(); page.refresh(); } })),
+    ui.section({ header: 'Invoicing and bookkeeping service', footer: on ? 'Invoices created here are sent to ' + name + ', and payments recorded there come back. ' + (integ && integ.connected ? '' : 'Connect the ' + name + ' account below to start. ') + 'Every service plugs in the same way, so another one can be added later without changing how invoices work here.' : 'Invoices and payments are kept only in Work Dispatcher.' },
+      ui.pickerRow({ title: 'We use', icon: 'doc.text', iconColor: 'var(--green)', value: b.provider, options: BOOKS, onChange: v => { b.provider = v; WD.changed(); page.refresh(); } }),
+      integ && ui.row({ icon: 'link', iconColor: integ.connected ? 'var(--green)' : 'var(--orange)', title: integ.connected ? name + ' is connected' : 'Connect ' + name, subtitle: integ.connected ? 'Tap to see the connection or disconnect' : 'Not connected yet — invoices stay here until it is', badge: ui.badge(integ.connected ? 'Connected' : 'Not connected', integ.connected ? 'var(--green)' : 'var(--orange)'), chevron: true, onTap: () => page.push(WD.screens.settings.integrationSpec(integ)) })),
     on && ui.section({ header: 'Unpaid invoices', footer: 'Every open invoice is checked against ' + name + '. When a customer has paid there (portal, card, ACH or a payment the office entered) the invoice is marked paid here with the method and date, and the job shows as paid. Last checked ' + fmt.rel(b.lastCheck).toLowerCase() + '.' },
       ui.toggleRow({ title: 'Mark invoices paid automatically', subtitle: 'When ' + name + ' shows them paid', value: b.autoPaid, onChange: v => { b.autoPaid = v; WD.changed(); page.refresh(); } }),
       b.autoPaid && ui.pickerRow({ title: 'Check', value: b.everyMin, options: [{ value: 5, label: 'Every 5 minutes' }, { value: 15, label: 'Every 15 minutes' }, { value: 60, label: 'Every hour' }, { value: 1440, label: 'Once a day' }], onChange: v => { b.everyMin = v; page.refresh(); } }),
@@ -434,7 +439,7 @@ CO.inTerritory = c => { if (CO.seesAll()) return true; const t = CO.territory(S.
 CO.territoryText = u => { const t = CO.territory(u); return t.mode === 'own' || !t.values.length ? 'Only leads assigned to them' : ({ zip: 'ZIP ', area: 'Area code ', region: '' })[t.mode] + t.values.join(', '); };
 const FEATURES = [['followups', 'Follow-up templates', 'Send a ready-made follow-up, suggested by stage and time since the last contact'], ['reminders', 'Follow-up reminders', 'A lead with no reply comes back as due after a set number of days'], ['quotes', 'Quotes and bids', 'Write, send and track quotes and bids from a lead'],
   ['referrals', 'Referral tracking', 'Who referred whom, and whether they were thanked'], ['territories', 'Territories', 'Limit some people to leads in certain regions, ZIP codes or area codes'], ['sources', 'Leads by source', 'Counts of leads and wins from each source'], ['feedback', 'Customer feedback in the CRM tab', 'Replies to the follow-up text after service']];
-CO.SOURCES = [['phone', 'Phone calls', 'phone.fill', 'A call from an unknown number on a tracked line'], ['text', 'Text messages', 'message', 'A text from an unknown number'], ['email', 'Email', 'envelope', 'A new sender to the shared mailbox'], ['form', 'Website form', 'doc.text', 'Form fills on your website'],
+CO.SOURCES = [['phone', 'Phone calls', 'phone.fill', 'A call from an unknown number on a tracked line'], ['text', 'Text messages', 'message', 'A text from an unknown number'], ['email', 'Email', 'envelope', 'A new sender to the shared mailbox'], ['form', 'Website form', 'doc.text', 'Form fills on your website'], ['yelp', 'Yelp', 'star', 'A quote request or message on your Yelp page. You are told right away; the reply goes through Yelp'],
   ['sheet', 'Google Sheets', 'list.bullet', 'New rows in a leads spreadsheet'], ['manual', 'Manual entry', 'pencil', 'Typed in by your team'], ['referral', 'Referrals', 'person.2', 'Sent by a customer or partner']];
 function territorySheet(u, page) {
   const t = { ...CO.territory(u), values: CO.territory(u).values.slice() }, opts = { zip: Object.values(REGIONS), area: ['512', '737'], region: Object.keys(REGIONS) }; let extra = '';
@@ -447,7 +452,7 @@ CO.crmSpec = () => ({ title: 'CRM and leads', render: page => { if (!admin()) re
   return ui.list(note('Switch on the parts of the CRM your company uses. Anything switched off disappears from the CRM tab.'),
     ui.section('Features', FEATURES.map(([k, title, sub]) => ui.toggleRow({ title, subtitle: sub, value: CRM.features[k], onChange: v => { CRM.features[k] = v; WD.changed(); page.refresh(); } }))),
     CRM.features.reminders && ui.section({ footer: 'After a follow-up with no reply, the lead shows under Follow-up due again this many days later.' }, ui.row({ title: 'Remind again after', detail: CRM.remindDays + (CRM.remindDays === 1 ? ' day' : ' days'), trailing: ui.stepper(CRM.remindDays, 1, 30, v => { CRM.remindDays = v; page.refresh(); }) })),
-    ui.section({ header: 'Where leads come from', footer: 'Each source that is on creates leads by itself and tags them, so referrals, quotes and wins can be counted by source. Phone, text, email and Sheets need their connection in Settings → Integrations.' },
+    ui.section({ header: 'Where leads come from', footer: 'Each source that is on creates leads by itself and tags them, so referrals, quotes and wins can be counted by source. Phone, text, email, Yelp and Sheets need their connection in Settings → Integrations.' },
       CO.SOURCES.map(([k, title, ic, sub]) => ui.toggleRow({ icon: ic, iconColor: 'var(--teal)', title, subtitle: sub, value: CRM.sources[k], onChange: v => { CRM.sources[k] = v; WD.changed(); } }))),
     CRM.features.territories && ui.section({ header: 'Who sees which leads', footer: 'People with “CRM: all territories” see every lead. Give or take that permission, and the CRM tab itself, in Team and roles.' },
       people.map(u => ui.row({ leading: ui.avatar(u.name, { size: 34 }), title: u.name, subtitle: all(u) ? 'All leads' : CO.territoryText(u), badge: all(u) ? ui.badge('All', 'var(--green)') : ui.badge('Limited', 'var(--orange)'), chevron: !all(u), onTap: all(u) ? null : () => territorySheet(u, page) })),
@@ -461,16 +466,21 @@ CO.hubSpec = () => ({ title: 'Settings and assumptions', render: page => { if (!
   const row = (ic, color, title, detail, spec, sub) => ui.row({ icon: ic, iconColor: color, title, subtitle: [detail && h('div', { style: 'color:var(--label);font-weight:500' }, detail), sub && h('div', sub)], chevron: true, onTap: () => push(spec()) });
   return ui.list(note('Every assumption the app makes for ' + org().name + ' can be changed here. Each page says what the setting does and where it shows up.'),
     ui.section('Routes and drivers',
-      row('route', 'var(--blue)', 'Routing assumptions', fmt.time(W.dayStartMin) + ' · ' + W.pretripMin + ' min to roll', CO.routingSpec, 'Start time, time to get rolling, drive time, time on site, arrival windows'),
+      row('route', 'var(--blue)', 'Routing assumptions', fmt.time(W.dayStartMin) + ' · ' + W.pretripMin + ' min to roll', CO.routingSpec, 'Start time, time to get rolling, drive time, arrival windows, called-off jobs'),
+      row('timer', 'var(--orange)', 'Time on site', data.siteRules.route.min + ' min minimum · new setup +' + data.siteRules.setupExtra, () => WD.ops.siteSpec(), 'Formulas for stops with no history, purge jobs, and each truck’s pace'),
+      row('calendar', 'var(--red)', 'Holidays and schedule changes', ST.holidays.suggest ? 'Suggestions on' : 'Suggestions off', () => WD.ops.schedSpec(), 'Mark a holiday and approve where its jobs move; one-time moves'),
       row('message', 'var(--green)', 'On-my-way notices', omwLabel(ST.onMyWay.mode), CO.omwSpec, 'Text or call the customer with the ETA at Start driving'),
-      row('barcode', 'var(--indigo)', 'Container barcodes', ST.barcodes.on ? 'On' : 'Off', CO.barcodeSpec, 'Scan each container to prove service'),
+      row('barcode', 'var(--indigo)', 'Barcode scanning', ST.barcodes.on ? 'Containers on' : 'Containers off', CO.barcodeSpec, 'Containers at each stop; hard drive serial numbers by job'),
       row('checklist', 'var(--indigo)', 'Field workflow', '', () => WD.workflow.workflowSpec(), 'Arrival, Complete stop, invoices, job titles')),
     ui.section('Payroll and time off',
       row('dollarsign.circle', 'var(--green)', 'Pay period and payday', tc ? (p => fmt.day(p.from, 'md') + ' – ' + fmt.day(p.to, 'md'))(tc.payPeriod(0)) : '', () => tc.rulesSpec(), 'How often, the payday, overtime rules, breaks'),
       row('calendar', 'var(--red)', 'Time off', ST.timeOff.auto ? 'Auto-approve' : 'Needs approval', CO.timeOffSpec, 'Approve requests automatically, with your message')),
     ui.section('Customers and money',
       row('doc.text', 'var(--teal)', 'Templates', String(data.templates.length + 1), CO.templatesSpec, 'Every text, email, letter and the service agreement'),
-      row('sync', 'var(--green)', 'Bookkeeping', CO.booksName(), CO.booksSpec, 'Which program, and marking invoices paid from it'),
+      row('sync', 'var(--green)', 'Invoicing and bookkeeping', CO.booksName(), CO.booksSpec, 'Choose the service, connect it, and mark invoices paid from it'),
+      row('tag', 'var(--teal)', 'Items, services and fees', data.priceBook.length + ' items', () => WD.ops.itemsSpec(), 'Add, edit and delete what you charge for, with base prices'),
+      row('checkmark.circle', 'var(--green)', 'Job confirmations', WD.ops.confirmLabel(), () => WD.ops.confirmSpec(), 'Text or email the customer when a new job is scheduled'),
+      row('phone.fill', 'var(--blue)', 'Calls, texts and email', WD.ops.commsLabel(), () => WD.ops.commsSpec(), 'Which number and address messages to customers come from'),
       row('star', 'var(--orange)', 'Reviews and feedback', ST.reviews.on ? 'On' : 'Off', CO.reviewsSpec, 'Follow-up text, review sites, QR code'),
       row('funnel', 'var(--purple)', 'CRM and leads', Object.values(CRM.features).filter(Boolean).length + ' features on', CO.crmSpec, 'Features, lead sources, territories'),
       row('tag', 'var(--pink)', 'Job types and fields', '', () => WD.admin.typesSpec(), 'Fields asked and required')),
