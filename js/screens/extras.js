@@ -420,7 +420,7 @@ const TOUR = [
   { tab: 'CRM', icon: 'star', title: 'Customer feedback', text: 'A text after service asks how the driver did, by name. Positive replies get a review request with your review links; negative replies get an apology and wait in Feedback for a call.' },
   { tab: 'Shift', icon: 'truck', title: 'Shift', list: ['Start driving can show the ETA and offer to text or call the customer.', 'Show a review QR code to a customer in person.', 'HR: hours, overtime, federal overtime, time cards and reports for everyone, for this or last pay period or any dates.', 'Time off can be approved automatically with your message.'] },
   { tab: 'Invoices', icon: 'doc.text', title: 'Invoices', text: 'Open invoices are checked against your bookkeeping program and marked paid when the customer has paid there. Tap Check now any time.' },
-  { tab: 'Customers', icon: 'person.2', title: 'Service agreements', text: 'Every part of an agreement can be edited: wording, containers, rates, schedule and each section. Payment details are added by the customer in the portal, not on the agreement.' },
+  { tab: 'Customers', icon: 'person.2', title: 'Service agreements', text: 'New in 2.4: agreements now use your own Service Agreement wording (Sections 1–5) followed by the Agreement for Service details. Every part can still be edited, and the credit card form is replaced by the customer portal.' },
   { tab: 'Settings', icon: 'gearshape', title: 'Settings and assumptions', list: ['Routing assumptions: start time, time to get rolling, drive time, arrival windows.', 'Templates: change the wording of every text, email and letter.', 'Pay period and payday, on-my-way notices, container barcodes, bookkeeping, reviews and the QR code, CRM features.'] },
 ];
 X.tutorial = () => {
