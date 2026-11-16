@@ -14,7 +14,8 @@ const store = { get: k => { try { return localStorage.getItem(k); } catch (e) { 
 WD.css(`
 .x-doc { margin: 12px 16px; padding: 18px 18px 20px; border-radius: 12px; background: #fff; color: #1c1c1e; font-size: 13.5px; line-height: 19px; box-shadow: 0 1px 4px rgba(0,0,0,.14); user-select: text; -webkit-user-select: text; }
 .x-doc h4 { margin: 0 0 2px; font-size: 16px; } .x-doc p { margin: 9px 0 0; } .x-doc small { color: #6b6b70; } .x-doc table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; }
-.x-doc td { padding: 4px 0; border-top: .5px solid #d8d8dc; vertical-align: top; } .x-doc td:last-child { text-align: right; white-space: nowrap; } .x-doc .sig { margin-top: 14px; border-bottom: 1px solid #1c1c1e; min-height: 46px; display: flex; align-items: flex-end; }
+.x-doc td { padding: 4px 0; border-top: .5px solid #d8d8dc; vertical-align: top; } .x-doc td:last-child { text-align: right; white-space: nowrap; } .x-doc .sig { margin-top: 14px; border-bottom: 1px solid #1c1c1e; min-height: 46px; display: flex; align-items: flex-end; overflow: hidden; }
+.x-doc .sig img, .x-doc .sig svg { display: block; height: auto; width: auto; max-height: 44px; max-width: min(200px, 100%); object-fit: contain; object-position: left bottom; color: #1c1c1e; }
 .x-steps { padding: 4px 16px 10px; } .x-step { display: flex; gap: 10px; align-items: flex-start; padding: 7px 0; font-size: 15px; } .x-step.wait { color: var(--label3); } .x-step small { display: block; font-size: 12.5px; color: var(--label2); }
 .x-cmp { display: grid; grid-template-columns: 74px 1fr 1fr; font-size: 13px; line-height: 17px; }
 .x-cmp > div { padding: 7px 8px; border-top: .5px solid var(--sep); min-width: 0; overflow-wrap: anywhere; }
@@ -423,9 +424,11 @@ X.contactSummary = (c, items, describe) => {
 /* ================= What's new tutorial ================= */
 const TOUR = [
   { icon: 'sparkles', title: 'What’s new in version ' + WD.version, text: 'A quick look at what changed. It takes under a minute, and you can run it again from Settings → About.' },
-  { tab: 'Map', icon: 'calendar', title: 'One date for Dispatch and Map', text: 'Dispatch and Map now share the same day. Change the date on either one and the other opens on that date, so the two never show different days.' },
-  { tab: 'CRM', icon: 'flag', title: 'Lead priority', list: ['Mark each lead low, medium or high priority, on the lead or when you add it.', 'Open high-priority leads are listed first, in their own section at the top of the pipeline.', 'Sort the pipeline by follow-up date, priority, longest without contact or newest lead.'] },
-  { tab: 'CRM', icon: 'funnel', title: 'Jump links, show and hide', list: ['Tap a stage under the totals to jump straight to New, Follow-up due, Contacted, Quoted, Won or Lost.', '“Show and hide” switches each priority and each stage of the pipeline on or off.', 'Every lead shows who contacted them last and the current situation, which you can write on the lead.'] },
+  { tab: 'Map', icon: 'map', title: 'Map: the next 45 days', list: ['Tap the calendar button on the map, then type an address.', 'The map shows every job nearby in the next 45 days and which days a truck is already in the area.', 'Tap a pin for the customer and all of its service dates.', 'In the stops list, drag ≡ to change the order.'] },
+  { tab: 'Dispatch', icon: 'calendar', title: 'Dispatch', list: ['Search now has All: customers and jobs together.', 'The routes menu has “Move this day’s jobs” to move a whole route to another day in one step.', 'The same menu lists postponed jobs that have no new date yet.'] },
+  { tab: 'CRM', icon: 'funnel', title: 'CRM', list: ['Every section, like High priority, has Hide or Show on the right of its heading.', 'Any lead can be archived to clean up the inbox. Low-priority leads that were called, texted and emailed once are offered for archiving.', 'Tasks moved here from the Customers tab.'] },
+  { tab: 'Customers', icon: 'building', title: 'Master customers and locations', text: 'A customer billed with one monthly invoice can have many locations. Each location has its own name and email for its service note; the combined invoice goes to the billing email.' },
+  { tab: 'Settings', icon: 'gearshape', title: 'Settings', list: ['Purge pricing: by the box or by the 65-gallon bin, such as $150 for up to 2 bins and $60 for each one after.', 'Set how many boxes fit in a bin.', 'Export and backup: download customers, jobs, invoices, CRM and settings.', 'Signatures now fit on the service agreement.'] },
 ];
 X.tutorial = () => {
   const screen = document.getElementById('screen'), old = screen.querySelector('.x-tour'); if (old) old.remove();

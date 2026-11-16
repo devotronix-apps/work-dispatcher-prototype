@@ -130,7 +130,9 @@ function topBar() {
     btn(null, 'Today', () => { b.day = today; keep(null); refresh(); }, h('span.bd-today', D.parse(today).getDate())),
     WD.can('jobs.edit') && btn('plus', 'New job', () => jobsScreen().openEditor && jobsScreen().openEditor({ day: b.day, routeId: b.mode === 'days' ? b.routeId : (q.visibleRoutes()[0] || q.routes()[0]).id })));
 }
-const syncItems = () => [WD.can('jobs.edit') && WD.ops && { label: 'Holidays and schedule changes', icon: 'calendar', onTap: () => WD.ops.openSchedule() }, { label: 'Pending changes' + (S.pending.length ? ' (' + S.pending.length + ')' : ''), icon: 'sync', onTap: () => WD.screens.settings && WD.screens.settings.openPending && WD.screens.settings.openPending() },
+const syncItems = () => [WD.can('jobs.edit') && WD.ops && { label: 'Move this day’s jobs…', subtitle: 'A whole route to another day', icon: 'arrow.left.arrow.right', onTap: () => WD.ops.moveSheet({ routeId: S.board.mode === 'days' ? S.board.routeId : q.visibleRoutes().length === 1 ? q.visibleRoutes()[0].id : (q.visibleRoutes()[0] || q.routes()[0]).id, from: S.board.day }) },
+  WD.r8 && { label: 'Postponed, no date yet' + (WD.r8.postponed().length ? ' (' + WD.r8.postponed().length + ')' : ''), icon: 'clock', onTap: () => WD.r8.openPostponed() },
+  WD.can('jobs.edit') && WD.ops && { label: 'Holidays and schedule changes', icon: 'calendar', onTap: () => WD.ops.openSchedule() }, { label: 'Pending changes' + (S.pending.length ? ' (' + S.pending.length + ')' : ''), icon: 'sync', onTap: () => WD.screens.settings && WD.screens.settings.openPending && WD.screens.settings.openPending() },
   { label: 'Refresh', icon: 'arrow.clockwise', onTap: async () => { if (S.offline) return ui.toast('Offline — showing saved jobs', 'wifi.slash'); ui.toast('Checking for changes…'); await WD.delay(900, 1400); ui.toast('Up to date', 'checkmark'); } }];
 function boardMenu(anchor) {
   const b = S.board, n = S.pending.length;

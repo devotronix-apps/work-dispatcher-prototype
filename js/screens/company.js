@@ -478,13 +478,14 @@ CO.hubSpec = () => ({ title: 'Settings and assumptions', render: page => { if (!
     ui.section('Customers and money',
       row('doc.text', 'var(--teal)', 'Templates', String(data.templates.length + 1), CO.templatesSpec, 'Every text, email, letter and the service agreement'),
       row('sync', 'var(--green)', 'Invoicing and bookkeeping', CO.booksName(), CO.booksSpec, 'Choose the service, connect it, and mark invoices paid from it'),
+      WD.r8 && row('shippingbox', 'var(--orange)', 'Purge pricing', WD.r8.pricingLabel(), () => WD.r8.pricingSpec(), 'By the box or by the 65-gallon bin, and how many boxes fit in a bin'),
       row('tag', 'var(--teal)', 'Items, services and fees', data.priceBook.length + ' items', () => WD.ops.itemsSpec(), 'Add, edit and delete what you charge for, with base prices'),
       row('checkmark.circle', 'var(--green)', 'Job confirmations', WD.ops.confirmLabel(), () => WD.ops.confirmSpec(), 'Text or email the customer when a new job is scheduled'),
       row('phone.fill', 'var(--blue)', 'Calls, texts and email', WD.ops.commsLabel(), () => WD.ops.commsSpec(), 'Which number and address messages to customers come from'),
       row('star', 'var(--orange)', 'Reviews and feedback', ST.reviews.on ? 'On' : 'Off', CO.reviewsSpec, 'Follow-up text, review sites, QR code'),
       row('funnel', 'var(--purple)', 'CRM and leads', Object.values(CRM.features).filter(Boolean).length + ' features on', CO.crmSpec, 'Features, lead sources, territories'),
       row('tag', 'var(--pink)', 'Job types and fields', '', () => WD.admin.typesSpec(), 'Fields asked and required')),
-    ui.section('Company', row('lock', 'var(--gray)', 'Sign-in and security', '', () => WD.admin.signInSpec()), ui.row({ icon: 'clock', iconColor: 'var(--orange)', title: 'Location stays', subtitle: 'Logged after ' + R.stayMinutes + ' minutes in one place', chevron: true, onTap: () => push(tc.rulesSpec()) })));
+    ui.section('Company', row('lock', 'var(--gray)', 'Sign-in and security', '', () => WD.admin.signInSpec()), WD.r8 && row('share', 'var(--teal)', 'Export and backup', '', () => WD.r8.exportSpec(), 'Download your information, and automatic backups'), ui.row({ icon: 'clock', iconColor: 'var(--orange)', title: 'Location stays', subtitle: 'Logged after ' + R.stayMinutes + ' minutes in one place', chevron: true, onTap: () => push(tc.rulesSpec()) })));
 } });
 
 /* ================= Control panel ================= */

@@ -129,7 +129,7 @@ function repFor(job) { if (S.shift && S.shift.routeId === job.routeId) return S.
 /** Starting lines for a job: its containers, with this customer's rates. */
 function linesForJob(job) {
   const lines = (job.items || []).filter(i => i.qty > 0).map(i => ({ id: i.id, name: pbItem(i.id).name, qty: i.qty, rate: i.rate != null ? i.rate : pbItem(i.id).rate }));
-  if (!lines.length) lines.push(job.type === 'purge' ? { id: 'box', name: pbItem('box').name, qty: 1, rate: 8 } : { id: 'console', name: pbItem('console').name, qty: 1, rate: 30 });
+  if (!lines.length) lines.push(job.type === 'purge' ? (data.purgePricing.method === 'bin' ? { id: 'binFlat', name: pbItem('binFlat').name, qty: 1, rate: data.purgePricing.binFlat } : { id: 'box', name: pbItem('box').name, qty: 1, rate: pbItem('box').rate }) : { id: 'console', name: pbItem('console').name, qty: 1, rate: 30 });
   return lines;   /* The certificate of destruction prints on every invoice, so it isn't a line. */
 }
 const methodLabel = f => ({ cash: 'Cash', check: 'Check' + (f.checkNo.trim() ? ' #' + f.checkNo.trim() : ''), card: 'Card (Tap to Pay on iPhone)', other: (f.other || '').trim() || 'Other' })[f.pay];
@@ -215,8 +215,8 @@ function openEditor(jobId, o = {}) {
       api.op({ kind: 'edit', title: job.title, scope: 'Service note', jobIds: [job.id], apply() {
         sn = wf.addServiceNote(job, { lines: f.lines, po: f.po.trim(), signer: f.custName, sig: f.custSig, day: f.serviceDate, pounds: f.pounds || null });
         job.billing = { kind: 'serviceNote', number: sn.number, amount, at: +WD.now(), by: me, signer: f.custName }; job.po = f.po.trim();
-        job.events.push({ at: +WD.now(), actor: me, text: 'Service note ' + sn.number + ' signed by ' + (f.custName || 'customer') + ' · ' + fmt.money(amount, true) + ' · added to the master invoice' }); } });
-      return finish(p, (sn ? sn.number : 'Service note') + ' saved · added to the master invoice', 'tray');
+        job.events.push({ at: +WD.now(), actor: me, text: 'Service note ' + sn.number + ' signed by ' + (f.custName || 'customer') + ' · ' + fmt.money(amount, true) + ' · added to the master invoice' + (sn.emailedTo ? ' · emailed to ' + sn.emailedTo : '') }); } });
+      return finish(p, (sn ? sn.number : 'Service note') + ' saved' + (sn && sn.emailedTo ? ' · emailed to ' + sn.emailedTo : '') + ' · added to the master invoice', 'tray');
     }
     const paid = !draft && f.pay !== 'none', number = prev ? prev.number : 'INV-' + (++invSeq), method = paid ? methodLabel(f) : null;
     api.op({ kind: 'edit', title: job.title, scope: draft ? 'Invoice draft' : paid ? 'Invoice paid on site' : 'Invoice created', jobIds: [job.id], apply() {
@@ -242,6 +242,8 @@ function openEditor(jobId, o = {}) {
         note && h('div', { style: 'padding:4px 4px 0' }, ui.note((c ? c.name : 'This customer') + ' gets one master invoice a month. This visit is saved as a signed service note and added to it in the database.')),
         ui.section({ header: (c ? c.name : job.title) + (job.address ? ' · ' + job.address.split(',')[0] : ''), footer: f.note || 'Adjust quantities, rates and line items. Rates start from this customer’s pricing.' },
           f.lines.map((l, i) => lineRow(l, i, p)),
+          f.lines.some(l => l.id === 'binFlat') && (bins => ui.row({ title: '65-gallon bins shredded', subtitle: fmt.money(data.purgePricing.binFlat) + ' covers the first ' + data.purgePricing.binIncluded + ', then ' + fmt.money(data.purgePricing.binExtra) + ' each', detail: String(bins),
+            trailing: ui.stepper(bins, 1, 200, v => { const at = f.lines.findIndex(l => l.id === 'binFlat'); f.lines = f.lines.filter(l => l.id !== 'binFlat' && l.id !== 'binExtra'); f.lines.splice(at, 0, ...WD.binLines(v).map(x => ({ ...x, name: pbItem(x.id).name }))); p.refresh(); }) }))(data.purgePricing.binIncluded + ((f.lines.find(l => l.id === 'binExtra') || {}).qty || 0) - (((f.lines.find(l => l.id === 'binFlat') || {}).bins || data.purgePricing.binIncluded) < data.purgePricing.binIncluded ? data.purgePricing.binIncluded - f.lines.find(l => l.id === 'binFlat').bins : 0)),
           ui.row({ title: 'Add line', icon: 'plus.circle.fill', iconPlain: true, iconColor: 'var(--green)', tint: true, onTap: (e, el) => addLine(el, p) }),
           h('div.bi-total', h('span', 'Total'), totalEl = h('span', fmt.money(total(f.lines), true)))),
         ui.section({ header: 'Service', footer: po != null ? 'The PO comes from ' + (c ? c.name : 'the customer') + '’s PO schedule for the service date. Changing the date picks the PO that covers it.' : 'PO and contract numbers come from the customer. Changes here apply to this job only.' },

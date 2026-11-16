@@ -68,6 +68,7 @@ function root() {
         ui.row({ icon: 'building', iconColor: 'var(--indigo)', title: 'Company', detail: o.name, chevron: true, onTap: () => push(orgsSpec()) }),
         ui.row(gated('billing.view', { icon: 'creditcard', iconColor: 'var(--green)', title: 'Subscription', ...plan(o) })),
         ui.row({ icon: 'lock', iconColor: 'var(--gray)', title: 'Sign-in and security', detail: (WD.signInPolicies.find(x => x.value === S.signInPolicy) || {}).label, chevron: true, onTap: () => WD.admin && push(WD.admin.signInSpec()) }),
+        WD.r8 && ui.row(gated('settings.manage', { icon: 'share', iconColor: 'var(--teal)', title: 'Export and backup', subtitle: 'Customers, jobs, invoices, CRM and settings as files you keep', chevron: true, onTap: () => push(WD.r8.exportSpec()) })),
         ui.row({ icon: 'globe', iconColor: 'var(--blue)', title: 'Open web dashboard', trailing: icon('arrow.up.right', 17, 'var(--label3)'), onTap: () => ui.toast('Analytics and billing reports are on the web', 'globe', 2600) })),
       ui.section({ header: 'Routes and board', footer: 'Single-route portrait view shows 1 or 3 days from the active day. Landscape always shows 7.' },
         ui.row({ icon: 'route', iconColor: 'var(--blue)', title: 'Routes', detail: q.visibleRoutes().length + ' of ' + data.routes.length + ' shown', chevron: true, onTap: () => push(routesSpec()) }),

@@ -31,6 +31,7 @@ data.priceBook = [
   { id: 'box', name: 'Purge, per box', unit: 'box', rate: 8 }, { id: 'trip', name: 'Trip charge', unit: 'trip', rate: 25 }, { id: 'cod', name: 'Certificate of destruction', unit: 'certificate', rate: 0 },
   { id: 'stairsDown', name: 'Stairs — carried down, per box', unit: 'box', rate: 3 }, { id: 'stairsUp', name: 'Stairs — carried up, per box', unit: 'box', rate: 4 }, { id: 'haul', name: 'Haul away empty boxes, per box', unit: 'box', rate: 2 },
   { id: 'hdd', name: 'Hard drive destruction', unit: 'hard drive', rate: 10 },
+  { id: 'binFlat', name: 'Purge, up to 2 bins (65 gal)', unit: 'flat fee', rate: 150 }, { id: 'binExtra', name: 'Purge, each additional bin (65 gal)', unit: 'bin (65 gal)', rate: 60 },
 ];
 /** Purge estimating (Settings → Purge estimates). Box sizes count as standard banker boxes (10×12×15"); bins, pallets, gaylords and cabinets convert to boxes.
     Time on site: a 10-minute minimum covers up to 10 boxes, then 100 boxes an hour. Stairs take 2–3× as long; hauling the empties away doubles the time.
@@ -53,6 +54,20 @@ WD.purgeEstimate = p => {
 WD.purgeExtras = (p, boxes) => { const out = [], pb = id => data.priceBook.find(x => x.id === id);
   if (p && p.stairs === 'down') out.push({ id: 'stairsDown', qty: boxes, rate: pb('stairsDown').rate }); if (p && p.stairs === 'up') out.push({ id: 'stairsUp', qty: boxes, rate: pb('stairsUp').rate });
   if (p && p.haul) out.push({ id: 'haul', qty: boxes, rate: pb('haul').rate }); return out; };
+/** How purge jobs are priced (Settings → Purge pricing). 'box': a rate per box. 'bin': by the 65-gallon bin, a flat fee that covers the first
+    bins and a rate for each one after. Boxes turn into bins with data.purgeRules.bin65 (boxes that fit in a bin). */
+data.purgePricing = { method: 'box', binFlat: 150, binIncluded: 2, binExtra: 60 };
+WD.PURGE_IDS = ['box', 'binFlat', 'binExtra', 'stairsDown', 'stairsUp', 'haul'];
+WD.purgeBins = boxes => boxes > 0 ? Math.max(1, Math.ceil(boxes / (data.purgeRules.bin65 || 8) - 1e-9)) : 0;
+/** Keep the two bin items in the price book in step with the pricing settings. */
+WD.syncPurgeBook = () => { const PP = data.purgePricing, f = data.priceBook.find(x => x.id === 'binFlat'), x = data.priceBook.find(x => x.id === 'binExtra');
+  if (f) { f.rate = PP.binFlat; f.name = 'Purge, up to ' + PP.binIncluded + (PP.binIncluded === 1 ? ' bin' : ' bins') + ' (65 gal)'; } if (x) x.rate = PP.binExtra; };
+/** Billing lines for a purge: p = what the customer has, e = WD.purgeEstimate(p), boxRate = this job's per-box rate (box pricing only). */
+WD.purgeItems = (p, e, boxRate) => { const PP = data.purgePricing, extras = WD.purgeExtras(p, e.billable); if (!e.billable) return extras;
+  if (PP.method === 'bin') { const bins = WD.purgeBins(e.boxes), more = Math.max(0, bins - PP.binIncluded); return [{ id: 'binFlat', qty: 1, rate: PP.binFlat, bins }].concat(more ? [{ id: 'binExtra', qty: more, rate: PP.binExtra }] : [], extras); }
+  return [{ id: 'box', qty: e.billable, rate: boxRate != null ? boxRate : data.priceBook.find(x => x.id === 'box').rate }].concat(extras); };
+/** The two bin lines for a count of bins (used when the driver changes the count on site). */
+WD.binLines = bins => { const PP = data.purgePricing, more = Math.max(0, bins - PP.binIncluded); return [{ id: 'binFlat', qty: 1, rate: PP.binFlat, bins }].concat(more ? [{ id: 'binExtra', qty: more, rate: PP.binExtra }] : []); };
 /** ETA windows given to customers who asked for one: 2 hours before 10 AM, 3 hours from 10 to 1, 4 hours after 1 PM. */
 WD.etaWindow = eta => { const E = data.workflow.eta, len = eta < 10 * 60 ? E.early : eta < 13 * 60 ? E.mid : E.late, from = Math.max(6 * 60, Math.round((eta - len / 2) / 30) * 30); return { from, until: from + len }; };
 /** Time on site for a stop with no recorded visits (Settings → Time on site). Route service: a minimum stop time plus minutes per container.
@@ -77,7 +92,8 @@ const plural = (n, w) => n + ' ' + (n === 1 ? w : w.replace(/^(\w+)/, m => m ===
 WD.parseItems = str => { const out = []; String(str || '').split(',').forEach(part => { const m = /(\d+)\s*(.*)/.exec(part.trim()); if (!m) return; const n = +m[1], t = m[2].toLowerCase();
   const id = /box/.test(t) ? 'box' : /96/.test(t) ? 'bin96' : /bin/.test(t) ? 'bin64' : 'console'; const pb = data.priceBook.find(x => x.id === id); out.push({ id, qty: n, rate: pb.rate }); }); return out; };
 /** "4 consoles, 1 bin (64 gal)" — or "≈40 boxes (estimate)" for purge jobs. */
-WD.itemsLabel = (items, purge) => (items || []).filter(i => WD.CONTAINERS.includes(i.id) && i.qty > 0).map(i => (purge && i.id === 'box' ? '≈' : '') + plural(i.qty, data.priceBook.find(x => x.id === i.id).unit)).join(', ');
+WD.itemsLabel = (items, purge) => { const bf = (items || []).find(i => i.id === 'binFlat' && i.qty > 0), ex = (items || []).find(i => i.id === 'binExtra'), bins = bf ? bf.bins || data.purgePricing.binIncluded + (ex ? ex.qty : 0) : 0;
+  return (bf ? ['≈' + bins + (bins === 1 ? ' bin' : ' bins') + ' (65 gal)'] : []).concat((items || []).filter(i => WD.CONTAINERS.includes(i.id) && i.qty > 0).map(i => (purge && i.id === 'box' ? '≈' : '') + plural(i.qty, data.priceBook.find(x => x.id === i.id).unit))).join(', '); };
 WD.copyItems = items => (items || []).map(i => ({ ...i }));
 WD.lifecycle = ['lead', 'contacted', 'quoted', 'scheduled', 'serviced', 'customer'];
 /* Which fields the job editor and new-customer form ask for, per job type (Settings → Job types and fields). Name is always asked. */

@@ -188,23 +188,27 @@ function parseAsk(text) {
 }
 /** One-time change: move a day's jobs (one route or all of them) to another day, and label the day they left. */
 function moveSheet(pre = {}) {
-  const f = { routeId: pre.routeId || 'all', from: pre.from || (S.board.day > today() ? S.board.day : D.add(today(), 1)), to: pre.to || '', mark: '', ask: '' };
+  const f = { routeId: pre.routeId || 'all', from: pre.from || (S.board.day > today() ? S.board.day : D.add(today(), 1)), to: pre.to || '', mark: '', ask: '', skip: new Set() };
   const rids = () => f.routeId === 'all' ? q.routes().map(r => r.id) : [f.routeId];
-  const moves = () => f.to && f.to !== f.from ? rids().map(rid => ({ routeId: rid, from: f.from, to: f.to, jobs: movable(rid, f.from) })).filter(m => m.jobs.length) : [];
-  const count = () => rids().reduce((s, rid) => s + movable(rid, f.from).length, 0);
-  ui.sheet({ title: 'Move a day’s jobs', leading: [{ label: 'Cancel', onTap: p => p.dismiss() }],
+  const moves = () => f.to && f.to !== f.from ? rids().map(rid => ({ routeId: rid, from: f.from, to: f.to, jobs: movable(rid, f.from).filter(j => !f.skip.has(j.id)) })).filter(m => m.jobs.length) : [];
+  const count = () => rids().reduce((s, rid) => s + movable(rid, f.from).filter(j => !f.skip.has(j.id)).length, 0);
+  ui.sheet({ title: pre.bulk ? 'Move a route’s jobs' : 'Move a day’s jobs', leading: [{ label: 'Cancel', onTap: p => p.dismiss() }],
     trailing: () => [{ label: 'Move', bold: true, onTap: async p => { if (!f.to) return ui.toast('Choose the day to move them to', 'calendar'); if (f.to === f.from) return ui.toast('Choose a different day', 'calendar'); if (f.to < today()) return ui.toast('That day has passed', 'calendar');
       const ms = moves(), marks = f.mark ? rids().map(rid => ({ routeId: rid, day: f.from, kind: f.mark })) : []; if (!ms.length && !marks.length) return ui.toast('No jobs to move on ' + fmt.day(f.from), 'info.circle');
       const hd = WD.dayMark(rids()[0], f.to); if (hd && hd.kind !== 'purgeOnly' && !(await ui.actionSheet({ title: fmt.day(f.to) + ' is marked “' + hd.label + '”', buttons: [{ label: 'Move them there anyway', value: true }], cancel: 'Pick another day' }))) return;
       p.dismiss(); applyMoves(ms, { title: (f.routeId === 'all' ? 'All routes' : q.routeName(f.routeId)) + ' · ' + wd(f.from) + ' to ' + wd(f.to), reason: 'a schedule change', marks }); } }],
-    render: p => { const ms = moves(), n = count();
+    render: p => { const ms = moves(), n = count(), every = rids().flatMap(rid => movable(rid, f.from)), left = every.filter(j => f.skip.has(j.id)).length;
+      const pick = ui.section({ header: 'What to move', footer: n ? plural(n, 'job') + ' not yet started on ' + fmt.day(f.from, 'long') + (left ? ' · ' + left + ' staying' : '') + '. One time only: recurring jobs go back to their usual day next time.' : 'No jobs to move on ' + fmt.day(f.from, 'long') + '.' },
+          ui.pickerRow({ title: 'Route', value: f.routeId, options: [{ value: 'all', label: 'All routes' }].concat(q.routes().map(r => ({ value: r.id, label: q.routeName(r) }))), onChange: v => { f.routeId = v; f.skip.clear(); p.refresh(); } }),
+          ui.dateRow({ title: 'From', value: f.from, onChange: v => { f.from = v; f.skip.clear(); p.refresh(); } }), ui.dateRow({ title: 'To', value: f.to, onChange: v => { f.to = v; p.refresh(); } }));
+      const jobsSec = every.length > 0 && ui.section({ header: 'Jobs on ' + fmt.day(f.from) + ' · ' + every.length, footer: 'All of them move together in one step. Switch one off to leave it on its day.' },
+          every.map(j => ui.toggleRow({ leading: ui.dot(q.routeColor(j.routeId)), title: j.title, subtitle: 'Stop ' + q.position(j).n + (f.routeId === 'all' ? ' · ' + q.routeName(j.routeId) : ''), value: !f.skip.has(j.id), onChange: v => { v ? f.skip.delete(j.id) : f.skip.add(j.id); p.refresh(); } })));
       return ui.list(
+        pre.bulk && pick, pre.bulk && jobsSec,
         ui.section({ header: 'Tell it what to do', footer: 'For example “move all jobs from Wednesday this week to Tuesday”, or “East Route Friday to next Monday”. It fills in the choices below for you to check.' },
           ui.inputRow({ placeholder: 'Move Wednesday to Tuesday', value: f.ask, onInput: v => { f.ask = v; } }),
           ui.row({ icon: 'sparkles', iconPlain: true, title: 'Fill in from what I typed', tint: true, onTap: () => { const r = parseAsk(f.ask); if (!r.from && !r.to) return ui.toast('Name the days, like “Wednesday to Tuesday”', 'info.circle', 2600); if (r.from) f.from = r.from; if (r.to) f.to = r.to; if (r.routeId) f.routeId = r.routeId; const a = document.activeElement; if (a && a.blur) a.blur(); p.refresh(); ui.toast(fmt.day(f.from) + (f.to ? ' → ' + fmt.day(f.to) : ''), 'checkmark', 2200); } })),
-        ui.section({ header: 'What to move', footer: n ? plural(n, 'job') + ' not yet started on ' + fmt.day(f.from, 'long') + '. One time only: recurring jobs go back to their usual day next time.' : 'No jobs to move on ' + fmt.day(f.from, 'long') + '.' },
-          ui.pickerRow({ title: 'Route', value: f.routeId, options: [{ value: 'all', label: 'All routes' }].concat(q.routes().map(r => ({ value: r.id, label: q.routeName(r) }))), onChange: v => { f.routeId = v; p.refresh(); } }),
-          ui.dateRow({ title: 'From', value: f.from, onChange: v => { f.from = v; p.refresh(); } }), ui.dateRow({ title: 'To', value: f.to, onChange: v => { f.to = v; p.refresh(); } })),
+        !pre.bulk && pick, !pre.bulk && jobsSec,
         ms.length > 0 && ui.section({ header: 'After the move', footer: 'Red is longer than a full route (' + ST.holidays.fullHours + ' hours).' }, ms.map(m => [ui.row({ leading: ui.dot(q.routeColor(m.routeId)), title: q.routeName(m.routeId), detail: plural(m.jobs.length, 'job') }), loadChips(m.routeId, ms)])),
         ui.section({ header: 'Label ' + fmt.day(f.from) + ' on the board', footer: f.mark === 'closed' ? 'For a driver’s vacation or a truck in the shop. Scheduling a job on that route and day asks first.' : f.mark === 'purgeOnly' ? 'For a day kept free for a large purge. Purge jobs schedule normally; anything else asks first.' : 'The emptied day can be labeled so nobody fills it back up.' },
           ui.pickerRow({ title: 'Label the emptied day', value: f.mark, options: MARKS, onChange: v => { f.mark = v; p.refresh(); } }))); } }, { detent: 'large' });
@@ -219,13 +223,15 @@ OP.schedSpec = () => ({ title: 'Holidays and schedule changes', render: page => 
       can && ui.row({ icon: 'plus.circle.fill', iconPlain: true, iconColor: 'var(--green)', title: 'Mark a holiday', tint: true, onTap: holidaySheet })),
     ui.section({ header: 'One-time changes', footer: 'For a driver’s vacation or a large job: move one day’s jobs to another day, on one route or all of them, this once. The emptied day can be labeled “Do not schedule jobs” or “Large purge jobs only”.' },
       marks.map(m => ui.row({ leading: ui.dot(q.routeColor(m.routeId)), title: q.routeName(m.routeId) + ' · ' + fmt.day(m.day), subtitle: m.label, trailing: can ? ui.button('Remove', { kind: 'gray', small: true, block: false, onTap: () => { delete data.dayMarks[m.k]; WD.changed(); page.refresh(); } }) : null })),
-      can && ui.row({ icon: 'arrow.left.arrow.right', iconPlain: true, title: 'Move a day’s jobs…', tint: true, onTap: () => moveSheet() })),
+      can && ui.row({ icon: 'arrow.left.arrow.right', iconPlain: true, title: 'Move a route’s jobs to another day…', subtitle: 'All jobs on one route, or every route, in one step', tint: true, onTap: () => moveSheet({ bulk: true }) })),
     admin() && ui.section({ header: 'Settings', footer: 'Not every company wants suggestions, so they can be switched off. “A full route” is how the app judges whether a day has room for another day’s stops.' },
       ui.toggleRow({ title: 'Suggest moves when a holiday is marked', value: o.suggest, onChange: v => { o.suggest = v; WD.changed(); page.refresh(); } }),
       step('A full route is about', 'Stops plus driving', o.fullHours + ' hours', o.fullHours, 4, 14, v => { o.fullHours = v; WD.changed(); page.refresh(); }),
       ui.toggleRow({ title: 'Offer to text customers their new day', value: o.notify, onChange: v => { o.notify = v; WD.changed(); } }), CO.tplRow('moved', page)));
 } });
 OP.openSchedule = () => WD.nav.push(OP.schedSpec());
+/** Bulk move from the board: every job on a route (or all routes) to another day, in one all-or-nothing change. */
+OP.moveSheet = pre => moveSheet({ bulk: true, ...pre });
 
 /* ================= Which number and address messages come from ================= */
 const FROM = [{ value: 'match', label: 'The company number nearest the customer' }, { value: 'main', label: 'The main company number' }, { value: 'driver', label: 'The sender’s own cell phone' }];

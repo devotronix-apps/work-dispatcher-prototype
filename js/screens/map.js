@@ -9,7 +9,7 @@ const STATE = { driving: { title: 'Driving', color: 'var(--blue)' }, 'on site': 
 const hash = s => { let n = 7; for (const c of String(s)) n = (n * 31 + c.charCodeAt(0)) >>> 0; return n; };
 const depot = data.depot, stopLabel = j => { const p = q.position(j); return 'Stop ' + p.n + ' of ' + p.of; };
 
-WD.addIcons({ 'mp.fit': '<path d="M4 9V4h5M4 4l5.500 5.500M20 15v5h-5M20 20l-5.500-5.500M15 4h5v5M20 4l-5.500 5.500M9 20H4v-5M4 20l5.500-5.500"/>' });
+WD.addIcons({ 'line.3.horizontal': '<path d="M4 7h16M4 12h16M4 17h16"/>', 'mp.fit': '<path d="M4 9V4h5M4 4l5.500 5.500M20 15v5h-5M20 20l-5.500-5.500M15 4h5v5M20 4l-5.500 5.500M9 20H4v-5M4 20l5.500-5.500"/>' });
 
 WD.css(`
 .mp-page > .page-body { padding-top: 0 !important; }
@@ -52,6 +52,8 @@ WD.css(`
 .mp-depot .mp-dl { position: absolute; top: 14px; transform: translateX(-50%); font-size: 11px; font-weight: 700; color: var(--mp-label); text-shadow: 0 0 3px var(--mp-halo); white-space: nowrap; }
 .mp-place .mp-dv { background: #8E8E93; border-radius: 50%; }
 .mp-truck { z-index: 4; }
+.mp-grip { display: grid; place-items: center; width: 36px; height: 36px; margin: -6px -8px -6px 0; color: var(--label3); touch-action: none; cursor: grab; flex: none; }
+.mp-dragging { position: relative; z-index: 3; background: var(--cell); box-shadow: 0 6px 18px rgba(0,0,0,.25); border-radius: 10px; } .mp-dragging .mp-grip { cursor: grabbing; color: var(--tint); }
 .mm { position: relative; border-radius: 12px; overflow: hidden; background: var(--mp-land); --mp-land: #F2EFE9; --mp-zone: #E8E4DC; --mp-water: #A7D0F2; --mp-park: #CDE7BA; --mp-road: #FFFFFF; --mp-casing: #DAD4CA; --mp-minor: #FFFFFF; --mp-hwy: #F8D67F; --mp-hwy-casing: #DDB25A; }
 .screen[data-theme="dark"] .mm { --mp-land: #23252A; --mp-zone: #292B30; --mp-water: #1D3B59; --mp-park: #233C2B; --mp-road: #484B52; --mp-casing: #2C2E33; --mp-minor: #393C42; --mp-hwy: #806B3D; --mp-hwy-casing: #574A2B; }
 .mm svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
@@ -395,7 +397,7 @@ function createMap() {
         h('button.mp-dlabel', { onclick: () => setDay(D.today()) }, dayLabel(st.day)), h('button.mp-dbtn', { 'aria-label': 'Next day', onclick: () => setDay(D.add(st.day, 1)) }, icon('chevron.right', 19))),
       routes.length > 1 && h('div.mp-chips', routes.map(r => h('button.mp-chip.mp-glass' + (st.hidden.has(r.id) ? '.off' : ''), { onclick: () => { st.hidden.has(r.id) ? st.hidden.delete(r.id) : st.hidden.add(r.id); st.sel = null; update(); } }, ui.dot(q.routeColor(r)), q.routeName(r)))));
     fill(side, 
-      h('div.mp-grp.mp-glass', btn('list.bullet', 'Stops list', openList), WD.can('jobs.edit') && btn('sparkles', 'AutoRoute', autoRoute), canLive && btn('truck', st.showTrucks ? 'Hide trucks' : 'Show trucks', () => { st.showTrucks = !st.showTrucks; ui.toast(st.showTrucks ? 'Showing live trucks' : 'Trucks hidden', 'truck', 1400); update(); }, !st.showTrucks)),
+      h('div.mp-grp.mp-glass', btn('list.bullet', 'Stops list', openList), WD.r8 && btn('calendar', 'Next 45 days: jobs near an address', () => WD.r8.openPlanMap()), WD.can('jobs.edit') && btn('sparkles', 'AutoRoute', autoRoute), canLive && btn('truck', st.showTrucks ? 'Hide trucks' : 'Show trucks', () => { st.showTrucks = !st.showTrucks; ui.toast(st.showTrucks ? 'Showing live trucks' : 'Trucks hidden', 'truck', 1400); update(); }, !st.showTrucks)),
       h('div.mp-grp.mp-glass', btn(S.shift ? 'location.fill' : 'location', 'Show my location', locate), btn('mp.fit', 'Show all stops', () => { stopFollow(); fit(true); })),
       h('div.mp-grp.mp-glass', btn('plus', 'Zoom in', () => zoomAt({ x: W / 2, y: H / 2 }, 1.7, true)), btn('minus', 'Zoom out', () => zoomAt({ x: W / 2, y: H / 2 }, 1 / 1.7, true))));
     const fv = st.follow && truckFor(st.follow), fveh = fv && q.vehicle(fv.vehicleId);
@@ -429,10 +431,31 @@ function createMap() {
     ui.sheet({ title: 'Stops', trailing: [{ label: 'Done', bold: true, onTap: p => p.dismiss() }],
       render(page) {
         const routes = shownRoutes(); if (!routes.length) return ui.empty({ icon: 'map', title: 'No routes shown', text: 'Turn on a route with the chips above the map.' });
-        return ui.list(h('div.footnote', { style: { padding: '2px 16px 0' } }, dayLabel(st.day) + ' · stops in board order'),
+        const canDrag = WD.can('jobs.edit');
+        /* Drag the handle to reorder a route's stops. The row follows the finger; letting go saves the new order as one queued change. */
+        const startDrag = (e, el, routeId) => {
+          e.preventDefault(); e.stopPropagation(); const cells = el.parentNode, k = WD.scale(), body = page.body; try { e.currentTarget.setPointerCapture(e.pointerId); } catch (_) { /* synthetic */ }
+          const rows = () => [...cells.children].filter(x => x.dataset.job), before0 = rows().map(x => x.dataset.job).join();
+          page.spec.live = false; el.classList.add('mp-dragging');
+          const move = ev => { const y = ev.clientY, sibs = rows().filter(x => x !== el); el.style.transform = '';
+            let before = null; for (const s of sibs) { const r = s.getBoundingClientRect(); if (y < r.top + r.height / 2) { before = s; break; } }
+            const last = sibs[sibs.length - 1]; if (before) { if (el.nextSibling !== before) cells.insertBefore(el, before); } else if (last && last.nextSibling !== el) cells.insertBefore(el, last.nextSibling);
+            const br = body.getBoundingClientRect(); if (y < br.top + 40 * k) body.scrollTop -= 10; else if (y > br.bottom - 40 * k) body.scrollTop += 10;
+            const r = el.getBoundingClientRect(); el.style.transform = 'translateY(' + ((y - (r.top + r.height / 2)) / k).toFixed(1) + 'px)'; };
+          const up = () => { removeEventListener('pointermove', move); removeEventListener('pointerup', up); removeEventListener('pointercancel', up);
+            el.style.transform = ''; el.classList.remove('mp-dragging'); delete page.spec.live; const ids = rows().map(x => x.dataset.job);
+            if (ids.join() !== before0) { WD.api.op({ kind: 'edit', title: q.routeName(routeId), scope: 'Stop order · ' + dayLabel(st.day), jobIds: ids, apply() {
+                const set = new Set(ids), order = ids.map(id => q.job(id)); let n = 0; q.stopList(routeId, st.day).map(j => set.has(j.id) ? order[n++] : j).forEach((j, i) => { j.seq = i + 1; });
+                const mj = q.job(el.dataset.job); if (mj) mj.events.push({ at: +WD.now(), actor: S.me.name, text: 'Moved to stop ' + q.position(mj).n + ' from the map’s stop list' }); } });
+              ui.toast('Order saved', 'checkmark', 1400); }
+            page.refresh(); update(); };
+          addEventListener('pointermove', move); addEventListener('pointerup', up); addEventListener('pointercancel', up);
+        };
+        return ui.list(h('div.footnote', { style: { padding: '2px 16px 0' } }, dayLabel(st.day) + ' · stops in board order' + (canDrag ? ' · drag ≡ to change the order' : '')),
           routes.map(r => ui.section({ header: h('span.hstack', { style: { gap: '6px' } }, ui.dot(q.routeColor(r)), q.routeName(r)) },
             q.stops(r.id, st.day).map(({ job, number }) => { const sx = WD.jobStatuses[job.status];
-              return ui.row({ leading: mini(job, number), title: WD.workflow.titleNode(job), subtitle: (job.allDay ? 'Note for the day' : stopLabel(job)) + (job.pending ? ' · Pending sync' : ''), trailing: icon(sx.icon, 18, sx.color), onTap: () => { page.dismiss(); focusJob(job.id); } }); }),
+              const el = ui.row({ leading: mini(job, number), title: WD.workflow.titleNode(job), subtitle: (job.allDay ? 'Note for the day' : stopLabel(job)) + (job.pending ? ' · Pending sync' : ''), trailing: [icon(sx.icon, 18, sx.color), canDrag && !DONE[job.status] && h('span.mp-grip', { role: 'button', 'aria-label': 'Drag to reorder ' + job.title, onclick: ev => ev.stopPropagation(), onpointerdown: ev => startDrag(ev, el, r.id) }, icon('line.3.horizontal', 20))], onTap: () => { page.dismiss(); focusJob(job.id); } });
+              el.dataset.job = job.id; return el; }),
             q.jobsFor(r.id, st.day).filter(j => !j.located && j.address).map(job => ui.row({ leading: h('span.mp-q', '?'), title: job.title, subtitle: 'Address not found · not on the map', chevron: true, onTap: () => openDetails(job.id) })),
             !q.jobsFor(r.id, st.day).length && ui.row({ title: 'No jobs', subtitle: 'Nothing scheduled on this route' }))));
       } }, { detent: 'medium' });

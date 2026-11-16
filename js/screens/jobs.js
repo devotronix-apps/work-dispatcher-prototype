@@ -318,8 +318,8 @@ function openEditor(o = {}) {
     if (mark && !(mark.kind === 'purgeOnly' && f.type === 'purge') && !(await ui.actionSheet({ title: fmt.day(f.day, 'long') + ' is marked “' + mark.label + '”', message: mark.kind === 'holiday' ? 'The company is closed that day.' : mark.kind === 'purgeOnly' ? q.routeName(f.routeId) + ' is being kept for large purge jobs that day.' : q.routeName(f.routeId) + ' is not taking jobs that day.', buttons: [{ label: 'Schedule it anyway', value: true }], cancel: 'Pick another day' }))) return;
     f.items = f.items.filter(i => i.id !== 'hdd'); if (f.hdd > 0 && !f.allDay) f.items.push({ id: 'hdd', qty: f.hdd, rate: hddRate() });
     if (f.type === 'purge' && f.purge) { const e = WD.purgeEstimate(f.purge); if (e.minutes) f.dur = e.minutes;
-      const box = f.items.find(i => i.id === 'box'), rate = box ? box.rate : data.priceBook.find(x => x.id === 'box').rate;
-      f.items = f.items.filter(i => !['box', 'stairsDown', 'stairsUp', 'haul'].includes(i.id)).concat(e.billable ? [{ id: 'box', qty: e.billable, rate }] : [], WD.purgeExtras(f.purge, e.billable)); }
+      const box = f.items.find(i => i.id === 'box');
+      f.items = f.items.filter(i => !WD.PURGE_IDS.includes(i.id)).concat(WD.purgeItems(f.purge, e, box ? box.rate : null)); }
     let scope = 'This job';
     if (job && job.recurring) { scope = await ui.actionSheet({ title: 'Save changes to a recurring job', message: 'Changing “this and following” ends the old series and starts a new one in a single step.', buttons: SCOPES.map(l => ({ label: l })) }); if (!scope) return; }
     if (!f.address.trim()) f.located = false; else if (f.x == null) { f.located = /\d/.test(f.address); if (f.located) { f.x = 150 + Math.random() * 700; f.y = 150 + Math.random() * 700; } }
@@ -376,13 +376,13 @@ function openEditor(o = {}) {
     const P = data.purgeRules, pd = f.purge = f.purge || { std: 0, stairs: 'none', haul: false }, e = WD.purgeEstimate(pd), pb = id => data.priceBook.find(x => x.id === id).rate;
     const count = ([id, title, sub, k]) => h('div.row.jb-item', h('div.row-main', h('div.row-title', title), h('div.row-sub', typeof k === 'string' && ['pallet', 'gaylord', 'cabinet'].includes(k) ? '≈ ' + P[k] + ' boxes each' : sub)),
       h('input.jb-count', { type: 'text', inputmode: 'numeric', 'aria-label': title, value: pd[id] ? String(pd[id]) : '', placeholder: '0', oninput: ev => { pd[id] = parseInt(ev.target.value.replace(/\D/g, ''), 10) || 0; dirty = true; }, onchange: () => p.refresh() }));
-    const boxRate = it ? it.rate : pb('box'), extras = WD.purgeExtras(pd, e.billable), price = e.billable * boxRate + extras.reduce((s2, x) => s2 + x.qty * x.rate, 0);
+    const PP = data.purgePricing, byBin = PP.method === 'bin', bins = WD.purgeBins(e.boxes), boxRate = it ? it.rate : pb('box'), extras = WD.purgeExtras(pd, e.billable), price = WD.purgeItems(pd, e, boxRate).reduce((s2, x) => s2 + x.qty * x.rate, 0);
     return [WD.PURGE_UNITS.map(count),
       h('div.row', h('div.row-main', h('div.row-title', 'Stairs'), h('div.row-sub', 'Takes 2–3× as long · +$' + pb('stairsDown') + '/box down, +$' + pb('stairsUp') + '/box up')), h('div', { style: 'width:170px;flex:none' }, ui.segmented([{ value: 'none', label: 'None' }, { value: 'down', label: 'Down' }, { value: 'up', label: 'Up' }], pd.stairs || 'none', v => { pd.stairs = v; dirty = true; p.refresh(); }))),
       ui.toggleRow({ title: 'Haul away the empty boxes', subtitle: '+$' + pb('haul') + '/box · about doubles the time', value: !!pd.haul, onChange: v => { pd.haul = v; dirty = true; p.refresh(); } }),
-      h('div.row.jb-est', h('div.row-main', h('div.row-title', e.boxes ? '≈ ' + e.billable + ' boxes · ' + (e.guess ? e.low + '–' + e.high + ' min' : e.minutes + ' min') + ' on site' : 'Enter what they have'),
+      h('div.row.jb-est', h('div.row-main', h('div.row-title', e.boxes ? '≈ ' + e.billable + ' boxes · ' + (byBin ? bins + (bins === 1 ? ' bin · ' : ' bins · ') : '') + (e.guess ? e.low + '–' + e.high + ' min' : e.minutes + ' min') + ' on site' : 'Enter what they have'),
         e.boxes > 0 && h('div.row-sub', e.guess ? h('span', { style: 'color:var(--orange);font-weight:600' }, 'Rough count (' + e.why + '). Planned at ' + e.minutes + ' min; confirm the count on site.') : 'Exact counts are usually close. Planned at ' + e.minutes + ' min.'),
-        e.boxes > 0 && asks('pricing') && h('div.row-sub', 'Estimated ' + fmt.money(price) + ' · ' + e.billable + ' × ' + fmt.money(boxRate) + (extras.length ? ' + ' + extras.map(x => ({ stairsDown: 'stairs down', stairsUp: 'stairs up', haul: 'haul-away' })[x.id]).join(' + ') : ''))), rate)];
+        e.boxes > 0 && asks('pricing') && h('div.row-sub', 'Estimated ' + fmt.money(price) + ' · ' + (byBin ? fmt.money(PP.binFlat) + ' for up to ' + PP.binIncluded + (PP.binIncluded === 1 ? ' bin' : ' bins') + (bins > PP.binIncluded ? ' + ' + (bins - PP.binIncluded) + ' × ' + fmt.money(PP.binExtra) : '') + ' · ' + data.purgeRules.bin65 + ' boxes to a bin' : e.billable + ' × ' + fmt.money(boxRate)) + (extras.length ? ' + ' + extras.map(x => ({ stairsDown: 'stairs down', stairsUp: 'stairs up', haul: 'haul-away' })[x.id]).join(' + ') : ''))), byBin ? null : rate)];
   }
   /** Heads-up details the driver sees right after the job title (Settings → Field workflow chooses which show). */
   function headsUp(p) {
@@ -462,7 +462,7 @@ function openEditor(o = {}) {
 
 /* ================= Search ================= */
 function openSearch() {
-  let text = '', scope = 'jobs', when = 'all', loading = false, timer = null, box = null, server = null;   // server: null | 'loading' | {n} once the server was asked for this text
+  let text = '', scope = WD.can('crm.view') ? 'all' : 'jobs', when = 'all', loading = false, timer = null, box = null, server = null;   // server: null | 'loading' | {n} once the server was asked for this text
   const routeIds = () => q.visibleRoutes().map(r => r.id);
   const jobRow = j => ui.row({ leading: ui.dot(q.routeColor(j.routeId)), title: j.title, subtitle: fmt.day(j.day) + (j.day.slice(0, 4) !== D.today().slice(0, 4) ? ', ' + j.day.slice(0, 4) : '') + (j.allDay ? ' · note' : WD.calledOff(j) ? '' : ' · stop ' + q.position(j).n) + ' · ' + q.routeName(j.routeId) + (j.fromServer ? ' · from the server' : ''), trailing: icon(WD.jobStatuses[j.status].icon, 18, WD.jobStatuses[j.status].color), onTap: () => openDetails(j.id) });
   async function askServer(p) {
@@ -472,27 +472,30 @@ function openSearch() {
   }
   function fill(p) {
     if (!box) return; const s = text.trim();
-    if (s.length < 2) return box.replaceChildren(ui.list(ui.section({ header: 'Recent', footer: scope === 'jobs' ? 'Searches jobs on your ' + routeIds().length + ' selected routes: title, address, notes and route name. This iPhone holds the last 10 days and everything upcoming; older history is fetched from the server when you ask for it.' : 'Matches customer name, contact, phone, email or address.' },
+    if (s.length < 2) return box.replaceChildren(ui.list(ui.section({ header: 'Recent', footer: scope === 'all' ? 'Searches everything at once: customers (name, contact, phone, email, address) and jobs on your ' + routeIds().length + ' selected routes (title, address, notes, route name). Older job history is fetched from the server when you ask for it.' : scope === 'jobs' ? 'Searches jobs on your ' + routeIds().length + ' selected routes: title, address, notes and route name. This iPhone holds the last 10 days and everything upcoming; older history is fetched from the server when you ask for it.' : 'Matches customer name, contact, phone, email or address.' },
       ['Harlow', '555-0131', 'Bank St'].map(r => ui.row({ title: r, icon: 'clock', iconPlain: true, iconColor: 'var(--label2)', onTap: () => { text = r; const i = p.navbar.querySelector('.search-box input'); if (i) { i.value = r; i.parentNode.classList.add('filled'); } run(p); } })))));
     if (loading) return box.replaceChildren(h('div', { style: 'text-align:center;padding:40px' }, ui.spinner(26)));
+    const custRow = m => ui.row({ leading: ui.avatar(m.customer.name, { size: 36 }), title: m.customer.name, subtitle: m.match, chevron: true, onTap: () => guard('customers', 'openDetail', m.customer.id) });
+    const custs = scope === 'all' && WD.can('crm.view') ? q.searchCustomers(s, 20) : [];
     if (scope === 'customers') { const found = q.searchCustomers(s, 20);
-      return box.replaceChildren(found.length ? ui.list(ui.section(found.length + (found.length === 1 ? ' customer' : ' customers'), found.map(m => ui.row({ leading: ui.avatar(m.customer.name, { size: 36 }), title: m.customer.name, subtitle: m.match, chevron: true, onTap: () => guard('customers', 'openDetail', m.customer.id) }))))
+      return box.replaceChildren(found.length ? ui.list(ui.section(found.length + (found.length === 1 ? ' customer' : ' customers'), found.map(custRow)))
         : ui.empty({ icon: 'magnifyingglass', title: 'No customers', text: 'Nothing matches “' + s + '”.' })); }
     const today = D.today(), all = q.searchJobs(s, routeIds()), past = all.filter(j => j.day < today).sort((a, b) => b.day.localeCompare(a.day) || q.order(a, b));
     const groups = [['Today', all.filter(j => j.day === today), when !== 'history'], ['Upcoming', all.filter(j => j.day > today).slice(0, 30), when !== 'history'], ['History · ' + past.length + (past.length === 1 ? ' past job' : ' past jobs'), past.slice(0, 80), when !== 'upcoming']].filter(g => g[2]);
     const serverRow = server === 'loading' ? h('div.row', ui.spinner(18), h('div.row-main.secondary', 'Asking the server for older jobs…'))
       : server ? ui.row({ icon: 'cloud', iconPlain: true, iconColor: 'var(--label2)', title: server.n ? server.n + ' older ' + (server.n === 1 ? 'job' : 'jobs') + ' loaded from the server' : 'The server has nothing older for “' + s + '”', subtitle: server.n ? 'Shown under History above' : null })
       : ui.row({ icon: 'cloud', iconPlain: true, title: 'Search older jobs on the server', subtitle: 'For history from before the jobs saved on this iPhone', tint: true, onTap: () => askServer(p) });
-    box.replaceChildren(ui.list(groups.map(([name, list]) => ui.section(name, list.map(jobRow))),
-      !groups.some(g => g[1].length) && ui.empty({ icon: 'magnifyingglass', title: 'No jobs on this iPhone', text: 'Nothing on your selected routes matches “' + s + '”' + (when === 'upcoming' ? ' today or later.' : '. Older jobs may still be on the server.') }),
+    box.replaceChildren(ui.list(custs.length > 0 && ui.section({ header: custs.length + (custs.length === 1 ? ' customer' : ' customers'), footer: custs.length > 5 ? 'Showing the first 5. Choose Customers above to see all ' + custs.length + '.' : null }, custs.slice(0, 5).map(custRow)),
+      groups.map(([name, list]) => ui.section(name, list.map(jobRow))),
+      !groups.some(g => g[1].length) && ui.empty({ icon: 'magnifyingglass', title: custs.length ? 'No jobs on this iPhone' : scope === 'all' ? 'Nothing found on this iPhone' : 'No jobs on this iPhone', text: 'Nothing on your selected routes matches “' + s + '”' + (when === 'upcoming' ? ' today or later.' : '. Older jobs may still be on the server.') }),
       when !== 'upcoming' && ui.section({ header: 'Older history', footer: 'Jobs from more than 10 days ago are kept on the server, not on this iPhone.' }, serverRow)));
   }
   function run(p) { clearTimeout(timer); server = null; loading = text.trim().length >= 2; fill(p); if (loading) timer = setTimeout(() => { loading = false; fill(p); }, 300 + Math.random() * 350); }
   ui.sheet({ title: 'Search', live: false, trailing: [{ label: 'Done', bold: true, onTap: p => p.dismiss() }], onClose: () => clearTimeout(timer),
     search: { placeholder: 'Jobs, customers, phone, address', autofocus: true, onInput: (v, p) => { text = v; run(p); } },
     render(p) { box = h('div'); setTimeout(() => fill(p), 0);
-      return [h('div.jb-seg', ui.segmented([{ value: 'jobs', label: 'Jobs' }, WD.can('crm.view') && { value: 'customers', label: 'Customers' }].filter(Boolean), scope, v => { scope = v; p.refresh(); })),
-        scope === 'jobs' && h('div.jb-seg', ui.segmented([{ value: 'all', label: 'All dates' }, { value: 'upcoming', label: 'Today and upcoming' }, { value: 'history', label: 'History' }], when, v => { when = v; fill(p); })), box]; } });
+      return [h('div.jb-seg', ui.segmented([WD.can('crm.view') && { value: 'all', label: 'All' }, { value: 'jobs', label: 'Jobs' }, WD.can('crm.view') && { value: 'customers', label: 'Customers' }].filter(Boolean), scope, v => { scope = v; p.refresh(); })),
+        scope !== 'customers' && h('div.jb-seg', ui.segmented([{ value: 'all', label: 'All dates' }, { value: 'upcoming', label: 'Today and upcoming' }, { value: 'history', label: 'History' }], when, v => { when = v; fill(p); })), box]; } });
 }
 
 /* ================= AutoRoute ================= */
@@ -665,7 +668,7 @@ async function openAutoRoute(routeId, o = {}) {
 }
 
 WD.addressSuggestions = addressSuggestions;
-WD.screens.jobs = { openDetails, openEditor, openReassign, openSearch, openAutoRoute, skipFlow, callOff };
+WD.screens.jobs = { openDetails, openEditor, openReassign, openSearch, openAutoRoute, skipFlow, callOff, copyTo, pickDay };
 const firstToday = pred => data.jobs.filter(j => j.day === D.today() && !j.allDay && pred(j)).sort(q.order)[0];
 WD.panel.addJump('Job details', () => { WD.nav.switchTab('board'); const j = firstToday(x => x.status === 'arrived') || firstToday(() => true); if (j) openDetails(j.id); });
 WD.panel.addJump('New job', () => { WD.nav.switchTab('board'); openEditor({ day: D.today(), routeId: 'r1' }); });

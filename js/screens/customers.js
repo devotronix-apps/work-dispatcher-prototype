@@ -223,12 +223,13 @@ function root() {
       R.loading = true; page.refresh();
       setTimeout(() => { if (t !== searchToken) return; R.loading = false; R.results = q.searchCustomers(R.query, 12); page.refresh(); }, 250);
     } },
-    trailing: () => [R.seg === 'customers' && !R.query ? { icon: 'line.3.horizontal.decrease.circle', label: 'Filter', onTap: (p, el) => filterMenu(el, p) } : null,
-      WD.can('crm.edit') ? { icon: 'plus', label: R.seg === 'tasks' ? 'New follow-up' : 'New customer', onTap: () => R.seg === 'tasks' ? newTask() : openNew() } : null],
+    trailing: () => [(R.seg === 'customers' || WD.can('leads.view')) && !R.query ? { icon: 'line.3.horizontal.decrease.circle', label: 'Filter', onTap: (p, el) => filterMenu(el, p) } : null,
+      WD.can('crm.edit') ? { icon: 'plus', label: R.seg === 'tasks' && !WD.can('leads.view') ? 'New follow-up' : 'New customer', onTap: () => R.seg === 'tasks' && !WD.can('leads.view') ? newTask() : openNew() } : null],
     onAppear: page => { R.page = page; },
     render: page => R.query ? searchView() : [
-      h('div.cu-seg', ui.segmented([{ value: 'customers', label: 'Customers' }, !WD.can('leads.view') && { value: 'leads', label: 'Leads' }, { value: 'tasks', label: 'Tasks' }, (WD.can('billing.view') || WD.can('billing.field')) && { value: 'invoices', label: 'Invoices' }].filter(Boolean), R.seg, v => { if (v === 'invoices') { WD.nav.push(WD.workflow.invoicesSpec()); return; } R.seg = v; page.refresh(); })),
-      R.seg === 'customers' ? customersView() : R.seg === 'leads' ? leadsView() : tasksView()] };
+      /* Tasks live on the CRM tab and invoices on the Invoices tab. People without the CRM tab keep Leads and Tasks here. */
+      !WD.can('leads.view') && h('div.cu-seg', ui.segmented([{ value: 'customers', label: 'Customers' }, { value: 'leads', label: 'Leads' }, { value: 'tasks', label: 'Tasks' }], R.seg, v => { R.seg = v; page.refresh(); })),
+      WD.can('leads.view') || R.seg === 'customers' ? customersView() : R.seg === 'leads' ? leadsView() : tasksView()] };
 }
 function filterMenu(el, page) {
   ui.menu(el, [{ header: 'Show' }, ...[['all', 'All customers', 'person.2'], ['balance', 'Balance due', 'dollarsign.circle'], ['route', 'By route', 'route'], ['household', 'Residential', 'house']]
@@ -405,22 +406,35 @@ function editContact(c, p) {
       ui.section({ footer: 'Phone numbers are 10 digits (559-968-4175), with an optional extension. They are matched to calls and texts from Quo; emails are matched to Gmail threads.' }, ui.phoneRow({ value: f.phone, ext: f.ext, onInput: (v, x) => { f.phone = v; f.ext = x; check(pg, ok()); } }),
         ui.inputRow({ label: 'Email', type: 'email', caps: 'off', placeholder: 'name@company.com', value: f.email, onInput: v => { f.email = v; check(pg, ok()); } }))) });
 }
+/** A master customer is billed once a month for all of its locations: each location's signed service note goes to that location's own email,
+    and the combined invoice goes to the master customer's billing email. */
+const isMaster = c => c.billingMode === 'serviceNote';
+const noteEmailOf = (c, l) => (l && l.noteEmail) || (c.contacts[0] || {}).email || '';
 function locationsSection(c) {
-  return ui.section('Service locations', c.locations.map(l => ui.row({ icon: 'mappin', iconColor: q.routeColor(c.route), title: l.label, subtitle: l.address.replace(/, Lakemont$/, '') + (l.containers ? ' · ' + l.containers : ''), chevron: true, onTap: () => WD.nav.push(locationPage(c.id, l.id)) })));
+  const master = isMaster(c), many = c.locations.length > 1;
+  return ui.section({ header: master ? 'Locations under this master customer · ' + c.locations.length : many ? 'Service locations · ' + c.locations.length : 'Service locations',
+      footer: master ? 'Each location is serviced and signed for on its own, and its service note is emailed to that location. One combined invoice a month goes to ' + (c.billingEmail || 'the billing email (add one under Edit)') + '.' : many ? 'To send this customer one combined invoice a month, set Billing to “Service note, monthly master invoice” under Edit.' : null },
+    c.locations.map(l => ui.row({ icon: 'mappin', iconColor: q.routeColor(c.route), title: l.label, subtitle: [l.address.replace(/, Lakemont$/, '') + (l.containers ? ' · ' + l.containers : ''), master && h('span', { style: l.noteEmail ? null : 'color:var(--orange)' }, l.noteEmail ? 'Service note to ' + l.noteEmail : 'No email for this location · note goes to ' + (noteEmailOf(c, l) || 'nobody'))].filter(Boolean).map(x => h('div', x)), chevron: true, onTap: () => WD.nav.push(locationPage(c.id, l.id)) })),
+    WD.can('crm.edit') && ui.row({ icon: 'plus.circle.fill', iconPlain: true, iconColor: 'var(--green)', title: master ? 'Add a location (sub-customer)' : 'Add a location', tint: true, onTap: () => editLocation(c.id, null) }));
 }
 function locationPage(cid, lid) {
   const find = () => { const c = q.customer(cid); return c && c.locations.find(l => l.id === lid); };
   return { title: () => (find() || {}).label || 'Location', trailing: () => WD.can('crm.edit') && find() ? [{ label: 'Edit', onTap: () => editLocation(cid, lid) }] : [],
     render: () => { const l = find(), c = q.customer(cid); if (!l) return ui.empty({ icon: 'mappin', title: 'Location removed' });
       return ui.list(ui.section('Address', ui.row({ title: l.address, subtitle: l.located === false ? 'Not located on the map yet' : 'Located', icon: 'mappin', iconColor: q.routeColor(c.route) }), ui.row({ title: 'Directions', tint: true, onTap: () => WD.workflow.openDirections({ title: l.label }) })),
+        ui.section({ header: 'Service notes', footer: isMaster(c) ? 'After each visit the signed service note is emailed here. The monthly combined invoice goes to ' + (c.billingEmail || 'the master customer’s billing email') + ', not to this location.' : 'Used when this customer is billed by service note with one combined monthly invoice.' },
+          ui.row({ title: 'Site contact', detail: l.contactName || '—' }), ui.row({ title: 'Service note email', detail: l.noteEmail || (noteEmailOf(c, l) ? noteEmailOf(c, l) + ' (main contact)' : '—') })),
         ui.section('Service', ui.row({ title: 'Containers', detail: l.containers || '—' }), ui.row({ title: 'Business hours', detail: l.bizOpen ? fmt.time(fmt.fromHHMM(l.bizOpen)) + ' – ' + fmt.time(fmt.fromHHMM(l.bizClose)) : '—' }), ui.row({ title: 'Route', detail: q.routeName(c.route) })),
         ui.section({ header: 'Access notes', footer: 'Drivers see these notes on every job at this location.' }, h('div.cu-block', l.notes || 'No access notes.'))); } };
 }
 function editLocation(cid, lid) {
-  const l = q.customer(cid).locations.find(x => x.id === lid), f = { ...l }, ok = () => !!(f.label.trim() && f.address.trim());
-  ui.sheet({ title: 'Edit location', leading: [{ label: 'Cancel', onTap: p => p.dismiss() }],
-    trailing: () => [{ label: 'Save', bold: true, disabled: !ok(), onTap: async p => { if (ok() && await ui.run('Saving location…', () => { if (f.address !== l.address) f.located = true; if (f.containers !== l.containers) f.items = WD.parseItems(f.containers); Object.assign(l, f); }, { done: 'Saved' })) p.dismiss(); } }],
-    render: p => ui.list(ui.section(null, ui.inputRow({ label: 'Label', value: f.label, onInput: v => { f.label = v; check(p, ok()); } }), ui.inputRow({ label: 'Address', value: f.address, onInput: v => { f.address = v; check(p, ok()); } }), ui.inputRow({ label: 'Containers', placeholder: '2 consoles', value: f.containers, onInput: v => { f.containers = v; } })),
+  const c = q.customer(cid), first0 = c.locations[0] || {}, isNew = !lid, l = isNew ? { id: cid + 'l' + Date.now().toString(36), label: '', address: '', x: Math.max(60, Math.min(940, (first0.x || 500) + 40 + c.locations.length * 23)), y: Math.max(60, Math.min(940, (first0.y || 500) - 30 + c.locations.length * 17)), containers: '', items: [], bizOpen: first0.bizOpen || '08:00', bizClose: first0.bizClose || '17:00', notes: '', lunchFrom: '', lunchUntil: '', closedDays: [], callAhead: 0, contactName: '', noteEmail: '' } : c.locations.find(x => x.id === lid);
+  const f = { contactName: '', noteEmail: '', ...l }, ok = () => !!(f.label.trim() && f.address.trim());
+  ui.sheet({ title: isNew ? 'New location' : 'Edit location', leading: [{ label: 'Cancel', onTap: p => p.dismiss() }],
+    trailing: () => [{ label: isNew ? 'Add' : 'Save', bold: true, disabled: !ok(), onTap: async p => { if (ok() && await ui.run('Saving location…', () => { if (f.address !== l.address) f.located = true; if (f.containers !== l.containers) f.items = WD.parseItems(f.containers); f.noteEmail = (f.noteEmail || '').trim(); f.contactName = (f.contactName || '').trim(); if (isNew && !/,/.test(f.address)) f.address = f.address.trim() + ', Lakemont'; Object.assign(l, f); if (isNew) c.locations.push(l); }, { done: isNew ? 'Location added' : 'Saved' })) p.dismiss(); } }],
+    render: p => ui.list(ui.section({ footer: isNew ? 'A location is a place you service under ' + c.name + ', with its own name, address, containers and contact.' : null }, ui.inputRow({ label: 'Label', placeholder: 'Location name, e.g. Site 104 - Fresno', value: f.label, onInput: v => { f.label = v; check(p, ok()); } }), ui.inputRow({ label: 'Address', value: f.address, onInput: v => { f.address = v; check(p, ok()); } }), ui.inputRow({ label: 'Containers', placeholder: '2 consoles', value: f.containers, onInput: v => { f.containers = v; } })),
+      ui.section({ header: 'Service notes', footer: isMaster(c) ? 'The signed service note for each visit here is emailed to this address. The monthly combined invoice goes to ' + (c.billingEmail || 'the master customer’s billing email') + '.' : 'Used when the customer is billed by service note with one combined monthly invoice.' },
+        ui.inputRow({ label: 'Site contact', placeholder: 'Who signs here', caps: 'words', value: f.contactName, onInput: v => { f.contactName = v; } }), ui.inputRow({ label: 'Note email', type: 'email', caps: 'off', placeholder: 'This location’s own email', value: f.noteEmail, onInput: v => { f.noteEmail = v; } })),
       ui.section('Business hours', ui.timeRow({ title: 'Opens', value: f.bizOpen, onChange: v => { f.bizOpen = v; } }), ui.timeRow({ title: 'Closes', value: f.bizClose, onChange: v => { f.bizClose = v; } })),
       ui.section('Access notes', ui.inputRow({ placeholder: 'Gate codes, where to park, who to ask for', multiline: true, value: f.notes, onInput: v => { f.notes = v; } }))) });
 }
@@ -487,7 +501,7 @@ function detailsSection(c) {
     c.lostReason && c.lifecycle === 'lost' && ui.row({ title: 'Lost reason', detail: c.lostReason }), ui.row({ title: 'Customer type', detail: WD.custType(c.custType).title }), ui.row({ title: 'Default job type', detail: q.jobType(c.type).title }), ui.row({ title: 'Frequency', detail: c.freq }),
     ui.row({ title: 'Route', detail: q.routeName(c.route) }),
     c.billingEmail && ui.row({ title: 'Billing email', detail: c.billingEmail }), c.po && ui.row({ title: 'PO number', detail: c.po }), c.contract && ui.row({ title: 'Contract', detail: c.contract }),
-    ui.row({ title: 'Customer signature', detail: (WD.SIG_POLICIES.find(x => x.value === WD.sigPolicy(c)) || {}).label }), ui.row({ title: 'Billing', detail: c.billingMode === 'serviceNote' ? 'Service notes · monthly master invoice' : 'Invoice each visit' }), c.tags.length && h('div.row', h('div.cu-tags', c.tags.map(t => ui.badge(t, 'var(--indigo)')))), h('div.cu-block', c.notes || h('span.secondary', 'No notes')));
+    ui.row({ title: 'Customer signature', detail: (WD.SIG_POLICIES.find(x => x.value === WD.sigPolicy(c)) || {}).label }), ui.row({ title: 'Billing', subtitle: c.billingMode === 'serviceNote' ? 'Master customer: one combined invoice a month to ' + (c.billingEmail || 'the billing email') + '; each location gets its own service note' : null, detail: c.billingMode === 'serviceNote' ? 'Monthly master invoice' : 'Invoice each visit' }), c.tags.length && h('div.row', h('div.cu-tags', c.tags.map(t => ui.badge(t, 'var(--indigo)')))), h('div.cu-block', c.notes || h('span.secondary', 'No notes')));
 }
 function addNote(cid) {
   let text = '';
@@ -510,6 +524,7 @@ function editCustomer(id) {
         WD.x.poRows({ st: poSt, getPO: () => f.po, setPO: v => { f.po = v; }, schedule: c.poSchedule, docs: c.documents, refresh: () => { blur(); p.refresh(); } }), ui.inputRow({ label: 'Contract', placeholder: 'None', value: f.contract, onInput: v => { f.contract = v; } }),
         ui.pickerRow({ title: 'Customer signature', options: WD.SIG_POLICIES, value: f.sig, onChange: v => { f.sig = v; p.refresh(); } }),
         ui.pickerRow({ title: 'Billing', options: WD.workflow.BILLING_MODES, value: f.mode, onChange: v => { f.mode = v; if (v === 'serviceNote') f.sig = 'always'; p.refresh(); } }),
+        f.mode === 'serviceNote' && h('div.row', h('div.row-main', h('div.row-title', 'Master customer'), h('div.row-sub', 'No invoice after each visit. Every location’s signed service note is emailed to that location’s own email (set on each location), and one combined invoice a month goes to the billing email above' + (f.billingEmail.trim() ? '' : ' — add one') + '. ' + c.locations.length + (c.locations.length === 1 ? ' location' : ' locations') + ' so far; add more from the customer’s page.'))),
         ui.row({ title: 'Documents and POs', detail: String(c.documents.length + c.poSchedule.length), chevron: true, onTap: () => { p.dismiss(); setTimeout(() => WD.nav.push(WD.workflow.poScheduleSpec(c)), 420); } })),
       ui.section({ header: 'Tags', footer: 'Separate tags with commas.' }, ui.inputRow({ placeholder: 'Medical, Tax season', value: f.tags, onInput: v => { f.tags = v; } })),
       ui.section('Notes', ui.inputRow({ placeholder: 'Notes about this customer', multiline: true, value: f.notes, onInput: v => { f.notes = v; } }))) });
@@ -791,7 +806,7 @@ function showSeg(seg) {
   R.seg = seg; R.query = ''; R.results = null; R.loading = false; WD.nav.switchTab('customers');
   if (R.page) { const inp = R.page.navbar.querySelector('.nav-search input'), box = R.page.navbar.querySelector('.search-box'); if (inp) inp.value = ''; if (box) box.classList.remove('filled'); R.page.refresh(); }
 }
-WD.screens.customers = { root, openDetail, openNew, simulateCall, invoicePage, crm: { PIPE, LC, CHANNELS, LOST, mk, addI, addTask, logCall, moveStage, setNext, markLost, contactedYet, nextLabel, staff, first, startCall, timeline, describe, owners } };
+WD.screens.customers = { root, openDetail, openNew, simulateCall, invoicePage, crm: { PIPE, LC, CHANNELS, LOST, mk, addI, addTask, logCall, moveStage, setNext, markLost, contactedYet, nextLabel, staff, first, startCall, timeline, describe, owners, tasksView, newTask }, noteEmailOf };
 WD.panel.addAction('Incoming call (known customer)', () => simulateCall('c1'));
 WD.panel.addAction('Incoming call (unknown number)', () => simulateCall(null));
 WD.panel.addJump('Customer record', () => { WD.nav.switchTab('customers'); openDetail('c1'); });
