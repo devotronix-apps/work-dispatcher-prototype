@@ -4,7 +4,7 @@
 'use strict';
 const WD = window.WD = { screens: {}, data: {} };
 /** Prototype version (Settings → About). Bump on every publish; the “what’s new” tutorial shows once per version. */
-WD.version = '2.8';
+WD.version = '2.9';
 const $ = (s, r) => (r || document).querySelector(s);
 
 /* ================= DOM helper ================= */
@@ -304,6 +304,9 @@ ui.quarterRow = o => {
   const ms = h('select.pill-input.qt-m', { 'aria-label': (o.title || 'Time') + ' minutes', disabled: hh === '', onchange: e => { mm = +e.target.value; emit(); } }, [0, 15, 30, 45].map(m => h('option', { value: m, selected: mm === m }, ':' + String(m).padStart(2, '0'))));
   return ui.row({ title: o.title, subtitle: o.subtitle, icon: o.icon, iconColor: o.iconColor, trailing: h('div.qt', hs, ms) });
 };
+/** A count that can be typed. Commits when the field loses focus or Return is pressed; out-of-range values are pulled back into range. */
+ui.numField = (value, min, max, onChange, label) => h('input.numfield', { type: 'text', inputmode: 'numeric', 'aria-label': label || 'Quantity', value: String(value), onfocus: e => e.target.select(), onkeydown: e => { if (e.key === 'Enter') e.target.blur(); },
+  onchange: e => { const n = parseInt(e.target.value.replace(/\D/g, ''), 10), v = Math.min(max, Math.max(min, isNaN(n) ? min : n)); e.target.value = String(v); if (v !== value) onChange(v); } });
 ui.stepper = (value, min, max, onChange) => h('div.stepper', h('button', { disabled: value <= min, onclick: () => onChange(value - 1) }, '−'), h('button', { disabled: value >= max, onclick: () => onChange(value + 1) }, '+'));
 ui.segmented = (options, value, onChange) => h('div.segmented', options.map(x => typeof x === 'object' ? x : { value: x, label: String(x) }).map(x =>
   h('button' + (x.value === value ? '.on' : ''), { onclick: e => { [...e.currentTarget.parentNode.children].forEach(b => b.classList.remove('on')); e.currentTarget.classList.add('on'); onChange && onChange(x.value); } }, x.label)));

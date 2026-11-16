@@ -148,7 +148,7 @@ X.changeService = (c, o = {}) => {
           f.items.map(i => { const b = base.find(x => x.id === i.id);
             return h('div.row.jb-item', h('div.row-main', h('div.row-title', pb(i.id).name), h('div.row-sub', b && b.rate !== i.rate ? 'Was ' + money(b.rate) : 'Rate each')),
               h('input.jb-rate', { type: 'text', inputmode: 'decimal', 'aria-label': pb(i.id).name + ' rate', value: '$' + i.rate, oninput: e => { const v = parseFloat(e.target.value.replace(/[^0-9.]/g, '')); i.rate = isNaN(v) ? 0 : v; f.pct = -1; }, onchange: () => p.refresh() }),
-              h('span.jb-qn', String(i.qty)), ui.stepper(i.qty, 0, 40, v => { i.qty = v; p.refresh(); })); })),
+              ui.numField(i.qty, 0, 500, v => { i.qty = v; p.refresh(); }), ui.stepper(i.qty, 0, 500, v => { i.qty = v; p.refresh(); })); })),
         ui.section('Service interval', ui.pickerRow({ title: 'Service every', value: f.freq, options: FREQS.includes(f.freq) ? FREQS : [f.freq].concat(FREQS), onChange: v => { f.freq = v; p.refresh(); } })),
         ui.section({ header: 'Starts with service on', footer: (visits ? visits + (visits === 1 ? ' scheduled visit' : ' scheduled visits') + ' on or after this date will use the new pricing.' : 'Every visit on or after this date uses the new pricing.') + ' Earlier visits keep the current pricing.' },
           ui.dateRow({ title: 'Service date', icon: 'calendar', iconColor: 'var(--red)', value: f.effective, onChange: v => { f.effective = v; p.refresh(); } })),
@@ -429,6 +429,12 @@ const TOUR = [
   { tab: 'Map', icon: 'map', title: 'Map: the next 45 days', list: ['The distance now goes out to 50 miles.', 'Typing an address offers matching addresses to pick from, like “123 Main St”.'] },
   { tab: 'Settings', icon: 'gearshape', title: 'For any route business', list: ['Settings → Business type and wording: pick your industry and the wording on invoices.', 'Service checklists with required photos, and your own custom fields.', 'Fleet: pre-trip inspections, maintenance and expiring documents.', 'Load sheet and truck capacity, mileage and expenses, route performance, and sales tax.'] },
   { tab: 'Customers', icon: 'building', title: 'Pause a customer’s service', text: 'For a vacation or a seasonal closing: open the customer and choose Pause service. Visits in those dates come off the routes and return afterward.' },
+  /* 2.9 — added after the 2.8 steps above, which stay for this release because they had not been seen yet. */
+  { tab: 'Dispatch', icon: 'barcode', title: 'Scan at the job, before the invoice', list: ['Open a job with hard drives: “Scan at the job” is right under the Complete button.', 'Scan each drive’s serial number while you are there. No invoice is needed first.', 'The numbers are saved on the job and are already in billing details when you create the invoice or service note.'] },
+  { tab: 'Customers', icon: 'barcode', title: 'Customers who require container scans', list: ['Edit customer → At the job → Scan container barcodes.', 'Their jobs then get the same “Scan at the job” step for each container.', 'Every container is scanned, or a reason is given, before the invoice or service note.'] },
+  { tab: 'Dispatch', icon: 'pencil', title: 'Type the number of hard drives', text: 'When creating a job, tap the number beside “Hard drives to destroy” and type it. The − and + buttons still work. Container counts can be typed the same way.' },
+  { tab: 'Invoices', icon: 'doc.text', title: 'Invoices match your everyday invoice', list: ['Route and purge invoices now follow your samples: Item, Description, Unit Cost, Quantity and Line Total.', 'Total, Paid to Date and Balance Due sit beside the signature, with a PAID stamp once paid.', 'The service-summary layout is kept for master invoices built from service notes.'] },
+  { tab: 'Dispatch', icon: 'dollarsign.circle', title: 'Confirm the price when you schedule', list: ['The confirmation for a new job has a new Pricing choice.', 'Include the pricing rates, or the estimated total worked out from what the customer told you.', 'Set how it starts in Settings → Job confirmations.'] },
 ];
 X.tutorial = () => {
   const screen = document.getElementById('screen'), old = screen.querySelector('.x-tour'); if (old) old.remove();

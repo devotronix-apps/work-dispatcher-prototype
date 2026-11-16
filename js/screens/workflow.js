@@ -143,7 +143,7 @@ const openNotes = cid => data.serviceNotes.filter(n => n.customerId === cid && !
 function addServiceNote(job, o) {
   const c = q.customer(job.customerId), loc = c && (c.locations.find(l => l.id === job.locationId) || c.locations[0]);
   const n = { id: 'sn' + (++snSeq), number: o.number || 'SN-' + snSeq, customerId: job.customerId, jobId: job.id, day: o.day || job.day, location: loc ? loc.label : job.title, address: job.address, lines: o.lines.map(l => ({ ...l })),
-    amount: o.lines.reduce((s, l) => s + (+l.qty || 0) * (+l.rate || 0), 0), pounds: o.pounds || null, po: o.po || '', signer: o.signer || '', sig: o.sig || null, by: o.by || (S.me && S.me.name), at: o.at || +WD.now(), masterId: null,
+    amount: o.lines.reduce((s, l) => s + (+l.qty || 0) * (+l.rate || 0), 0), pounds: o.pounds || null, scans: o.scans || [], scanNote: o.scanNote || '', drives: o.drives || [], driveNote: o.driveNote || '', po: o.po || '', signer: o.signer || '', sig: o.sig || null, by: o.by || (S.me && S.me.name), at: o.at || +WD.now(), masterId: null,
     emailedTo: c ? (loc && loc.noteEmail) || (c.contacts[0] || {}).email || '' : '' };   /* each location's own email gets its service note; the combined invoice goes to the billing email */
   data.serviceNotes.push(n); return n;
 }

@@ -63,6 +63,26 @@ WD.css(`
 .bi-cod { margin-top: 14px; } .bi-cod b { font-size: 19px; } .bi-cod p { margin: 6px 10px 0; text-align: center; font-style: italic; font-size: 14.5px; line-height: 20px; }
 .bi-pg { text-align: center; margin-top: 30px; font-size: 13px; }
 .bi-acts { display: flex; flex-direction: column; gap: 10px; margin: 18px 0 6px; }
+.bn-doc { width: 660px; min-height: 854px; display: flex; flex-direction: column; box-sizing: border-box; background: #fff; color: #1c1c1e; margin: 0 auto 18px; padding: 40px 56px 30px; box-shadow: 0 2px 14px rgba(0,0,0,.16); font: 13px/16px Georgia, 'Times New Roman', serif; letter-spacing: 0; }
+.bn-top, .bn-mid, .bn-bot { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; }
+.bn-top .bn-co { line-height: 19px; } .bn-top .bi-logo { margin-top: 0; }
+.bn-mid { margin-top: 34px; } .bn-mid .bn-to { line-height: 16px; padding-top: 4px; }
+.bn-ttl { color: #1E7B34; font-size: 23px; line-height: 26px; margin-bottom: 4px; }
+.bn-meta { display: grid; grid-template-columns: auto auto; gap: 1px 14px; }
+.bn-tab { width: 100%; border-collapse: collapse; margin-top: 28px; }
+.bn-tab th { background: #f4f4f4; text-align: left; font-weight: 700; padding: 13px 10px; vertical-align: middle; }
+.bn-tab td { padding: 12px 10px; border-bottom: 1px solid #ddd; vertical-align: middle; }
+.bn-tab tbody tr:nth-child(even) td { background: #f4f4f4; }
+.bn-tab th:first-child { width: 21%; } .bn-tab .r { text-align: right; } .bn-tab .n { white-space: nowrap; }
+.bn-bot { margin-top: 12px; }
+.bn-sig { position: relative; flex: 1; min-height: 110px; padding-top: 6px; }
+.bn-sig .bn-ink { height: 62px; display: flex; align-items: flex-end; } .bn-sig .bn-ink img, .bn-sig .bn-ink svg { max-height: 60px; max-width: 200px; color: #1c1c1e; }
+.bn-sig .bn-cap { font-size: 10.5px; line-height: 13px; color: #555; margin: 2px 0 6px; }
+.bn-stamp { position: absolute; left: 4px; top: 10px; transform: rotate(-6deg); border: 4px double #f3b6bd; color: #f3b6bd; font: 800 42px/50px Helvetica, Arial, sans-serif; letter-spacing: 2px; padding: 12px 26px; pointer-events: none; }
+.bn-tot { width: 250px; flex: none; } .bn-tot div { display: flex; justify-content: space-between; padding: 5px 9px; font-weight: 700; } .bn-tot div.x { font-weight: 400; } .bn-tot div.due { background: #e5e5e5; padding: 8px 9px; margin-top: 3px; }
+.bn-doc .bi-scan { font-family: -apple-system, Helvetica, sans-serif; margin-top: 12px; }
+.bn-fill { flex: 1; min-height: 30px; }
+.bn-cod { border-top: 1.5px solid #000; padding-top: 8px; } .bn-cod b { font-size: 14px; display: block; }
 .bi-doc .sc { font-size: 11px; color: #3a3a3c; margin-top: 3px; display: flex; justify-content: space-between; gap: 8px; }
 `);
 
@@ -157,11 +177,14 @@ function openEditor(jobId, o = {}) {
   if (!canInvoice()) return ui.toast('Your role can’t create invoices', 'lock');
   const wf = WD.workflow || {}, cust = q.customer(job.customerId), contact = cust && cust.contacts[0], prev = job.invoice && job.invoice.status === 'Draft' ? job.invoice : null, rep = repFor(job);
   const note = !!(cust && cust.billingMode === 'serviceNote' && !o.lines), pol = note ? 'always' : WD.sigPolicy(cust), poOf = day => wf.poFor && cust && cust.poSchedule && cust.poSchedule.length ? wf.poFor(cust, day).po : null;
-  const f = prev ? { lines: prev.lines.map(l => ({ ...l })), po: prev.po || '', contract: prev.contract || '', billTo: prev.billTo || '', includeDate: prev.includeDate !== false, serviceDate: prev.serviceDate || job.day, scans: (prev.scans || []).slice(), scanNote: prev.scanNote || '', drives: (prev.drives || []).slice(), driveScan: prev.driveScan != null ? prev.driveScan : !!job.hddScan, driveNote: prev.driveNote || '', custSig: prev.custSig || null, custName: prev.custName || '', pounds: prev.pounds || '', pay: 'none', checkNo: '', other: '', note: prev.note || '' }
-    : { lines: o.lines || linesForJob(job), po: poOf(job.day) != null ? poOf(job.day) : job.po || (cust && cust.po) || '', contract: job.contract || (cust && cust.contract) || '', billTo: (cust && (cust.billingEmail || (contact && contact.email))) || '', includeDate: true, serviceDate: job.day, scans: [], scanNote: '', drives: [], driveScan: !!job.hddScan, driveNote: '', custSig: null, custName: '', pounds: '', pay: o.pay || 'none', checkNo: '', other: '', note: o.note || '' };
+  /* Scans are kept on the job, so anything scanned at the stop before billing is already here. */
+  const JS = WD.jobScans ? WD.jobScans(job) : { containers: [], containerNote: '', drives: [], driveNote: '' };
+  if (prev) { if (!JS.containers.length) JS.containers.push(...(prev.scans || [])); if (!JS.drives.length) JS.drives.push(...(prev.drives || [])); }
+  const f = prev ? { lines: prev.lines.map(l => ({ ...l })), po: prev.po || '', contract: prev.contract || '', billTo: prev.billTo || '', includeDate: prev.includeDate !== false, serviceDate: prev.serviceDate || job.day, scans: JS.containers, scanNote: JS.containerNote || prev.scanNote || '', drives: JS.drives, driveScan: prev.driveScan != null ? prev.driveScan : !!job.hddScan, driveNote: JS.driveNote || prev.driveNote || '', custSig: prev.custSig || null, custName: prev.custName || '', pounds: prev.pounds || '', pay: 'none', checkNo: '', other: '', note: prev.note || '' }
+    : { lines: o.lines || linesForJob(job), po: poOf(job.day) != null ? poOf(job.day) : job.po || (cust && cust.po) || '', contract: job.contract || (cust && cust.contract) || '', billTo: (cust && (cust.billingEmail || (contact && contact.email))) || '', includeDate: true, serviceDate: job.day, scans: JS.containers, scanNote: JS.containerNote, drives: JS.drives, driveScan: !!job.hddScan, driveNote: JS.driveNote, custSig: null, custName: '', pounds: '', pay: o.pay || 'none', checkNo: '', other: '', note: o.note || '' };
   let totalEl = null, taxEl = null;
   /* Container barcodes (Settings → Container barcodes): scan each container at the stop to prove service. */
-  const tags = WD.co && WD.co.barcodesOn() ? WD.co.containers(job) : [], scanShort = () => tags.length > 0 && f.scans.length < tags.length && !f.scanNote;
+  const tags = WD.co && WD.co.scanFor(job) ? WD.co.containers(job) : [], scanShort = () => tags.length > 0 && f.scans.length < tags.length && !f.scanNote;
   /* Hard drives: when this job asks for it, each drive's barcode or serial number is scanned before it is destroyed. */
   const hddQty = () => f.lines.filter(l => l.id === 'hdd').reduce((s, l) => s + (+l.qty || 0), 0), driveShort = () => f.driveScan && hddQty() > 0 && f.drives.length < hddQty() && !f.driveNote;
   const syncTotal = () => { const t = taxInfo(f.lines, cust); if (taxEl) taxEl.textContent = fmt.money(t.tax, true); if (totalEl) totalEl.textContent = fmt.money(total(f.lines) + t.tax, true); };
@@ -194,15 +217,15 @@ function openEditor(jobId, o = {}) {
     if (!draft) {
       /* A price changed on the invoice can become the customer's price for this and all future visits. */
       if (!o.lines && !(await WD.x.priceChangePrompt(job, f.lines))) return;
-      if (scanShort() && data.settings.barcodes.require) {
+      if (scanShort() && WD.co.scanRequired(job)) {
         const v = await ui.actionSheet({ title: f.scans.length + ' of ' + tags.length + ' containers scanned', message: 'Every container is scanned to prove it was serviced.', buttons: [{ label: 'Scan containers', value: 'scan' }, { label: 'A label is missing or damaged…', value: 'why' }] });
         if (v === 'scan') return WD.co.scanSheet(job, f.scans, () => p.refresh());
-        if (v !== 'why') return; const r = await ui.alert({ title: 'What happened?', input: { placeholder: 'e.g. Label torn off console 2' }, buttons: [{ label: 'Cancel', value: null }, { label: 'Save', value: true, bold: true }] }); if (!r || !r.value || !r.text.trim()) return; f.scanNote = r.text.trim();
+        if (v !== 'why') return; const r = await ui.alert({ title: 'What happened?', input: { placeholder: 'e.g. Label torn off console 2' }, buttons: [{ label: 'Cancel', value: null }, { label: 'Save', value: true, bold: true }] }); if (!r || !r.value || !r.text.trim()) return; f.scanNote = JS.containerNote = r.text.trim();
       }
       if (driveShort() && WD.ops) {
         const v = await ui.actionSheet({ title: f.drives.length + ' of ' + hddQty() + ' hard drives scanned', message: 'This job asks for every drive’s serial number.', buttons: [{ label: 'Scan hard drives', value: 'scan' }, { label: 'A drive has no readable label…', value: 'why' }] });
         if (v === 'scan') return WD.ops.scanDrives(job, f.drives, hddQty(), () => p.refresh());
-        if (v !== 'why') return; const r = await ui.alert({ title: 'What happened?', input: { placeholder: 'e.g. 2 drives had no label' }, buttons: [{ label: 'Cancel', value: null }, { label: 'Save', value: true, bold: true }] }); if (!r || !r.value || !r.text.trim()) return; f.driveNote = r.text.trim();
+        if (v !== 'why') return; const r = await ui.alert({ title: 'What happened?', input: { placeholder: 'e.g. 2 drives had no label' }, buttons: [{ label: 'Cancel', value: null }, { label: 'Save', value: true, bold: true }] }); if (!r || !r.value || !r.text.trim()) return; f.driveNote = JS.driveNote = r.text.trim();
       }
       if (sigMissing()) {
         const v = await ui.actionSheet({ title: (cust ? cust.name : 'This customer') + ' requires a signature', message: note ? 'Service notes are always signed by the site contact.' : 'Set in the customer’s settings: always required.', buttons: [{ label: 'Get signature', value: 'sign' }] });
@@ -216,7 +239,7 @@ function openEditor(jobId, o = {}) {
     if (note && !draft) {
       let sn = null;
       api.op({ kind: 'edit', title: job.title, scope: 'Service note', jobIds: [job.id], apply() {
-        sn = wf.addServiceNote(job, { lines: f.lines, po: f.po.trim(), signer: f.custName, sig: f.custSig, day: f.serviceDate, pounds: f.pounds || null });
+        sn = wf.addServiceNote(job, { lines: f.lines, po: f.po.trim(), signer: f.custName, sig: f.custSig, day: f.serviceDate, pounds: f.pounds || null, scans: f.scans.slice(), scanNote: f.scanNote, drives: f.driveScan ? f.drives.slice() : [], driveNote: f.driveNote });
         job.billing = { kind: 'serviceNote', number: sn.number, amount, at: +WD.now(), by: me, signer: f.custName }; job.po = f.po.trim();
         job.events.push({ at: +WD.now(), actor: me, text: 'Service note ' + sn.number + ' signed by ' + (f.custName || 'customer') + ' · ' + fmt.money(amount, true) + ' · added to the master invoice' + (sn.emailedTo ? ' · emailed to ' + sn.emailedTo : '') }); } });
       return finish(p, (sn ? sn.number : 'Service note') + ' saved' + (sn && sn.emailedTo ? ' · emailed to ' + sn.emailedTo : '') + ' · added to the master invoice', 'tray');
@@ -260,7 +283,7 @@ function openEditor(jobId, o = {}) {
         tags.length > 0 && ui.section({ header: 'Containers', footer: f.scanNote ? 'Not all scanned: ' + f.scanNote : data.settings.barcodes.onInvoice ? 'The container numbers and scan times print on the invoice.' : null },
           ui.row({ icon: f.scans.length >= tags.length ? 'checkmark.circle.fill' : 'barcode', iconPlain: true, iconColor: f.scans.length >= tags.length ? 'var(--green)' : 'var(--orange)', title: 'Scan container barcodes', subtitle: f.scans.length + ' of ' + tags.length + ' scanned', chevron: true, onTap: () => WD.co.scanSheet(job, f.scans, () => p.refresh()) })),
         hddQty() > 0 && WD.ops && ui.section({ header: 'Hard drives', footer: f.driveScan ? (f.driveNote ? 'Not all scanned: ' + f.driveNote : 'The serial numbers print on the invoice as proof each drive was destroyed.') : 'Counted and destroyed without scanning. Switch on if this customer needs the serial numbers.' },
-          ui.toggleRow({ title: 'Scan each drive', subtitle: 'Barcode or serial number, for this job', value: f.driveScan, onChange: v => { f.driveScan = v; p.refresh(); } }),
+          ui.toggleRow({ title: 'Scan each drive', subtitle: 'Barcode or serial number, for this job', value: f.driveScan, onChange: v => { f.driveScan = job.hddScan = v; p.refresh(); } }),
           f.driveScan && ui.row({ icon: f.drives.length >= hddQty() ? 'checkmark.circle.fill' : 'barcode', iconPlain: true, iconColor: f.drives.length >= hddQty() ? 'var(--green)' : 'var(--orange)', title: 'Scan hard drives', subtitle: f.drives.length + ' of ' + hddQty() + ' scanned', chevron: true, onTap: () => WD.ops.scanDrives(job, f.drives, hddQty(), () => p.refresh()) })),
         pol !== 'never' && ui.section({ header: 'Customer signature', footer: pol === 'always' ? (note ? 'Service notes are always signed.' : c.name + ' always requires a signature.') + ' Create unlocks once they sign.' : 'Optional for this customer. Get a signature if they want to sign.' },
           f.custSig ? [h('div.bi-sig', h('div.bi-ink', sigView(f.custSig)), h('div.bi-cap', 'Customer Signature' + (f.custName ? ' · ' + f.custName : ''))), ui.row({ title: 'Sign again', tint: true, onTap: () => getCustomerSig(p) })]
@@ -327,14 +350,50 @@ function invoicePages(o) {
   });
 }
 const docWrap = pages => h('div.bi-docwrap', pages);
+/* ---------- The standard invoice (a route visit or a purge job) ----------
+   Follows the company's everyday invoice: logo and the company address; the customer's address beside "Invoice" with Invoice Number,
+   Invoice Date and Due Date; a table of Item, Description, Unit Cost, Quantity and Line Total; the signature beside Total, Paid to Date
+   and Balance Due (with a PAID stamp once paid); and the certificate of destruction at the foot of the page.
+   The service-summary layout above is kept for master invoices built from service notes. */
+const ITEM = { console: ['Console Route Service', 'Recurring Service Console Shredded On-site'], bin64: ['64 Gal Bin Route Service', 'Recurring Service 64 Gallon Bin Shredded On-site'], bin96: ['96 Gal Bin Route Service', 'Recurring Service 96 Gallon Bin Shredded On-site'],
+  box: ['File boxes', 'Regular Size File Boxes 12x15x10 (1 cu. ft.)'], hdd: ['Hard drives', 'Onsite hard drive destruction'], binExtra: ['Additional bins', '65 Gallon Bin Shredded On-site'], trip: ['Trip charge', 'Trip to the service location'],
+  stairsDown: ['Stairs', 'Boxes carried down stairs'], stairsUp: ['Stairs', 'Boxes carried up stairs'], haul: ['Haul away', 'Empty boxes hauled away'] };
+/** [Item, Description] for a line. A line the driver renamed, or a custom charge, prints its own wording. */
+function itemText(l) {
+  const pb = l.id && data.priceBook.find(x => x.id === l.id);
+  if (pb && (pb.item || pb.desc)) return [pb.item || pb.name, pb.desc || ''];
+  if (l.id === 'binFlat' && pb && l.name === pb.name) return ['Flat Rate', 'Shredding first ' + data.purgePricing.binIncluded + ' 65 gallon ' + (data.purgePricing.binIncluded === 1 ? 'bin' : 'bins')];
+  if (pb && ITEM[l.id] && l.name === pb.name && biz().industry !== 'other') return ITEM[l.id];
+  return [l.name, pb && l.name !== pb.name ? pb.name : ''];
+}
+const mdy2 = day => { const d = D.parse(day), z = n => String(n).padStart(2, '0'); return z(d.getMonth() + 1) + '/' + z(d.getDate()) + '/' + d.getFullYear(); };
+const stdProof = () => { const t = biz().proofText; return !t || /per the terms of the service agreement/.test(t) ? 'This certifies that {company} has destroyed all confidential data and products received from the above mentioned company.' : t; };
+/** o: {number, date, terms, billTo, lines, tax, taxLabel, paid, po, serviceDate, revised, pounds, sigs: [{sig, cap}], scans, scanNote, drives, driveNote} */
+function standardInvoice(o) {
+  const org = S.org || data.orgs[0], lines = o.lines.filter(l => l.qty || l.rate), tax = +o.tax || 0, tot = total(lines) + tax, net = parseInt((String(o.terms || '').match(/\d+/) || [30])[0], 10);
+  const meta = [['Invoice Number', o.number], ['Invoice Date', mdy2(o.date)], ['Due Date', mdy2(D.add(o.date, net))], o.serviceDate && o.serviceDate !== o.date && ['Service Date', mdy2(o.serviceDate)], o.po && ['PO Number', o.po], o.revised && ['Revised', o.revised]].filter(Boolean);
+  return h('div.bn-doc',
+    h('div.bn-top', logo(), h('div.bn-co', [org.name].concat((org.remit || []).slice(1), org.phone || [], org.website || []).map(x => h('div', x)))),
+    h('div.bn-mid', h('div.bn-to', (o.billTo || []).map(x => h('div', x))), h('div', h('div.bn-ttl', 'Invoice'), h('div.bn-meta', meta.map(([k, v]) => [h('span', k), h('span', v)])))),
+    h('table.bn-tab', h('thead', h('tr', h('th', 'Item'), h('th', 'Description'), h('th', 'Unit', h('br'), 'Cost'), h('th', 'Quantity'), h('th.r', 'Line', h('br'), 'Total'))),
+      h('tbody', lines.map(l => { const [item, desc] = itemText(l); return h('tr', h('td', item), h('td', desc), h('td.n', money2(+l.rate || 0)), h('td.n', String(+l.qty || 0)), h('td.r.n', money2((+l.qty || 0) * (+l.rate || 0)))); }))),
+    h('div.bn-bot',
+      h('div.bn-sig', o.paid && h('div.bn-stamp', 'PAID'), (o.sigs || []).filter(s => s.sig || s.blank).map(s => [h('div.bn-ink', sigView(s.sig)), h('div.bn-cap', s.cap)])),
+      h('div.bn-tot', tax > 0 && h('div.x', h('span', o.taxLabel || 'Sales tax'), h('span', money2(tax))), h('div', h('span', 'Total'), h('span', money2(tot))), h('div', h('span', 'Paid to Date'), h('span', money2(o.paid ? tot : 0))), h('div.due', h('span', 'Balance Due'), h('span', money2(o.paid ? 0 : tot))))),
+    o.pounds && h('div.bi-scan', h('b', 'WEIGHT SHREDDED: '), Number(o.pounds).toLocaleString('en-US') + ' lb'),
+    o.scans && o.scans.length > 0 && h('div.bi-scan', h('b', 'CONTAINERS SERVICED (BARCODE SCANS): '), o.scans.map(s => s.code + ' ' + fmt.clock(new Date(s.at))).join(' · ') + (o.scanNote ? ' · Note: ' + o.scanNote : '')),
+    o.drives && o.drives.length > 0 && h('div.bi-scan', h('b', 'HARD DRIVES DESTROYED (SERIAL NUMBERS): '), o.drives.map(s => s.code).join(' · ') + (o.driveNote ? ' · Note: ' + o.driveNote : '')),
+    h('div.bn-fill'),
+    biz().proofOn !== false && h('div.bn-cod', h('b', (biz().proofTitle || 'CERTIFICATE OF DESTRUCTION') + ':'), stdProof().replace(/\{company\}/g, org.name)));
+}
 function invoiceDoc(inv, job) {
-  const c = q.customer(job.customerId), lines = inv.lines || linesForJob(job), loc = c && (c.locations.find(l => l.id === job.locationId) || c.locations[0]), day = inv.serviceDate || job.day;
-  const contact = c && c.contacts[0], billTo = c ? [c.name].concat(c.attn || contact ? ['Attn: ' + (c.attn || contact.name)] : [], c.billAddress || [job.address.split(',')[0], (job.address.split(',')[1] || '').trim()].filter(Boolean)) : [job.title, job.address];
-  const sigs = h('div.sigs',
-    h('div', h('div.sl', sigView(inv.repSig)), h('div.sc', h('span', repTitle() + ' Signature'), h('span', [inv.repName, inv.includeDate !== false ? 'Service date ' + mdy(day) : null].filter(Boolean).join(' · ')))),
-    (inv.custSig || WD.sigPolicy(c) === 'always') && h('div', h('div.sl', sigView(inv.custSig)), h('div.sc', h('span', 'Customer Signature'), h('span', inv.custName || ''))));
-  return docWrap(invoicePages({ number: inv.number, date: inv.sentAt ? D.key(new Date(inv.sentAt)) : day, customer: c || { name: job.title }, billTo, serviceLocation: loc ? job.address.split(',')[0] : job.address, terms: c && c.terms, agreement: (c && c.agreement) || inv.contract, po: inv.po,
-    rows: visitRows(day, loc ? loc.label : job.title, lines, inv.pounds), paid: inv.status === 'Paid' ? (inv.paid || {}) : null, tax: inv.tax, taxLabel: inv.taxLabel, revised: inv.revisedAt ? mdy(D.key(new Date(inv.revisedAt))) : null, sigs, scans: data.settings && data.settings.barcodes.onInvoice ? inv.scans : null, scanNote: inv.scanNote, drives: inv.drives, driveNote: inv.driveNote }));
+  const c = q.customer(job.customerId), lines = inv.lines || linesForJob(job), day = inv.serviceDate || job.day, parts = (job.address || '').split(',').map(x => x.trim()).filter(Boolean);
+  const billTo = c ? [c.name].concat(c.attn ? ['Attn: ' + c.attn] : [], c.billAddress || [parts[0], parts.slice(1).join(', ')].filter(Boolean)) : [job.title].concat(parts[0] ? [parts[0], parts.slice(1).join(', ')].filter(Boolean) : []);
+  const sigs = [{ sig: inv.custSig, blank: WD.sigPolicy(c) === 'always', cap: 'Customer Signature' + (inv.custName ? ' · ' + inv.custName : '') },
+    { sig: inv.repSig, cap: [repTitle() + ' Signature', inv.repName].filter(Boolean).join(' · ') }];
+  return docWrap(standardInvoice({ number: inv.number, date: inv.sentAt ? D.key(new Date(inv.sentAt)) : D.today(), terms: c && c.terms, billTo, lines, tax: inv.tax, taxLabel: inv.taxLabel, paid: inv.status === 'Paid', po: inv.po,
+    serviceDate: inv.includeDate !== false ? day : null, revised: inv.revisedAt ? mdy2(D.key(new Date(inv.revisedAt))) : null, pounds: inv.pounds, sigs,
+    scans: data.settings && data.settings.barcodes.onInvoice ? inv.scans : null, scanNote: inv.scanNote, drives: inv.drives, driveNote: inv.driveNote }));
 }
 /** A master invoice: every service note it was built from, grouped by location (blank row between locations), paged like the paper invoice. */
 function masterDoc(mi) {

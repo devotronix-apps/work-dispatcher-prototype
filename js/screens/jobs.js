@@ -98,6 +98,7 @@ function details(job, p) {
   const contact = cust && cust.contacts[0];
   return ui.list(
     ui.section(null, head, steps),
+    WD.co && WD.co.jobScanSection(job, () => p.refresh(), canEdit || WD.can('billing.field')),
     canEdit && ui.section({ footer: job.pending ? 'This job is waiting to sync. You can change it again once that finishes.' : null },
       ui.row({ title: 'Edit job', icon: 'pencil', iconPlain: true, tint: true, disabled: job.pending, onTap: () => openEditor({ jobId: job.id }) }),
       ui.row({ title: 'Reassign', icon: 'arrow.left.arrow.right', iconPlain: true, tint: true, disabled: job.pending, onTap: () => openReassign(job) }),
@@ -371,7 +372,7 @@ function openEditor(o = {}) {
     return ids.map(id => { const it = get(id), n = it ? it.qty : 0, pb = data.priceBook.find(x => x.id === id);
       const rate = pricing && n > 0 && h('input.jb-rate', { type: 'text', inputmode: 'decimal', 'aria-label': ITEM_LABEL[id] + ' rate', value: '$' + (it.rate != null ? it.rate : pb.rate), oninput: e => { const v = parseFloat(e.target.value.replace(/[^0-9.]/g, '')); it.rate = isNaN(v) ? 0 : v; dirty = true; } });
       if (purge) return purgeRows(p, it, rate);
-      return h('div.row.jb-item', h('div.row-main', h('div.row-title', ITEM_LABEL[id]), pricing && n > 0 && h('div.row-sub', 'Rate each')), rate, h('span.jb-qn', String(n)), ui.stepper(n, 0, 40, v => { setQty(id, v); p.refresh(); }));
+      return h('div.row.jb-item', h('div.row-main', h('div.row-title', ITEM_LABEL[id]), pricing && n > 0 && h('div.row-sub', 'Rate each')), rate, ui.numField(n, 0, 500, v => { setQty(id, v); p.refresh(); }, ITEM_LABEL[id]), ui.stepper(n, 0, 500, v => { setQty(id, v); p.refresh(); }));
     });
   }
   /** Purge: what the customer has (any mix of box sizes, bins, pallets, gaylords, cabinets), stairs and haul-away, and the time and price estimate they add up to. */
@@ -445,7 +446,7 @@ function openEditor(o = {}) {
           f.repeat !== 'none' && f.ends === 'until' && ui.dateRow({ title: 'Last visit by', value: f.until, onChange: v => set('until', v) })),
         asks('items') && ui.section({ header: f.type === 'purge' ? 'Boxes' : 'Containers', footer: f.type === 'creditCard' ? 'Card-on-file jobs are charged automatically when the stop is completed.' : asks('pricing') ? 'Rates start from ' + (cust ? cust.name + '’s pricing' : 'the price book') + ' and print on the invoice. Changes here apply to this job.' : null }, itemsRows(p)),
         !f.allDay && f.type !== 'meet' && ui.section({ header: 'Hard drives', footer: f.hdd > 0 ? (f.hddScan ? 'The driver scans each drive’s barcode or serial number before it is destroyed, and the numbers print on the invoice.' : 'Drives are counted and destroyed without scanning. Some customers need the serial numbers recorded; switch scanning on for those.') + ' ' + fmt.money(hddRate(), true) + ' each to start; change the price on the invoice or the customer.' : 'Add a count if this job includes hard drives to destroy.' },
-          ui.row({ icon: 'barcode', iconColor: 'var(--indigo)', title: 'Hard drives to destroy', detail: String(f.hdd), trailing: ui.stepper(f.hdd, 0, 500, v => { f.hdd = v; dirty = true; p.refresh(); }) }),
+          ui.row({ icon: 'barcode', iconColor: 'var(--indigo)', title: 'Hard drives to destroy', subtitle: 'Type the number or use − / +', trailing: h('span.hstack', ui.numField(f.hdd, 0, 5000, v => { f.hdd = v; dirty = true; p.refresh(); }, 'Hard drives to destroy'), ui.stepper(f.hdd, 0, 5000, v => { f.hdd = v; dirty = true; p.refresh(); })) }),
           f.hdd > 0 && ui.toggleRow({ title: 'Scan each drive', subtitle: 'Barcode or serial number, for this job', value: !!f.hddScan, onChange: v => { f.hddScan = v; dirty = true; p.refresh(); } })),
         asks('hours') && ui.section({ header: 'Office hours', footer: 'When the business is open. AutoRoute never plans a stop outside these hours.' },
           ui.quarterRow({ title: 'Opens', value: f.bizOpen, onChange: v => set('bizOpen', v) }), ui.quarterRow({ title: 'Closes', value: f.bizClose, onChange: v => set('bizClose', v) })),

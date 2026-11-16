@@ -22,7 +22,7 @@ WD.css(`
 /* ================= Settings data ================= */
 Object.assign(ST, {
   holidays: { suggest: true, fullHours: 8, notify: true },   // suggest moves when a holiday is marked; what counts as a full route; offer to text customers their new day
-  confirm: { mode: 'ask', channel: 'text', types: { regular: true, purge: true, government: false, creditCard: true, setup: true, meet: true } },   // off | ask | auto
+  confirm: { mode: 'ask', channel: 'text', pricing: 'none', types: { regular: true, purge: true, government: false, creditCard: true, setup: true, meet: true } },   // off | ask | auto
   comms: { textFrom: 'match', callFrom: 'match', byUser: {}, emailFrom: 'office@discountshred.example', emailName: 'company',
     numbers: [{ id: 'n1', n: '+15125550100', label: 'Main line', areas: ['512'], zips: ['78644'], main: true }, { id: 'n2', n: '+17375550140', label: 'North county', areas: ['737'], zips: ['78641'] },
       { id: 'n3', n: '+18305550122', label: 'Hill Country', areas: ['830'], zips: ['78645'] }, { id: 'n4', n: '+12545550119', label: 'East side', areas: ['254'], zips: ['78642'] }, { id: 'n5', n: '+15125550177', label: 'Ads line', areas: [], zips: [] }] },
@@ -282,6 +282,19 @@ OP.commsSpec = () => ({ title: 'Calls, texts and email', render: page => { if (!
 /* ================= Confirmation when a new job is scheduled ================= */
 const CF = ST.confirm, CMODE = [{ value: 'off', label: 'Don’t send one' }, { value: 'ask', label: 'Show it first, then send' }, { value: 'auto', label: 'Send it automatically' }], CCHAN = [{ value: 'text', label: 'Text message' }, { value: 'email', label: 'Email' }, { value: 'both', label: 'Text and email' }];
 OP.confirmLabel = () => CF.mode === 'off' ? 'Off' : (CF.mode === 'auto' ? 'Automatic' : 'Shown first') + ' · ' + ({ text: 'text', email: 'email', both: 'text and email' })[CF.channel];
+/** Pricing a confirmation can include, from what the customer told us when the job was scheduled: 'rates' (the price of each thing) or 'total' (the estimated cost). */
+const CPRICE = [{ value: 'none', label: 'No pricing' }, { value: 'rates', label: 'Pricing rates' }, { value: 'total', label: 'Estimated total cost' }];
+const UNIT = { console: ['console', 'consoles'], bin64: ['64-gallon bin', '64-gallon bins'], bin96: ['96-gallon bin', '96-gallon bins'], box: ['box', 'boxes'], hdd: ['hard drive', 'hard drives'], binExtra: ['additional 65-gallon bin', 'additional 65-gallon bins'], trip: ['trip charge', 'trip charges'],
+  stairsDown: ['box carried down stairs', 'boxes carried down stairs'], stairsUp: ['box carried up stairs', 'boxes carried up stairs'], haul: ['empty box hauled away', 'empty boxes hauled away'] };
+OP.pricingText = (job, kind) => {
+  const items = (job.items || []).filter(i => i.qty > 0 && i.id !== 'cod'), m = n => fmt.money(n, true), PP = data.purgePricing, unit = (i, n) => (UNIT[i.id] || [(data.priceBook.find(x => x.id === i.id) || { unit: 'item' }).unit, (data.priceBook.find(x => x.id === i.id) || { unit: 'item' }).unit + 's'])[n === 1 ? 0 : 1];
+  if (kind === 'none' || !kind || !items.length) return '';
+  const flat = 'up to ' + PP.binIncluded + ' 65-gallon ' + (PP.binIncluded === 1 ? 'bin' : 'bins'), each = job.recurring ? ' each service' : '';
+  const and = a => a.length > 1 ? a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1] : a[0];
+  if (kind === 'rates') return (each ? 'Pricing for each service: ' : 'Pricing for this job: ') + and(items.map(i => i.id === 'binFlat' ? m(i.rate) + ' flat for ' + flat : m(i.rate) + ' per ' + unit(i, 1))) + '.' + (each ? '' : ' You are billed for what we actually shred.');
+  const tot = items.reduce((s, i) => s + i.qty * i.rate, 0), rough = job.type === 'purge';
+  return (job.recurring ? 'Estimated cost per service: ' : 'Estimated total: ') + m(tot) + ', based on ' + and(items.map(i => i.id === 'binFlat' ? flat : (rough && i.id === 'box' ? 'about ' : '') + i.qty + ' ' + unit(i, i.qty))) + '.' + (each ? '' : ' The final amount depends on what we shred on the day.');
+};
 /** After a new job is saved: send (or offer to send) the customer a confirmation with the date, by the company's settings. */
 OP.confirmJob = job => {
   if (CF.mode === 'off' || !CF.types[job.type] || job.allDay) return;
@@ -289,8 +302,10 @@ OP.confirmJob = job => {
   const can = { text: !!p.phone, email: !!email }, want = CF.channel === 'both' ? ['text', 'email'] : [CF.channel], use = want.filter(k => can[k]); if (!use.length) { const other = CF.channel === 'text' && can.email ? 'email' : CF.channel === 'email' && can.text ? 'text' : null; if (other) use.push(other); }
   if (!use.length) return ui.toast('No phone or email on file, so no confirmation was sent', 'info.circle', 3000);
   const ctx = CO.ctxFor(c, { date: fmt.day(job.day, 'long'), customer: c ? c.name : job.title }); if (!c && p.name) ctx.first = first(p.name);
-  const body = { text: CO.fill(CO.tpl('confirm').body, ctx), email: CO.fill(CO.tpl('confirmEmail').body, ctx) }, from = OP.senderFor(c, S.me, 'text'), who = first(p.name) || 'the customer';
-  const send = () => { job.events.push({ at: +WD.now(), actor: CF.mode === 'auto' ? 'Work Dispatcher' : me(), text: 'Confirmation sent by ' + use.join(' and ') + ' to ' + (p.name || 'the customer') + (use.includes('text') ? ' · from ' + from.text : '') }); WD.changed(); };
+  let pricing = OP.pricingText(job, 'rates') ? CF.pricing : 'none';
+  const base = { text: CO.fill(CO.tpl('confirm').body, ctx), email: CO.fill(CO.tpl('confirmEmail').body, ctx) }, body = {}, build = () => { const t = OP.pricingText(job, pricing); body.text = base.text + (t ? '\n\n' + t : ''); body.email = base.email + (t ? '\n\n' + t : ''); }; build();
+  const from = OP.senderFor(c, S.me, 'text'), who = first(p.name) || 'the customer';
+  const send = () => { job.events.push({ at: +WD.now(), actor: CF.mode === 'auto' ? 'Work Dispatcher' : me(), text: 'Confirmation sent by ' + use.join(' and ') + ' to ' + (p.name || 'the customer') + (use.includes('text') ? ' · from ' + from.text : '') + (pricing === 'rates' ? ' · with pricing rates' : pricing === 'total' ? ' · with the estimated total' : '') }); WD.changed(); };
   if (CF.mode === 'auto') { send(); return ui.toast('Confirmation ' + use.join(' and ') + ' sent to ' + who, use[0] === 'email' ? 'envelope' : 'message', 3000); }
   let tab = use[0];
   ui.sheet({ title: 'Confirm with the customer', leading: [{ label: 'Skip', onTap: pg => pg.dismiss() }],
@@ -299,6 +314,8 @@ OP.confirmJob = job => {
       ui.section({ header: job.title + ' · ' + fmt.day(job.day, 'long'), footer: job.recurring ? 'A recurring job confirms its first service date.' : null },
         use.includes('text') && ui.row({ icon: 'message', iconColor: 'var(--green)', title: 'Text to ' + (p.name || 'the customer'), subtitle: fmt.phone(p.phone) + ' · from ' + from.text }),
         use.includes('email') && ui.row({ icon: 'envelope', iconColor: 'var(--blue)', title: 'Email to ' + email, subtitle: 'From ' + OP.emailFrom(S.me) })),
+      OP.pricingText(job, 'rates') && ui.section({ header: 'Pricing', footer: pricing === 'none' ? 'Choose whether this confirmation also confirms the price.' : pricing === 'rates' ? 'Adds the rate for each thing on this job.' : 'Adds the estimated cost, worked out from what the customer told you: ' + fmt.money(job.items.filter(i => i.qty > 0).reduce((s, i) => s + i.qty * i.rate, 0), true) + '.' },
+        ui.pickerRow({ title: 'Include', icon: 'dollarsign.circle', iconColor: 'var(--green)', value: pricing, options: CPRICE, onChange: v => { pricing = v; build(); pg.refresh(); } })),
       use.length > 1 && h('div', { style: 'padding:12px 16px 0' }, ui.segmented([{ value: 'text', label: 'Text' }, { value: 'email', label: 'Email' }], tab, v => { tab = v; pg.refresh(); })),
       ui.section({ header: tab === 'email' ? 'Subject: ' + CO.fill(CO.tpl('confirmEmail').subject, ctx) : 'Message', footer: 'Change the wording for this customer here. To change it for everyone, or to send these automatically, go to Settings → Job confirmations.' },
         (r => { r.classList.add('co-body'); return r; })(ui.inputRow({ multiline: true, value: body[tab], onInput: v => { body[tab] = v; } })))) }, { detent: 'large' });
@@ -308,6 +325,8 @@ OP.confirmSpec = () => ({ title: 'Job confirmations', render: page => { if (!adm
     ui.section({ header: 'When a new job is scheduled', footer: { off: 'Nothing is sent.', ask: 'Whoever schedules the job sees the message and taps Send or Skip.', auto: 'The confirmation goes out by itself as soon as the job is saved, and is noted in the job’s history.' }[CF.mode] },
       ui.pickerRow({ title: 'Confirmation', icon: 'checkmark.circle', iconColor: 'var(--green)', value: CF.mode, options: CMODE, onChange: v => { CF.mode = v; re(); } }),
       CF.mode !== 'off' && ui.pickerRow({ title: 'Send by', value: CF.channel, options: CCHAN, onChange: v => { CF.channel = v; re(); } })),
+    CF.mode !== 'off' && ui.section({ header: 'Pricing in the confirmation', footer: (CF.pricing === 'none' ? 'Confirmations start with no pricing.' : CF.pricing === 'rates' ? 'Confirmations start with the rate for each thing on the job, such as the price per box.' : 'Confirmations start with the estimated total, worked out from the quantities entered when the job was scheduled.') + (CF.mode === 'ask' ? ' Whoever schedules the job can change this for each customer before sending.' : ' With automatic sending, this is what goes out.') },
+      ui.pickerRow({ title: 'Include', icon: 'dollarsign.circle', iconColor: 'var(--green)', value: CF.pricing, options: CPRICE, onChange: v => { CF.pricing = v; re(); } })),
     CF.mode !== 'off' && ui.section({ header: 'What it says', footer: 'It confirms the date, thanks them for being a customer, asks them to have the paper staged in a convenient location (additional service charges may apply otherwise), and gives your policy on what can be shredded: paper clips, staples and file folders are fine; no binders, x-rays or small plastic bags.' },
       CO.tplRow('confirm', page), CO.tplRow('confirmEmail', page)),
     CF.mode !== 'off' && ui.section({ header: 'For these job types', footer: 'If the customer has no cell number the email is used instead, and the other way around. A recurring job confirms its first service date.' },

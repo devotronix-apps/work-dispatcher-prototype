@@ -30,7 +30,7 @@ data.priceBook = [
   { id: 'console', name: 'Console service', unit: 'console', rate: 30 }, { id: 'bin64', name: 'Bin service (64 gal)', unit: 'bin (64 gal)', rate: 45 }, { id: 'bin96', name: 'Bin service (96 gal)', unit: 'bin (96 gal)', rate: 60 },
   { id: 'box', name: 'Purge, per box', unit: 'box', rate: 8 }, { id: 'trip', name: 'Trip charge', unit: 'trip', rate: 25 }, { id: 'cod', name: 'Certificate of destruction', unit: 'certificate', rate: 0 },
   { id: 'stairsDown', name: 'Stairs — carried down, per box', unit: 'box', rate: 3 }, { id: 'stairsUp', name: 'Stairs — carried up, per box', unit: 'box', rate: 4 }, { id: 'haul', name: 'Haul away empty boxes, per box', unit: 'box', rate: 2 },
-  { id: 'hdd', name: 'Hard drive destruction', unit: 'hard drive', rate: 10 },
+  { id: 'hdd', name: 'Hard drive destruction', unit: 'hard drive', rate: 15 },
   { id: 'binFlat', name: 'Purge, up to 2 bins (65 gal)', unit: 'flat fee', rate: 150 }, { id: 'binExtra', name: 'Purge, each additional bin (65 gal)', unit: 'bin (65 gal)', rate: 60 },
 ];
 /** Purge estimating (Settings → Purge estimates). Box sizes count as standard banker boxes (10×12×15"); bins, pallets, gaylords and cabinets convert to boxes.

@@ -186,7 +186,7 @@ CO.editAgreementDoc = (target, o = {}) => {
       a && ui.section({ header: 'Containers and rates', footer: 'Per visit: ' + money(perVisit(f.items)) + '. Changing a rate here does not change the customer’s pricing; use Change pricing or service on the customer for that.' },
         f.items.map((it, i) => h('div.row.jb-item', h('div.row-main', h('input.field', { type: 'text', value: it.name, 'aria-label': 'Description', style: 'padding:0;width:100%', oninput: e => { it.name = e.target.value; } }), h('div.row-sub', 'Rate each · quantity')),
           h('input.jb-rate', { type: 'text', inputmode: 'decimal', 'aria-label': 'Rate', value: '$' + it.rate, oninput: e => { const v = parseFloat(e.target.value.replace(/[^0-9.]/g, '')); it.rate = isNaN(v) ? 0 : v; }, onchange: () => p.refresh() }),
-          h('span.jb-qn', String(it.qty)), ui.stepper(it.qty, 0, 60, v => { if (v === 0) f.items.splice(i, 1); else it.qty = v; p.refresh(); }))),
+          ui.numField(it.qty, 0, 500, v => { if (v === 0) f.items.splice(i, 1); else it.qty = v; p.refresh(); }), ui.stepper(it.qty, 0, 500, v => { if (v === 0) f.items.splice(i, 1); else it.qty = v; p.refresh(); }))),
         ui.row({ icon: 'plus.circle.fill', iconPlain: true, iconColor: 'var(--green)', title: 'Add a line', tint: true, onTap: (e, el) => ui.menu(el, [...data.priceBook.map(x => ({ label: x.name, onTap: () => { f.items.push({ name: x.name, qty: 1, rate: x.rate }); p.refresh(); } })), 'divider', { label: 'Something else…', icon: 'plus', onTap: () => { f.items.push({ name: 'Additional service', qty: 1, rate: 0 }); p.refresh(); } }]) })),
       a && ui.section('Schedule and term',
         ui.pickerRow({ title: 'Service every', value: f.freq, options: FREQS.includes(f.freq) ? FREQS : [f.freq].concat(FREQS), onChange: v => { f.freq = v; p.refresh(); } }),
@@ -278,6 +278,24 @@ const hash = s => { let n = 7; for (const ch of String(s)) n = (n * 31 + ch.char
 /** The barcodes on the containers at a job's location (mock: stable codes per customer and container). */
 CO.containers = job => { const out = []; (job.items || []).filter(i => WD.CONTAINERS.includes(i.id) && i.id !== 'box' && i.qty > 0).forEach(i => { for (let k = 0; k < i.qty; k++) out.push({ code: 'DS-' + String(10000 + hash((job.customerId || job.title) + i.id + k) % 89999), kind: pbName(i.id) }); }); return out; };
 CO.barcodesOn = () => ST.barcodes.on;
+/** Scans made at the job, before any invoice or service note exists. Billing details picks up the same lists. */
+WD.jobScans = job => job.scans || (job.scans = { containers: [], containerNote: '', drives: [], driveNote: '' });
+/** Containers are scanned when the company scans at every stop, or when this customer requires it (Edit customer). */
+const custOf = job => job.customerId && data.customers.find(c => c.id === job.customerId);
+CO.scanFor = job => ST.barcodes.on || !!(custOf(job) || {}).scanContainers;
+CO.scanRequired = job => (ST.barcodes.on && ST.barcodes.require) || !!(custOf(job) || {}).scanContainers;
+/** Job details → Scan at the job: container barcodes and hard drives, any time before the invoice or service note. */
+CO.jobScanSection = (job, refresh, canEdit) => {
+  if (job.allDay || job.billing || (job.invoice && job.invoice.status !== 'Draft') || (WD.calledOff && WD.calledOff(job))) return null;
+  const tags = CO.scanFor(job) ? CO.containers(job) : [], hdd = (job.items || []).filter(i => i.id === 'hdd').reduce((s, i) => s + (+i.qty || 0), 0), sc = WD.jobScans(job), must = CO.scanRequired(job);
+  if (!tags.length && !hdd) return null;
+  const log = (was, list, what, of) => () => { if (list.length !== was()) job.events.push({ at: +WD.now(), actor: S.me.name, text: list.length + ' of ' + of + ' ' + what + ' scanned at the job' }); refresh(); };
+  const row = (n, of, title, open) => ui.row({ icon: n >= of ? 'checkmark.circle.fill' : 'barcode', iconPlain: true, iconColor: n >= of ? 'var(--green)' : 'var(--orange)', title, subtitle: n + ' of ' + of + ' scanned', chevron: true, onTap: open });
+  return ui.section({ header: 'Scan at the job', footer: 'Scan while you are at the job, before the invoice or service note is created. The numbers are saved on the job and carry over to it.' + (tags.length && must ? ' This customer requires every container to be scanned.' : '') },
+    tags.length > 0 && row(sc.containers.length, tags.length, 'Scan container barcodes', () => { const n = sc.containers.length; CO.scanSheet(job, sc.containers, log(() => n, sc.containers, 'containers', tags.length)); }),
+    hdd > 0 && ui.toggleRow({ title: 'Scan each hard drive', subtitle: 'Barcode or serial number, for this job', value: !!job.hddScan, disabled: !canEdit, onChange: v => { job.hddScan = v; WD.changed(); refresh(); } }),
+    hdd > 0 && job.hddScan && WD.ops && row(sc.drives.length, hdd, 'Scan hard drives', () => { const n = sc.drives.length; WD.ops.scanDrives(job, sc.drives, hdd, log(() => n, sc.drives, 'hard drives', hdd)); }));
+};
 /** Scan each container at the stop. scans: [{code, kind, at}] edited in place. */
 CO.scanSheet = (job, scans, onDone) => {
   const all = CO.containers(job);
@@ -293,11 +311,11 @@ CO.scanSheet = (job, scans, onDone) => {
 };
 CO.barcodeSpec = () => ({ title: 'Barcode scanning', render: page => { if (!admin()) return locked(); const o = ST.barcodes, sample = data.jobs.find(j => j.day === today() && CO.containers(j).length);
   return ui.list(
-    ui.section({ header: 'Scanning', footer: o.on ? 'Billing details gets a Scan containers step. Each container’s barcode is scanned to prove it was serviced.' : 'For companies that put a barcode on every container. Off: drivers enter quantities as they do now.' },
+    ui.section({ header: 'Scanning', footer: (o.on ? 'Every job gets a Scan containers step, on the job itself and again in billing details. Each container’s barcode is scanned to prove it was serviced.' : 'For companies that put a barcode on every container. Off: drivers enter quantities as they do now.') + ' For only the customers who require it, leave this off and switch on “Scan container barcodes” under Edit customer.' },
       ui.toggleRow({ icon: 'barcode', iconColor: 'var(--indigo)', title: 'Scan container barcodes at each stop', value: o.on, onChange: v => { o.on = v; WD.changed(); page.refresh(); } }),
       o.on && ui.toggleRow({ title: 'Require every container to be scanned', subtitle: 'Or a reason, when a label is missing or damaged', value: o.require, onChange: v => { o.require = v; WD.changed(); } }),
       o.on && ui.toggleRow({ title: 'Print the scans on the invoice', subtitle: 'Container numbers and the time each was scanned', value: o.onInvoice, onChange: v => { o.onInvoice = v; WD.changed(); } })),
-    ui.section({ header: 'Hard drives', footer: 'Some customers need every drive’s serial number recorded and some don’t, so each job with hard drives has its own “Scan each drive” switch, on the job and again in billing details. This sets how that switch starts on a new job.' },
+    ui.section({ header: 'Hard drives', footer: 'Some customers need every drive’s serial number recorded and some don’t, so each job with hard drives has its own “Scan each drive” switch. Drives can be scanned from the job as soon as the driver is there, before any invoice, and again in billing details. This sets how that switch starts on a new job.' },
       ui.toggleRow({ icon: 'barcode', iconColor: 'var(--gray)', title: 'New hard drive jobs start with scanning on', value: !!o.hddDefault, onChange: v => { o.hddDefault = v; WD.changed(); } })),
     o.on && sample && ui.section({ header: 'Example · ' + sample.title, footer: 'Barcodes are assigned to a customer’s containers when they are delivered, and stay on the customer’s record.' }, CO.containers(sample).slice(0, 4).map(x => ui.row({ icon: 'barcode', iconPlain: true, title: x.code, subtitle: x.kind }))));
 } });
@@ -506,5 +524,9 @@ WD.panel.addAction('Customer pays in the bookkeeping program', () => { const r =
   if (ST.books.autoPaid) { ui.toast((q.customer(r.customerId) || {}).name + ' paid ' + r.number + ' in ' + CO.booksName() + '…', 'creditcard', 2200); setTimeout(() => CO.syncPayments(false), 2600); }
   else ui.toast(r.number + ' was paid in ' + CO.booksName() + '. Tap Check now on Invoices to pick it up.', 'creditcard', 3600); });
 /* Two open invoices were already paid in the bookkeeping program, so the first check finds something. */
+/* So the on-the-job scanning shows without setup: one of today's route customers requires container scans, and one of today's purge jobs has hard drives to scan. */
+(() => { const open = j => j.day === today() && j.status === 'scheduled' && !j.allDay && !j.invoice && !j.billing && j.customerId;
+  const a = data.jobs.find(j => open(j) && j.type === 'regular' && CO.containers(j).length && (data.customers.find(c => c.id === j.customerId) || {}).billingMode !== 'serviceNote'); if (a) data.customers.find(c => c.id === a.customerId).scanContainers = true;
+  const b = data.jobs.find(j => open(j) && j.type === 'purge' && !(j.items || []).some(i => i.id === 'hdd')); if (b) { b.items = (b.items || []).concat({ id: 'hdd', qty: 3, rate: data.priceBook.find(x => x.id === 'hdd').rate }); b.hddScan = true; } })();
 unpaidRecs().filter(r => r.jobId || r.status === 'Overdue').slice(0, 2).forEach((r, i) => { r.ext = { method: i ? 'Check #5521 (entered in the office)' : 'Card (customer portal)', at: +WD.now() - (3 + i) * 36e5 }; });
 })();
