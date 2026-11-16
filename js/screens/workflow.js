@@ -225,6 +225,7 @@ function invoiceActionRows(rec, job, o = {}) {
   const unpaid = rec.status !== 'Paid', field = canInvoice(), manage = WD.can('billing.manage'), mi = rec.masterId && data.masterInvoices.find(m => m.id === rec.masterId);
   const view = o.noView ? null : mi ? () => WD.nav.push(billing().masterDocSpec(mi)) : job && job.invoice ? () => billing().openInvoice(job.id) : null;
   return [view && ui.row({ title: 'View invoice', subtitle: mi ? mi.noteIds.length + ' service notes · as the customer receives it' : 'As the customer receives it', icon: 'doc.text', iconPlain: true, tint: true, chevron: true, onTap: view }),
+    WD.r9 && WD.r9.editRow(rec, job),
     unpaid && field && ui.row({ title: 'Mark paid…', subtitle: 'Card, check, cash or other', icon: 'dollarsign.circle', iconPlain: true, tint: true, onTap: () => markPaid(rec, job) }),
     unpaid && field && ui.row({ title: 'Send reminder', icon: 'envelope', iconPlain: true, tint: true, onTap: () => sendReminder(rec) }),
     unpaid && manage && ui.row({ title: 'Charge card on file', icon: 'creditcard', iconPlain: true, tint: true, onTap: () => chargeCard(rec, job) }),

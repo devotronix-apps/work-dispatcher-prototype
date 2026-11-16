@@ -164,7 +164,7 @@ R8.openPostponed = () => WD.nav.push(R8.postponedSpec());
 });
 
 /* ================= 45-day planning map: jobs near an address ================= */
-const DAYS = 45, MILE = 25 /* map units to a mile */, RADII = [1, 3, 5, 10];
+const DAYS = 45, MILE = 25 /* map units to a mile */, RADII = [1, 3, 5, 10, 50];
 const PM = { text: '', target: null, radius: 3, sel: null, sites: null, at: null, manual: false };
 const hash = s => { let n = 7; for (const c of String(s)) n = (n * 31 + c.charCodeAt(0)) >>> 0; return n; };
 /** Every place with a job from today through the next 45 days, with its service dates. Jobs on the board come first; past the days already on
@@ -185,11 +185,11 @@ function loadSites(manual) { PM.sites = buildSites(); PM.manual = !!manual; PM.a
 const stamp = () => { const m = WD.nowMins(); return PM.manual ? 'Updated ' + fmt.rel(PM.at).toLowerCase() : 'Updated today at ' + (m >= 13 * 60 ? '1:00 PM' : '6:00 AM') + ' · next at ' + (m >= 13 * 60 ? '6:00 AM' : '1:00 PM'); };
 /** Stand-in for Apple Maps address search: known addresses and customer names first, then the typed text placed on the map. */
 function suggestions(text) {
-  const t = text.trim().toLowerCase(); if (t.length < 2) return [];
-  const seen = new Set(), out = [];
-  data.customers.forEach(c => c.locations.forEach(l => { if (l.x == null || out.length >= 6) return; const addr = l.address || ''; if (!(addr.toLowerCase().includes(t) || c.name.toLowerCase().includes(t)) || seen.has(addr)) return; seen.add(addr); out.push({ label: addr.replace(/, Lakemont$/, ''), sub: c.name + (c.locations.length > 1 ? ' · ' + l.label : ''), x: l.x, y: l.y }); }));
-  const n = hash(t); out.push({ label: text.trim(), sub: 'Search Apple Maps for this address', x: 150 + n % 700, y: 150 + Math.floor(n / 700) % 700, typed: true });
-  return out;
+  const t = text.trim(); if (t.length < 2) return [];
+  const n = hash(t.toLowerCase()), typed = { label: t, sub: 'Use the address exactly as typed', x: 150 + n % 700, y: 150 + Math.floor(n / 700) % 700, typed: true };
+  /* The same Apple Maps completions the job editor offers: customers' addresses first, then street addresses that complete what was typed. */
+  const found = (WD.addressSuggestions ? WD.addressSuggestions(t) : []).filter(x => !x.typed && x.l && x.l.x != null).slice(0, 8).map(x => ({ label: x.address.replace(/, Lakemont$/, ''), sub: x.sub, x: x.l.x, y: x.l.y }));
+  return found.concat(typed);
 }
 const miles = (s, t) => Math.hypot(s.x - t.x, s.y - t.y) / MILE, milesText = d => (d < 10 ? d.toFixed(1) : Math.round(d)) + ' mi';
 const dateChip = d => h('span' + (d.projected ? '.proj' : ''), fmt.day(d.day, 'weekday') + ' ' + fmt.day(d.day, 'md'));
@@ -226,7 +226,7 @@ R8.planMapSpec = () => ({ title: 'Next ' + DAYS + ' days', backLabel: 'Map',
     const siteRow = s => ui.row({ leading: h('span.mm-p', { style: { position: 'static', transform: 'none', flex: 'none', ...WD.pinStyle({ routeId: s.routeId, type: s.type }) } }, s.dates.length), title: s.name + (s.place ? ' · ' + s.place : ''),
       subtitle: [s.address.replace(/, Lakemont$/, ''), 'Next: ' + s.dates.slice(0, 3).map(d => fmt.day(d.day, 'weekday') + ' ' + fmt.day(d.day, 'md')).join(', ') + (s.dates.length > 3 ? ' +' + (s.dates.length - 3) + ' more' : '')].map(x => h('div', x)), detail: t ? milesText(miles(s, t)) : null, chevron: true, onTap: () => { PM.sel = s.key; page.refresh(); page.body.scrollTop = 0; } });
     return [
-      sugg.length > 0 && ui.list(ui.section('Addresses', sugg.map(sg => ui.row({ icon: sg.typed ? 'magnifyingglass' : 'mappin', iconPlain: true, iconColor: sg.typed ? 'var(--label2)' : 'var(--red)', title: sg.label, subtitle: sg.sub, onTap: () => choose(sg) })))),
+      sugg.length > 0 && ui.list(ui.section({ header: 'Addresses', footer: 'Suggestions come from Apple Maps as you type. Tap one to center the map on it.' }, sugg.map(sg => ui.row({ icon: sg.typed ? 'magnifyingglass' : 'mappin', iconPlain: true, iconColor: sg.typed ? 'var(--label2)' : 'var(--red)', title: sg.label, subtitle: sg.sub, onTap: () => choose(sg) })))),
       h('div.pm-wrap', planMapEl(page, near), h('div.pm-stamp', h('span', plural(sites.length, 'place') + ' · today to ' + fmt.day(D.add(today(), DAYS), 'md')), h('span', stamp()))),
       t && h('div.pm-seg', ui.segmented(RADII.map(r => ({ value: r, label: r + ' mi' })), PM.radius, v => { PM.radius = v; page.refresh(); })),
       ui.list(

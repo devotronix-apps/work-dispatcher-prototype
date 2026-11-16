@@ -130,7 +130,9 @@ function topBar() {
     btn(null, 'Today', () => { b.day = today; keep(null); refresh(); }, h('span.bd-today', D.parse(today).getDate())),
     WD.can('jobs.edit') && btn('plus', 'New job', () => jobsScreen().openEditor && jobsScreen().openEditor({ day: b.day, routeId: b.mode === 'days' ? b.routeId : (q.visibleRoutes()[0] || q.routes()[0]).id })));
 }
-const syncItems = () => [WD.can('jobs.edit') && WD.ops && { label: 'Move this day’s jobs…', subtitle: 'A whole route to another day', icon: 'arrow.left.arrow.right', onTap: () => WD.ops.moveSheet({ routeId: S.board.mode === 'days' ? S.board.routeId : q.visibleRoutes().length === 1 ? q.visibleRoutes()[0].id : (q.visibleRoutes()[0] || q.routes()[0]).id, from: S.board.day }) },
+const syncItems = () => [WD.can('jobs.edit') && WD.r9 && S.board.mode !== 'month' && { label: 'Select jobs to move…', subtitle: 'Several jobs to another route, day or both', icon: 'checkmark.circle', onTap: () => { S.board.select = new Set(); refresh(); } },
+  WD.can('jobs.edit') && WD.ops && { label: 'Move this day’s jobs…', subtitle: 'A whole route to another day', icon: 'arrow.left.arrow.right', onTap: () => WD.ops.moveSheet({ routeId: S.board.mode === 'days' ? S.board.routeId : q.visibleRoutes().length === 1 ? q.visibleRoutes()[0].id : (q.visibleRoutes()[0] || q.routes()[0]).id, from: S.board.day }) },
+  WD.biz && S.board.mode !== 'month' && { label: 'Load sheet and truck capacity', icon: 'shippingbox', onTap: () => WD.nav.push(WD.biz.loadSpec(S.board.day)) },
   WD.r8 && { label: 'Postponed, no date yet' + (WD.r8.postponed().length ? ' (' + WD.r8.postponed().length + ')' : ''), icon: 'clock', onTap: () => WD.r8.openPostponed() },
   WD.can('jobs.edit') && WD.ops && { label: 'Holidays and schedule changes', icon: 'calendar', onTap: () => WD.ops.openSchedule() }, { label: 'Pending changes' + (S.pending.length ? ' (' + S.pending.length + ')' : ''), icon: 'sync', onTap: () => WD.screens.settings && WD.screens.settings.openPending && WD.screens.settings.openPending() },
   { label: 'Refresh', icon: 'arrow.clockwise', onTap: async () => { if (S.offline) return ui.toast('Offline — showing saved jobs', 'wifi.slash'); ui.toast('Checking for changes…'); await WD.delay(900, 1400); ui.toast('Up to date', 'checkmark'); } }];
@@ -208,13 +210,25 @@ function cell(job, number) {
   const type = q.jobType(job.type), st = { enroute: 'truck', arrived: 'mappin', completed: 'checkmark', skipped: 'xmark', canceled: 'xmark', rescheduled: 'calendar', postponed: 'clock' }[job.status], struck = WD.struck[job.status];
   const tag = { skipped: 'Skipped', canceled: 'Canceled', rescheduled: 'Rescheduled', postponed: 'Postponed' }[job.status];
   const wf = WD.workflow, notBilled = job.status === 'completed' && !wf.billed(job) && job.type !== 'meet', noAddr = !WD.closed[job.status] && WD.addressIssue(job);
-  return h('div.bd-job.' + job.status + (struck ? '.struck' : '') + (WD.calledOff(job) ? '.calledoff' : '') + (wf.dimmed(job) ? '.faded' : '') + (job.pending ? '.pending' : '') + (drag && drag.job.id === job.id ? '.dragging' : '') + (flashId === job.id ? '.flash' : ''),
-    { 'data-job': job.id, style: cardStyle(job) },
+  return h('div.bd-job.' + job.status + (struck ? '.struck' : '') + (WD.calledOff(job) ? '.calledoff' : '') + (wf.dimmed(job) ? '.faded' : '') + (job.pending ? '.pending' : '') + (drag && drag.job.id === job.id ? '.dragging' : '') + (flashId === job.id ? '.flash' : '') + (S.board.select && S.board.select.has(job.id) ? '.sel' : ''),
+    { 'data-job': job.id, style: cardStyle(job) }, S.board.select && canSelect(job) && h('span.bd-check', icon('checkmark', 11)),
     h('div.bd-job-in', h('span.bd-num', number),
       h('div.bd-job-main', h('div.bd-job-title', !job.located && job.address && job.type !== 'meet' ? h('span.bd-q', '?') : null, st && icon(st, 12), job.pending && icon('sync', 11), h('span.d0', job.title), h('span.d12', wf.titleNode(job)), job.recurring ? h('span', { style: 'opacity:.8;font-weight:400' }, ' ↻') : null),
         tag ? h('div.bd-tag', tag + (job.rescheduledTo ? ' · ' + fmt.day(job.rescheduledTo, 'md') : '')) : notBilled ? h('div.bd-tag.nb', 'Not billed') : noAddr ? h('div.bd-tag.na', noAddr) : job.offWindow && !WD.closed[job.status] ? h('div.bd-tag.na', { title: job.offWindow }, 'Outside window') : null,
         !tag && h('div.bd-job-sub.d1', facts(job).map(x => x[1]).join(' · ') || type.title),
         !tag && h('div.d2', details(job)))));
+}
+/* ---------- Selecting several jobs to move together ---------- */
+const canSelect = job => job.status === 'scheduled' && !job.pending && !job.allDay;
+function toggleSelect(job) { const sel = S.board.select; if (!canSelect(job)) return ui.toast(lockedReason(job), 'lock', 2400); if (sel.has(job.id)) sel.delete(job.id); else sel.add(job.id); refresh(); }
+function selectBar() {
+  const sel = S.board.select; if (!sel) return null;
+  [...sel].forEach(id => { const j = q.job(id); if (!j || !canSelect(j)) sel.delete(id); });
+  const shown = S.board.mode === 'month' ? [] : columns().flatMap(c => q.stopList(c.routeId, c.day).filter(canSelect)), all = shown.length > 0 && shown.every(j => sel.has(j.id));
+  return h('div.bd-selbar', h('button', { onclick: () => { S.board.select = null; refresh(); } }, 'Cancel'),
+    h('button', { disabled: !shown.length, onclick: () => { shown.forEach(j => all ? sel.delete(j.id) : sel.add(j.id)); refresh(); } }, all ? 'Deselect all' : 'Select all'),
+    h('span.n', sel.size ? sel.size + ' selected' : 'Tap jobs to select'),
+    h('button.go', { disabled: !sel.size, onclick: () => WD.r9.batchMove([...sel], () => { S.board.select = null; refresh(); }) }, 'Move…'));
 }
 function grid() {
   const b = S.board, cols = columns(), W = page.body.clientWidth || 393;
@@ -232,7 +246,7 @@ function grid() {
       !stops.length && h('div.bd-empty', 'No stops'),
       canEdit && h('div.bd-add', { 'data-add': i }, icon('plus', 13), 'Add stop'));
   }));
-  const el = scroller = h('div.bd-scroll.lvl' + S.board.detail, h('div.bd-content', { style: { width: colW * cols.length + 'px' } }, head, body));
+  const el = scroller = h('div.bd-scroll.lvl' + S.board.detail + (S.board.select ? '.selecting' : ''), h('div.bd-content', { style: { width: colW * cols.length + 'px' } }, head, body));
   el.addEventListener('pointerdown', onPointerDown); el.addEventListener('wheel', onWheel, { passive: false });
   el.addEventListener('touchstart', touchStart, { passive: false }); el.addEventListener('touchmove', touchMove, { passive: false }); el.addEventListener('touchend', touchEnd); el.addEventListener('touchcancel', touchEnd);
   const top = saved.top, left = saved.left, reveal = revealId; revealId = null;
@@ -277,6 +291,8 @@ function onWheel(e) {
 /* ---------- Tap, swipe and drag ---------- */
 function onPointerDown(e) {
   if (e.button > 0 || e.target.closest('.bd-chip') || drag || pinch) return;
+  if (S.board.select) { const c0 = e.target.closest('.bd-job'), j0 = c0 && q.job(c0.dataset.job), x0 = e.clientX, y0 = e.clientY; if (!j0) return;
+    const up0 = ev => { document.removeEventListener('pointerup', up0); if (Math.abs(ev.clientX - x0) + Math.abs(ev.clientY - y0) < 9 && S.board.select) toggleSelect(j0); }; document.addEventListener('pointerup', up0); return; }
   const cellEl = e.target.closest('.bd-job'), colEl = e.target.closest('.bd-col'), addEl = e.target.closest('.bd-add'), sx = e.clientX, sy = e.clientY, touch = e.pointerType === 'touch', el = scroller;
   const job = cellEl && q.job(cellEl.dataset.job), canDrag = job && WD.can('jobs.edit') && !job.pending && (job.status === 'scheduled' || job.status === 'enroute');
   /* A stop that can't move says why when you try to drag it (hold on touch, drag with a mouse), instead of doing nothing. */
@@ -408,7 +424,7 @@ function render(p) {
   page = p; const b = S.board;
   if (scroller && scroller.isConnected) saved = { top: scroller.scrollTop, left: scroller.scrollLeft };
   if (!q.route(b.routeId)) { const mine = data.routes.find(r => r.driverId === S.me.id); b.routeId = (mine || q.visibleRoutes()[0] || q.routes()[0]).id; }
-  return [topBar(), modeRow(), statusStrip(), addressStrip(), offStrip(), markStrip(), b.mode === 'month' ? monthView() : grid()];
+  return [topBar(), modeRow(), statusStrip(), addressStrip(), offStrip(), markStrip(), b.mode === 'month' ? monthView() : grid(), selectBar()];
 }
 WD.screens.board = {
   root: () => ({ title: 'Dispatch', navbar: false, noScroll: true, live: false, render, onChange: p => { if (pinch) staleWhilePinching = true; else if (!drag) p.refresh(); }, onReappear: p => p.refresh() }),

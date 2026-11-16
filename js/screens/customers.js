@@ -364,7 +364,7 @@ function detailSpec(id) {
     render: page => {
       const c = q.customer(id); if (!c) return ui.empty({ icon: 'arrow.triangle.merge', title: 'Record merged', text: 'This customer was merged into another record.' });
       const edit = WD.can('crm.edit');
-      return [header(c), ui.list(statsSection(c), contactsSection(c, edit), locationsSection(c), WD.x.pricingSection(c), WD.x.historySection(c), WD.x.agreementSection(c), jobsSections(c), WD.can('billing.view') && billingSection(c), WD.workflow && WD.workflow.customerSections(c), tasksSection(c, edit),
+      return [header(c), ui.list(statsSection(c), contactsSection(c, edit), locationsSection(c), WD.x.pricingSection(c), WD.x.historySection(c), WD.x.agreementSection(c), WD.biz && WD.biz.customerSections(c, edit), jobsSections(c), WD.can('billing.view') && billingSection(c), WD.workflow && WD.workflow.customerSections(c), tasksSection(c, edit),
         timelineSection(c, st, page, edit), attributionSection(c), detailsSection(c),
         edit && ui.section(null, ui.row({ title: 'Merge with another customer…', destructive: true, onTap: () => pickCustomer(WD.nav.current().top(), 'Merge with', other => setTimeout(() => WD.nav.push(comparePage(c.id, other, null)), 450), c.id) })))];
     } };
@@ -471,6 +471,7 @@ function invoicePage(invId) {
       return [h('div.cu-head', h('div.cu-amount', fmt.money(inv.amount, true)), ui.badge(inv.status, INV_COLOR[inv.status]), h('div.footnote', (c ? c.name + ' · ' : '') + 'Issued ' + longDate(inv.day) + (inv.status !== 'Paid' ? ' · Due ' + fmt.day(D.add(inv.day, 30), 'md') : ''))),
         ui.list(ui.section({ header: 'Lines', footer: 'Prices from the price book.' }, lines.map(l => ui.row({ title: l.name, subtitle: l.qty + ' × ' + fmt.money(l.rate, true), detail: fmt.money(l.qty * l.rate, true) })), ui.row({ title: h('b', 'Total'), detail: h('b', fmt.money(inv.amount, true)) })),
           ui.section('Payments', pays.length ? pays.map(p => ui.row({ icon: 'creditcard', iconColor: 'var(--pink)', title: p.method, subtitle: whenFull(p.at), detail: fmt.money(p.amount, true) })) : ui.row({ title: 'No payments yet' })),
+          WD.r9 && WD.r9.revisionSection(inv),
           inv.jobId && q.job(inv.jobId) && ui.section('Job', jobRow(q.job(inv.jobId))),
           inv.master && ui.section(null, ui.row({ icon: 'tray', iconColor: 'var(--brown)', title: 'Master invoice', subtitle: 'Built from the service notes saved in the database' + (inv.po ? ' · ' + inv.po : '') })),
           ui.section(null, WD.workflow ? WD.workflow.invoiceActionRows(inv, inv.jobId && q.job(inv.jobId)) : null))];
@@ -806,7 +807,7 @@ function showSeg(seg) {
   R.seg = seg; R.query = ''; R.results = null; R.loading = false; WD.nav.switchTab('customers');
   if (R.page) { const inp = R.page.navbar.querySelector('.nav-search input'), box = R.page.navbar.querySelector('.search-box'); if (inp) inp.value = ''; if (box) box.classList.remove('filled'); R.page.refresh(); }
 }
-WD.screens.customers = { root, openDetail, openNew, simulateCall, invoicePage, crm: { PIPE, LC, CHANNELS, LOST, mk, addI, addTask, logCall, moveStage, setNext, markLost, contactedYet, nextLabel, staff, first, startCall, timeline, describe, owners, tasksView, newTask }, noteEmailOf };
+WD.screens.customers = { root, openDetail, openNew, simulateCall, invoicePage, invLines: linesFor, crm: { PIPE, LC, CHANNELS, LOST, mk, addI, addTask, logCall, moveStage, setNext, markLost, contactedYet, nextLabel, staff, first, startCall, timeline, describe, owners, tasksView, newTask }, noteEmailOf };
 WD.panel.addAction('Incoming call (known customer)', () => simulateCall('c1'));
 WD.panel.addAction('Incoming call (unknown number)', () => simulateCall(null));
 WD.panel.addJump('Customer record', () => { WD.nav.switchTab('customers'); openDetail('c1'); });

@@ -130,6 +130,7 @@ function details(job, p) {
       (job.po || (cust && cust.poSchedule && cust.poSchedule.length)) && ui.row({ title: 'PO number', subtitle: cust && cust.poSchedule && cust.poSchedule.length ? 'From the PO schedule for ' + fmt.day(job.day, 'md') : null, detail: job.po || 'None' }),
       cust && wf.poAlert(cust, job.day) && wf.alertRow(wf.poAlert(cust, job.day)), job.contract && ui.row({ title: 'Contract', detail: job.contract })),
     job.notes && ui.section('Notes', h('div.jb-notes', job.notes)),
+    WD.biz && WD.biz.jobSections(job, () => p.refresh()),
     ui.section('Attachments', job.attachments.map(a => attachmentRow(a)),
       ui.row({ title: 'Add photo or file', icon: 'paperclip', iconPlain: true, tint: true, onTap: () => addAttachment(job.attachments) })),
     (WD.can('billing.view') || WD.can('billing.field')) && !job.allDay && !WD.struck[job.status] && WD.screens.billing && ui.section({ header: 'Billing', footer: job.invoice || job.billing ? null : job.status === 'completed' ? 'This stop is completed but not billed. It stays bright on the board until it is.' : 'Nothing is sent until you review the charges.' }, WD.screens.billing.billingRows(job)),
@@ -245,14 +246,16 @@ function recommend(f, job) {
 }
 /** Simulated Apple Maps suggestions. Keeps whatever city was typed — the real app searches Apple Maps, which finds any address. */
 const titleCase = t => t.replace(/\b\w/g, m => m.toUpperCase());
+const STREETS = ['Main St', 'Maple Ave', 'Market St', 'Madison Ave', 'Magnolia Dr', 'Mill Rd', 'Oak St', 'Oakwood Dr', 'Orchard Rd', 'Park Ave', 'Pine St', 'Pecan St', 'Elm St', 'Evergreen Ter', 'Cedar Ln', 'Congress Ave', 'Commerce St', 'Church St', 'Center St', 'Lake Shore Dr', 'Lamar Blvd', 'Lincoln Ave', 'Washington St', 'Walnut St', 'Willow Way', 'Highland Ave', 'Harbor Way', 'Hill Country Rd', 'Broadway', 'Burnet Rd', 'River Rd', 'Riverside Dr', 'Sunset Blvd', 'Spring St', 'State St', 'Industrial Blvd', 'First St', 'Second St', 'Third St', 'Fourth St', 'Fifth St', 'Franklin St', 'Jefferson St', 'Juniper Ct', 'Airport Blvd', 'Dogwood Ln', 'Grant St', 'Kings Hwy', 'North Loop', 'Quarry Rd', 'Technology Dr', 'Union St', 'Valley View Dr', 'Vine St', 'Young St', 'Zilker Rd'];
 function addressSuggestions(text) {
-  const t = text.trim(), s = t.toLowerCase(); if (s.length < 3) return [];
+  const t = text.trim(), s = t.toLowerCase(); if (s.length < 2) return [];
   const [street, ...rest] = t.split(','), city = rest.join(',').trim();
   const known = data.customers.flatMap(c => c.locations.map(l => ({ title: l.address.split(',')[0], sub: c.name + ' · ' + (l.address.split(',')[1] || '').trim(), address: l.address, l }))).filter(x => x.address.toLowerCase().includes(s.split(',')[0].trim()) || x.sub.toLowerCase().includes(s));
-  let h1 = 7; for (const ch of s) h1 = (h1 * 31 + ch.charCodeAt(0)) >>> 0;
-  const st = titleCase(street.trim()) + (/\b(st|street|ave|avenue|blvd|rd|road|dr|drive|ln|lane|way|ct|court|pkwy|hwy)\b/i.test(street) ? '' : ' St');
-  const made = !/\d/.test(street) ? [] : city ? [{ title: st, sub: titleCase(city), address: st + ', ' + titleCase(city), l: { x: 80 + h1 % 840, y: 80 + (h1 >> 8) % 840 } }]
-    : ['Lakemont', 'North Lakemont'].map((c, i) => ({ title: st, sub: c + (i ? '' : ' · near you'), address: st + ', ' + c, l: { x: 200 + ((h1 >> (i * 4)) % 600), y: 200 + ((h1 >> (i * 6 + 3)) % 600) } }));
+  const spot = a => { let n = 7; for (const ch of a.toLowerCase()) n = (n * 31 + ch.charCodeAt(0)) >>> 0; return { x: 120 + n % 760, y: 120 + (n >>> 9) % 760 }; };
+  /* Complete what was typed, the way Apple Maps does: “123 ma” offers 123 Main St, 123 Maple Ave… */
+  const m = /^(\d+[a-z]?)(?:\s+(.*))?$/i.exec(street.trim()), num = m ? m[1] + ' ' : '', name = (m ? m[2] || '' : street.trim()).toLowerCase(), cities = city ? [titleCase(city)] : ['Lakemont'];
+  let made = STREETS.filter(x => x.toLowerCase().startsWith(name) || (name.length > 2 && x.toLowerCase().includes(name))).slice(0, 5).flatMap(x => cities.map(c => { const address = num + x + ', ' + c; return { title: num + x, sub: c + (city ? '' : ' · near you'), address, l: spot(address) }; }));
+  if (!made.length && /\d/.test(street)) { const st = titleCase(street.trim()) + (/\b(st|street|ave|avenue|blvd|rd|road|dr|drive|ln|lane|way|ct|court|pkwy|hwy)\b/i.test(street) ? '' : ' St'); made = (city ? [titleCase(city)] : ['Lakemont', 'North Lakemont']).map((c, i) => ({ title: st, sub: c + (i || city ? '' : ' · near you'), address: st + ', ' + c, l: spot(st + ', ' + c) })); }
   return [{ title: 'Use “' + t + '”', sub: 'Exactly as typed', address: t, typed: true }].concat(known.slice(0, 4), made).slice(0, 10);
 }
 /* Hard drives: scanning each drive's barcode or serial number is decided job by job; the company default is in Settings → Barcode scanning. */

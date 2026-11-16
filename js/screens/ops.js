@@ -131,12 +131,13 @@ function applyMoves(moves, o) {
   const live = moves.filter(m => m.to && m.jobs.length), n = live.reduce((s, m) => s + m.jobs.length, 0), who = me(); if (!n && !(o.marks || []).length) return false;
   const moved = [];
   if (n) api.op({ kind: 'batch', title: o.title, scope: plural(n, 'job') + ' · all or nothing', jobIds: live.flatMap(m => m.jobs.map(j => j.id)), apply() {
-    live.forEach(m => m.jobs.forEach(j => { moved.push({ j, from: m.from, to: m.to }); }));
-    moved.forEach(({ j, from, to }) => { WD.placeJob(j, j.routeId, to, Infinity); j.movedFrom = from; j.offWindow = null; j.events.push({ at: +WD.now(), actor: who, text: 'Moved from ' + fmt.day(from) + ' to ' + fmt.day(to) + ' · ' + o.reason + (j.recurring ? ' · this visit only' : '') }); }); } });
+    live.forEach(m => m.jobs.forEach(j => { moved.push({ j, from: m.from, to: m.to, route: m.toRoute && m.toRoute !== j.routeId ? m.toRoute : null, was: j.routeId }); }));
+    moved.forEach(({ j, from, to, route, was }) => { WD.placeJob(j, route || j.routeId, to, Infinity); if (to !== from) j.movedFrom = from; j.offWindow = null; j.version = (j.version || 0) + 1;
+      j.events.push({ at: +WD.now(), actor: who, text: [to !== from && 'Moved from ' + fmt.day(from) + ' to ' + fmt.day(to), route && 'Reassigned from ' + q.routeName(was) + ' to ' + q.routeName(route), o.reason, j.recurring && 'this visit only'].filter(Boolean).join(' · ') }); }); } });
   (o.marks || []).forEach(m => { if (m.kind) data.dayMarks[m.routeId + '|' + m.day] = { kind: m.kind, label: markLabel(m.kind) }; });
   WD.changed();
-  ui.toast(n ? 'Moved ' + plural(n, 'job') + ' · run AutoRoute on the new days' : 'Saved', 'checkmark', 2800);
-  const tell = moved.filter(x => { const c = q.customer(x.j.customerId); return c && c.contacts.some(p => p.phone); });
+  ui.toast(n ? 'Moved ' + plural(n, 'job') + ' · run AutoRoute on the new ' + (o.batch ? 'lists' : 'days') : 'Saved', 'checkmark', 2800);
+  const tell = moved.filter(x => { if (x.to === x.from) return false; const c = q.customer(x.j.customerId); return c && c.contacts.some(p => p.phone); });
   if (n && ST.holidays.notify && tell.length) setTimeout(async () => { const x = tell[0], c = q.customer(x.j.customerId), sample = CO.fill(CO.tpl('moved').body, CO.ctxFor(c, { date: fmt.day(x.to, 'long'), olddate: fmt.day(x.from, 'long'), reason: o.reason }));
     const v = await ui.actionSheet({ title: 'Text ' + plural(tell.length, 'customer') + ' their new day?', message: 'From the “Service day changed” template, for example:\n\n' + sample, buttons: [{ label: 'Send the texts', value: true }], cancel: 'Not now' });
     if (v) { tell.forEach(t => t.j.events.push({ at: +WD.now(), actor: who, text: 'Customer texted the new service day' })); WD.changed(); ui.toast('Texts sent · ' + tell.length, 'message', 2400); } }, 900);
@@ -232,6 +233,7 @@ OP.schedSpec = () => ({ title: 'Holidays and schedule changes', render: page => 
 OP.openSchedule = () => WD.nav.push(OP.schedSpec());
 /** Bulk move from the board: every job on a route (or all routes) to another day, in one all-or-nothing change. */
 OP.moveSheet = pre => moveSheet({ bulk: true, ...pre });
+OP.applyMoves = applyMoves; OP.loadChips = loadChips;
 
 /* ================= Which number and address messages come from ================= */
 const FROM = [{ value: 'match', label: 'The company number nearest the customer' }, { value: 'main', label: 'The main company number' }, { value: 'driver', label: 'The sender’s own cell phone' }];

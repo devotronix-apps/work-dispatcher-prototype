@@ -124,6 +124,9 @@ function signaturePad(o = {}) {
 let invSeq = 2600;
 const pbItem = id => data.priceBook.find(x => x.id === id) || { name: id, rate: 0 };
 const total = lines => lines.reduce((s, l) => s + (+l.qty || 0) * (+l.rate || 0), 0);
+/* Sales tax (Settings → Sales tax) is off unless the company turns it on. Wording comes from Settings → Business type and wording. */
+const taxInfo = (lines, cust) => WD.taxInfo ? WD.taxInfo(lines, cust) : { tax: 0, rate: 0, label: '' };
+const biz = () => data.biz || {}, repTitle = () => biz().repTitle || 'Shredding Service Representative';
 /** The person whose signature goes on the invoice: the signed-in driver running this route today, else the route's driver, else whoever creates it. */
 function repFor(job) { if (S.shift && S.shift.routeId === job.routeId) return S.me; if (S.me && S.me.role === 'driver') return S.me; return q.driverFor(job.routeId) || S.me; }
 /** Starting lines for a job: its containers, with this customer's rates. */
@@ -141,7 +144,7 @@ function mirror(job) {
   let rec = data.invoices.find(x => x.jobId === job.id);
   if (!rec) { rec = { id: 'inv-f' + inv.number, number: inv.number, customerId: job.customerId, jobId: job.id, day: job.day, payments: [], at: +WD.now(), auto: false }; data.invoices.push(rec);
     const c = q.customer(job.customerId); if (c && c.stats && inv.status !== 'Draft') { c.stats.invoiced += inv.amount; c.successful = true; if (!c.stats.firstInvoice) c.stats.firstInvoice = job.day; } }
-  Object.assign(rec, { amount: inv.amount, status: inv.status, lines: inv.lines });
+  Object.assign(rec, { amount: inv.amount, status: inv.status, lines: inv.lines, tax: inv.tax });
   if (inv.status === 'Paid' && inv.paid && !rec.payments.length && data.payments) { const pay = { id: 'pay-f' + inv.number, invoiceId: rec.id, customerId: job.customerId, at: inv.paid.at, amount: inv.amount, method: inv.paid.method + ' · on site' }; data.payments.push(pay); rec.payments.push(pay.id); const c = q.customer(job.customerId); if (c && c.stats) c.stats.paid += inv.amount; }
 }
 
@@ -156,12 +159,12 @@ function openEditor(jobId, o = {}) {
   const note = !!(cust && cust.billingMode === 'serviceNote' && !o.lines), pol = note ? 'always' : WD.sigPolicy(cust), poOf = day => wf.poFor && cust && cust.poSchedule && cust.poSchedule.length ? wf.poFor(cust, day).po : null;
   const f = prev ? { lines: prev.lines.map(l => ({ ...l })), po: prev.po || '', contract: prev.contract || '', billTo: prev.billTo || '', includeDate: prev.includeDate !== false, serviceDate: prev.serviceDate || job.day, scans: (prev.scans || []).slice(), scanNote: prev.scanNote || '', drives: (prev.drives || []).slice(), driveScan: prev.driveScan != null ? prev.driveScan : !!job.hddScan, driveNote: prev.driveNote || '', custSig: prev.custSig || null, custName: prev.custName || '', pounds: prev.pounds || '', pay: 'none', checkNo: '', other: '', note: prev.note || '' }
     : { lines: o.lines || linesForJob(job), po: poOf(job.day) != null ? poOf(job.day) : job.po || (cust && cust.po) || '', contract: job.contract || (cust && cust.contract) || '', billTo: (cust && (cust.billingEmail || (contact && contact.email))) || '', includeDate: true, serviceDate: job.day, scans: [], scanNote: '', drives: [], driveScan: !!job.hddScan, driveNote: '', custSig: null, custName: '', pounds: '', pay: o.pay || 'none', checkNo: '', other: '', note: o.note || '' };
-  let totalEl = null;
+  let totalEl = null, taxEl = null;
   /* Container barcodes (Settings → Container barcodes): scan each container at the stop to prove service. */
   const tags = WD.co && WD.co.barcodesOn() ? WD.co.containers(job) : [], scanShort = () => tags.length > 0 && f.scans.length < tags.length && !f.scanNote;
   /* Hard drives: when this job asks for it, each drive's barcode or serial number is scanned before it is destroyed. */
   const hddQty = () => f.lines.filter(l => l.id === 'hdd').reduce((s, l) => s + (+l.qty || 0), 0), driveShort = () => f.driveScan && hddQty() > 0 && f.drives.length < hddQty() && !f.driveNote;
-  const syncTotal = () => { if (totalEl) totalEl.textContent = fmt.money(total(f.lines), true); };
+  const syncTotal = () => { const t = taxInfo(f.lines, cust); if (taxEl) taxEl.textContent = fmt.money(t.tax, true); if (totalEl) totalEl.textContent = fmt.money(total(f.lines) + t.tax, true); };
   const createLabel = () => note ? 'Create service note' : f.pay === 'none' ? 'Create invoice' : 'Create invoice · paid';
   const sigMissing = () => pol === 'always' && !f.custSig;
   function lineRow(l, i, p) {
@@ -178,7 +181,7 @@ function openEditor(jobId, o = {}) {
   async function ensureRepSig() {
     if (rep && rep.signature) return true;
     if (rep !== S.me) { const v = await ui.alert({ title: 'No signature on file', message: (rep ? rep.name : 'The driver') + ' hasn’t added a signature yet, so the representative line will be blank.', buttons: [{ label: 'Cancel', value: false }, { label: 'Continue', value: true, bold: true }] }); return v; }
-    const r = await signaturePad({ title: 'Your signature', subtitle: 'Saved on file and printed on every invoice you create, under “Shredding Service Representative Signature”.' });
+    const r = await signaturePad({ title: 'Your signature', subtitle: 'Saved on file and printed on every invoice you create, under “' + repTitle() + ' Signature”.' });
     if (!r) return false; S.me.signature = r.image; ui.toast('Signature saved to your profile', 'signature'); return true;
   }
   async function getCustomerSig(p) {
@@ -209,7 +212,7 @@ function openEditor(jobId, o = {}) {
       if (!note && f.pay === 'card') { const hud = ui.hud('Hold card near the top of iPhone'); await WD.delay(1600); hud.set('Approved', 'checkmark'); await WD.delay(650); hud.close(); }
       if (!note && f.pay === 'check' && !f.checkNo.trim()) { const r = await ui.alert({ title: 'Check number', message: 'Optional — helps match the deposit.', input: { placeholder: 'e.g. 4417', type: 'text' }, buttons: [{ label: 'Skip', value: 'skip' }, { label: 'Save', value: 'save', bold: true }] }); if (r && r.value === 'save') f.checkNo = r.text; }
     }
-    const amount = total(f.lines), me = S.me.name;
+    const tx = note ? { tax: 0 } : taxInfo(f.lines, cust), amount = total(f.lines) + tx.tax, me = S.me.name;
     if (note && !draft) {
       let sn = null;
       api.op({ kind: 'edit', title: job.title, scope: 'Service note', jobIds: [job.id], apply() {
@@ -220,7 +223,7 @@ function openEditor(jobId, o = {}) {
     }
     const paid = !draft && f.pay !== 'none', number = prev ? prev.number : 'INV-' + (++invSeq), method = paid ? methodLabel(f) : null;
     api.op({ kind: 'edit', title: job.title, scope: draft ? 'Invoice draft' : paid ? 'Invoice paid on site' : 'Invoice created', jobIds: [job.id], apply() {
-      job.invoice = { number, status: draft ? 'Draft' : paid ? 'Paid' : 'Sent', amount, auto: false, lines: f.lines.map(l => ({ ...l })), po: f.po.trim(), contract: f.contract.trim(), billTo: f.billTo.trim(), includeDate: f.includeDate, serviceDate: f.serviceDate, pounds: f.pounds || null, note: f.note, scans: f.scans.slice(), scanNote: f.scanNote, drives: f.driveScan ? f.drives.slice() : [], driveScan: f.driveScan, driveNote: f.driveNote,
+      job.invoice = { number, status: draft ? 'Draft' : paid ? 'Paid' : 'Sent', amount, tax: tx.tax, taxRate: tx.rate, taxLabel: tx.label, auto: false, lines: f.lines.map(l => ({ ...l })), po: f.po.trim(), contract: f.contract.trim(), billTo: f.billTo.trim(), includeDate: f.includeDate, serviceDate: f.serviceDate, pounds: f.pounds || null, note: f.note, scans: f.scans.slice(), scanNote: f.scanNote, drives: f.driveScan ? f.drives.slice() : [], driveScan: f.driveScan, driveNote: f.driveNote,
         repId: rep && rep.id, repName: rep && rep.name, repSig: rep && rep.signature, custSig: f.custSig, custName: f.custName, paid: paid ? { method, at: +WD.now() } : null, sentAt: draft ? null : +WD.now() };
       job.po = f.po.trim(); job.contract = f.contract.trim();
       job.events.push({ at: +WD.now(), actor: me, text: draft ? 'Invoice ' + number + ' saved as draft' : 'Invoice ' + number + ' ' + (paid ? 'paid on site · ' + method : 'created and sent to ' + (f.billTo || 'the customer')) + ' · ' + fmt.money(amount, true) });
@@ -245,7 +248,7 @@ function openEditor(jobId, o = {}) {
           f.lines.some(l => l.id === 'binFlat') && (bins => ui.row({ title: '65-gallon bins shredded', subtitle: fmt.money(data.purgePricing.binFlat) + ' covers the first ' + data.purgePricing.binIncluded + ', then ' + fmt.money(data.purgePricing.binExtra) + ' each', detail: String(bins),
             trailing: ui.stepper(bins, 1, 200, v => { const at = f.lines.findIndex(l => l.id === 'binFlat'); f.lines = f.lines.filter(l => l.id !== 'binFlat' && l.id !== 'binExtra'); f.lines.splice(at, 0, ...WD.binLines(v).map(x => ({ ...x, name: pbItem(x.id).name }))); p.refresh(); }) }))(data.purgePricing.binIncluded + ((f.lines.find(l => l.id === 'binExtra') || {}).qty || 0) - (((f.lines.find(l => l.id === 'binFlat') || {}).bins || data.purgePricing.binIncluded) < data.purgePricing.binIncluded ? data.purgePricing.binIncluded - f.lines.find(l => l.id === 'binFlat').bins : 0)),
           ui.row({ title: 'Add line', icon: 'plus.circle.fill', iconPlain: true, iconColor: 'var(--green)', tint: true, onTap: (e, el) => addLine(el, p) }),
-          h('div.bi-total', h('span', 'Total'), totalEl = h('span', fmt.money(total(f.lines), true)))),
+          (t => [taxEl = null, !note && t.rate > 0 && h('div.bi-total', { style: 'font-weight:400;font-size:15px;padding-bottom:0' }, h('span', t.label), taxEl = h('span', fmt.money(t.tax, true))), h('div.bi-total', h('span', 'Total'), totalEl = h('span', fmt.money(total(f.lines) + (note ? 0 : t.tax), true)))])(taxInfo(f.lines, cust))),
         ui.section({ header: 'Service', footer: po != null ? 'The PO comes from ' + (c ? c.name : 'the customer') + '’s PO schedule for the service date. Changing the date picks the PO that covers it.' : 'PO and contract numbers come from the customer. Changes here apply to this job only.' },
           ui.dateRow({ title: 'Service date', icon: 'calendar', iconColor: 'var(--red)', value: f.serviceDate, onChange: v => setDate(v, p) }),
           !note && ui.toggleRow({ title: 'Print service date', value: f.includeDate, onChange: v => { f.includeDate = v; } }),
@@ -271,10 +274,10 @@ function openEditor(jobId, o = {}) {
           ui.button(createLabel(), { kind: sigMissing() ? 'gray' : 'filled', icon: note ? 'tray' : 'doc.text', onTap: () => submit(p, false) })),
         ui.section(null, !note && ui.row({ title: 'Preview invoice', icon: 'doc.text', iconPlain: true, tint: true, chevron: true, onTap: () => p.push(previewSpec(() => draftInvoice(job, f, rep))) }),
           !note && ui.row({ title: 'Save as draft', icon: 'tray', iconPlain: true, tint: true, onTap: () => submit(p, true) }),
-          h('div.bi-sig', h('div.bi-ink', rep && rep.signature ? sigView(rep.signature) : h('span.bi-empty', rep === S.me ? 'Added when you create it' : 'No signature on file')), h('div.bi-cap', 'Shredding Service Representative Signature' + (rep ? ' · ' + rep.name : '')))));
+          h('div.bi-sig', h('div.bi-ink', rep && rep.signature ? sigView(rep.signature) : h('span.bi-empty', rep === S.me ? 'Added when you create it' : 'No signature on file')), h('div.bi-cap', repTitle() + ' Signature' + (rep ? ' · ' + rep.name : '')))));
     } });
 }
-const draftInvoice = (job, f, rep) => ({ number: (job.invoice && job.invoice.number) || 'Draft', status: 'Draft', amount: total(f.lines), lines: f.lines, po: f.po, contract: f.contract, billTo: f.billTo, includeDate: f.includeDate, serviceDate: f.serviceDate, pounds: f.pounds || null, scans: f.scans, scanNote: f.scanNote, drives: f.driveScan ? f.drives : [], driveNote: f.driveNote, repName: rep && rep.name, repSig: rep && rep.signature, custSig: f.custSig, custName: f.custName, paid: null, job });
+const draftInvoice = (job, f, rep) => ({ number: (job.invoice && job.invoice.number) || 'Draft', status: 'Draft', ...(t => ({ tax: t.tax, taxLabel: t.label }))(taxInfo(f.lines, q.customer(job.customerId))), amount: total(f.lines), lines: f.lines, po: f.po, contract: f.contract, billTo: f.billTo, includeDate: f.includeDate, serviceDate: f.serviceDate, pounds: f.pounds || null, scans: f.scans, scanNote: f.scanNote, drives: f.driveScan ? f.drives : [], driveNote: f.driveNote, repName: rep && rep.name, repSig: rep && rep.signature, custSig: f.custSig, custName: f.custName, paid: null, job });
 
 /* ---------- Invoice document (what the customer receives) ----------
    Layout follows the company's invoice: logo and "Invoice" with Account / Invoice # / Date, Bill To (with Attn), Please Remit To,
@@ -299,13 +302,13 @@ function invoicePages(o) {
   const pages = []; let cur = [];
   o.rows.forEach((r, i) => { if (r.gap && !cur.length) return; cur.push(r); if (cur.length >= ROWS_PER_PAGE && i < o.rows.length - 1) { pages.push(cur); cur = []; } });
   if (cur.length || !pages.length) pages.push(cur);
-  const all = o.rows.filter(r => !r.gap), totAmt = all.reduce((s, r) => s + r.qty * r.rate, 0), N = pages.length;
+  const all = o.rows.filter(r => !r.gap), tax = +o.tax || 0, totAmt = all.reduce((s, r) => s + r.qty * r.rate, 0) + tax, N = pages.length;
   const meta = pairs => h('div.bi-meta', pairs.filter(p => p[1]).map(([k, v]) => [h('b', k + ':'), h('span', v)]));
   return pages.map((rows, pi) => {
     const real = rows.filter(r => !r.gap), bins = real.reduce((s, r) => s + r.bins, 0), lbs = real.reduce((s, r) => s + (r.pounds || 0), 0), amt = real.reduce((s, r) => s + r.qty * r.rate, 0), last = pi === N - 1;
     let prevLoc = null;
     return h('div.bi-doc',
-      h('div.bi-top', logo(), h('div', h('div.bi-ttl', 'Invoice'), meta([['Account', c.account || (c.name || '').toUpperCase()], ['Invoice #', o.number], ['Date', mdy(o.date)]]))),
+      h('div.bi-top', logo(), h('div', h('div.bi-ttl', 'Invoice'), meta([['Account', c.account || (c.name || '').toUpperCase()], ['Invoice #', o.number], ['Date', mdy(o.date)], ['Revised', o.revised]]))),
       h('div.bi-addr', h('div', h('b', 'Bill To:'), (o.billTo || []).map(x => h('div', x))), h('div', h('b', 'Please Remit To:'), remit.map(x => h('div', x))),
         meta([['Service Location', o.serviceLocation], ['Terms', o.terms || 'Net 30'], ['Agreement', o.agreement], ['PO', o.po]])),
       h('div.bi-sumh', 'SERVICE SUMMARY'),
@@ -313,12 +316,13 @@ function invoicePages(o) {
         h('tbody', rows.map(r => { if (r.gap) return h('tr.gap', h('td', { colspan: 7 })); const same = r.location === prevLoc; prevLoc = r.location;
           return h('tr', h('td', mdy(r.day)), h('td.c', r.location), h('td.c', r.desc), h('td.r', String(r.qty)), h('td.r', money2(r.rate)), h('td.r', r.pounds != null ? String(r.pounds) : ''), h('td.r', money2(r.qty * r.rate))); })),
         h('tfoot', h('tr', h('td', { colspan: 2 }), h('td.r.sub', N > 1 ? 'Subtotal Page ' + (pi + 1) : 'Subtotal'), h('td.r.sub', String(bins)), h('td.sub', real.some(r => r.bins && !/Gallon/.test(r.desc)) ? 'Units' : 'Bins'), h('td.r.sub', lbs ? lbs.toLocaleString('en-US') : ''), h('td.r.sub', money2(amt))),
+          last && tax > 0 && h('tr', h('td', { colspan: 2 }), h('td', { colspan: 3, class: 'r' }, o.taxLabel || 'Sales tax'), h('td', { colspan: 2, class: 'r' }, money2(tax))),
           last && h('tr.due', h('td', { colspan: 2 }), h('td', { colspan: 3, class: 'r' }, 'Total DUE This Invoice'), h('td', { colspan: 2, class: 'r' }, o.paid ? '$0.00' : money2(totAmt))))),
       last && o.paid && h('div.paid', 'PAID' + (o.paid.method ? ' · ' + o.paid.method : '') + ' · ' + money2(totAmt)),
       last && o.scans && o.scans.length > 0 && h('div.bi-scan', h('b', 'CONTAINERS SERVICED (BARCODE SCANS): '), o.scans.map(s => s.code + ' ' + fmt.clock(new Date(s.at))).join(' · ') + (o.scanNote ? ' · Note: ' + o.scanNote : '')),
       last && o.drives && o.drives.length > 0 && h('div.bi-scan', h('b', 'HARD DRIVES DESTROYED (SERIAL NUMBERS): '), o.drives.map(s => s.code).join(' · ') + (o.driveNote ? ' · Note: ' + o.driveNote : '')),
       last && o.sigs,
-      h('div.bi-cod', h('b', 'CERTIFICATE OF DESTRUCTION:'), h('p', (org.name) + ' certifies that all materials related to services included on this invoice have been shredded per the terms of the service agreement. Additionally, 100% of the shredded materials were recycled.')),
+      biz().proofOn !== false && h('div.bi-cod', h('b', (biz().proofTitle || 'CERTIFICATE OF DESTRUCTION') + ':'), h('p', (biz().proofText || '{company} certifies that all materials related to services included on this invoice have been shredded per the terms of the service agreement. Additionally, 100% of the shredded materials were recycled.').replace(/\{company\}/g, org.name))),
       h('div.bi-pg', 'Page ' + (pi + 1) + ' of ' + N));
   });
 }
@@ -327,10 +331,10 @@ function invoiceDoc(inv, job) {
   const c = q.customer(job.customerId), lines = inv.lines || linesForJob(job), loc = c && (c.locations.find(l => l.id === job.locationId) || c.locations[0]), day = inv.serviceDate || job.day;
   const contact = c && c.contacts[0], billTo = c ? [c.name].concat(c.attn || contact ? ['Attn: ' + (c.attn || contact.name)] : [], c.billAddress || [job.address.split(',')[0], (job.address.split(',')[1] || '').trim()].filter(Boolean)) : [job.title, job.address];
   const sigs = h('div.sigs',
-    h('div', h('div.sl', sigView(inv.repSig)), h('div.sc', h('span', 'Shredding Service Representative Signature'), h('span', [inv.repName, inv.includeDate !== false ? 'Service date ' + mdy(day) : null].filter(Boolean).join(' · ')))),
+    h('div', h('div.sl', sigView(inv.repSig)), h('div.sc', h('span', repTitle() + ' Signature'), h('span', [inv.repName, inv.includeDate !== false ? 'Service date ' + mdy(day) : null].filter(Boolean).join(' · ')))),
     (inv.custSig || WD.sigPolicy(c) === 'always') && h('div', h('div.sl', sigView(inv.custSig)), h('div.sc', h('span', 'Customer Signature'), h('span', inv.custName || ''))));
   return docWrap(invoicePages({ number: inv.number, date: inv.sentAt ? D.key(new Date(inv.sentAt)) : day, customer: c || { name: job.title }, billTo, serviceLocation: loc ? job.address.split(',')[0] : job.address, terms: c && c.terms, agreement: (c && c.agreement) || inv.contract, po: inv.po,
-    rows: visitRows(day, loc ? loc.label : job.title, lines, inv.pounds), paid: inv.status === 'Paid' ? (inv.paid || {}) : null, sigs, scans: data.settings && data.settings.barcodes.onInvoice ? inv.scans : null, scanNote: inv.scanNote, drives: inv.drives, driveNote: inv.driveNote }));
+    rows: visitRows(day, loc ? loc.label : job.title, lines, inv.pounds), paid: inv.status === 'Paid' ? (inv.paid || {}) : null, tax: inv.tax, taxLabel: inv.taxLabel, revised: inv.revisedAt ? mdy(D.key(new Date(inv.revisedAt))) : null, sigs, scans: data.settings && data.settings.barcodes.onInvoice ? inv.scans : null, scanNote: inv.scanNote, drives: inv.drives, driveNote: inv.driveNote }));
 }
 /** A master invoice: every service note it was built from, grouped by location (blank row between locations), paged like the paper invoice. */
 function masterDoc(mi) {
@@ -351,6 +355,7 @@ function openInvoice(jobId) {
   ui.sheet({ title: job.invoice.number, trailing: [{ label: 'Done', bold: true, onTap: p => p.dismiss() }], render: p => {
     const inv = job.invoice, unpaid = inv.status !== 'Paid';
     return ui.list(invoiceDoc(inv, job),
+      WD.r9 && WD.r9.revisionSection((WD.workflow && WD.workflow.invRecFor(job)) || inv),
       ui.section(null, invActions(job), ui.row({ title: 'Resend to customer', icon: 'envelope', iconPlain: true, tint: true, onTap: () => ui.run('Sending…', null, { done: 'Sent' }) })));
   } });
 }
@@ -368,7 +373,7 @@ async function recordPayment(job) {
 function invActions(job) {
   const wf = WD.workflow, rec = wf && wf.invRecFor(job);
   if (rec) return wf.invoiceActionRows(rec, job, { noView: true });
-  return [job.invoice.status !== 'Paid' && canInvoice() && ui.row({ title: 'Mark paid…', icon: 'dollarsign.circle', iconPlain: true, tint: true, onTap: () => recordPayment(job) }),
+  return [WD.r9 && WD.r9.editRow(null, job), job.invoice.status !== 'Paid' && canInvoice() && ui.row({ title: 'Mark paid…', icon: 'dollarsign.circle', iconPlain: true, tint: true, onTap: () => recordPayment(job) }),
     ui.row({ title: 'Open in Invoice Ninja', icon: 'arrow.up.right', iconPlain: true, tint: true, onTap: () => ui.toast('Opening Invoice Ninja…', 'arrow.up.right') })];
 }
 /** Rows for the job details Billing section. */
