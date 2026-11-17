@@ -137,6 +137,12 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .list > .section:first-child { margin-top: 10px; }
 .section-header { font-size: 13px; line-height: 16px; color: var(--label2); text-transform: uppercase; padding: 0 16px 7px; letter-spacing: -.08px; }
 .section-header.plain { text-transform: none; font-size: 20px; line-height: 25px; font-weight: 700; color: var(--label); letter-spacing: .3px; padding: 0 4px 8px; }
+.section-header.fold { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; -webkit-user-select: none; }
+.section-header.fold .fold-n { margin-left: auto; display: none; background: var(--fill2); color: var(--label2); border-radius: 9px; padding: 1px 7px; font-size: 12px; font-weight: 600; text-transform: none; letter-spacing: 0; }
+.section-header.fold > .ic { margin-left: auto; color: var(--label3); transition: transform .2s; flex: none; }
+.section.folded > .section-header .fold-n { display: inline-block; } .section.folded > .section-header .fold-n + .ic { margin-left: 0; transform: rotate(-90deg); }
+.section.folded > .cells, .section.folded > .section-footer { display: none; } .section.folded > .section-header { padding-bottom: 0; }
+.menu.compact .menu-item { min-height: 34px; padding: 6px 14px; font-size: 15px; letter-spacing: -.2px; } .menu.compact .menu-item .mi-sub { font-size: 11px; } .menu.compact .menu-head { padding: 6px 14px 4px; font-size: 11px; } .menu.compact .menu-divider { height: 5px; }
 .section-footer { font-size: 13px; line-height: 17px; color: var(--label2); padding: 7px 16px 0; letter-spacing: -.08px; }
 .cells { background: var(--cell); border-radius: 12px; overflow: hidden; }
 .row { display: flex; align-items: center; min-height: 44px; padding: 0 16px; gap: 12px; position: relative; }

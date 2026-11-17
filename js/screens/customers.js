@@ -231,30 +231,42 @@ function root() {
       !WD.can('leads.view') && h('div.cu-seg', ui.segmented([{ value: 'customers', label: 'Customers' }, { value: 'leads', label: 'Leads' }, { value: 'tasks', label: 'Tasks' }], R.seg, v => { R.seg = v; page.refresh(); })),
       WD.can('leads.view') || R.seg === 'customers' ? customersView() : R.seg === 'leads' ? leadsView() : tasksView()] };
 }
+const FILTER_TEXT = { balance: 'customers with a balance due', overdue: 'customers with overdue invoices', route: 'customers by route', household: 'residential customers', recurring: 'recurring customers', onetime: 'one-time customers', hidden: 'hidden customers' };
+const isRecurring = c => !!c.freq && c.freq !== 'One time';
+/** Unpaid and overdue amounts come from the invoices themselves (WD.r11); "overdue" uses the number of days in Settings → Unpaid invoices. */
+const owedBy = c => WD.r11 ? WD.r11.owed(c) : c.stats.balance, overdueOf = c => WD.r11 ? WD.r11.overdue(c) : [];
+const ownerView = () => ['owner', 'admin'].includes((WD.state.me || {}).role);
 function filterMenu(el, page) {
-  ui.menu(el, [{ header: 'Show' }, ...[['all', 'All customers', 'person.2'], ['balance', 'Balance due', 'dollarsign.circle'], ['route', 'By route', 'route'], ['household', 'Residential', 'house']]
-    .map(([v, label, ic]) => ({ label, icon: ic, checked: R.filter === v, onTap: () => { R.filter = v; page.refresh(); } }))]);
+  const bill = WD.can('billing.view');
+  ui.menu(el, [{ header: 'Show' }, ...[['all', 'All customers', 'person.2'], bill && ['balance', 'Balance due', 'dollarsign.circle'], bill && ['overdue', 'Overdue invoices', 'exclamationmark.circle'], ['recurring', 'Recurring', 'repeat'], ['onetime', 'One time', 'circle'], ['route', 'By route', 'route'], ['household', 'Residential', 'house'], ['hidden', 'Hidden', 'eye.slash']].filter(Boolean)
+    .map(([v, label, ic]) => ({ label, icon: ic, checked: R.filter === v, onTap: () => { R.filter = v; page.refresh(); } }))], { compact: true });
 }
 function searchView() {
   if (R.loading) return h('div.cu-loading', ui.spinner(18), 'Searching…');
-  const res = R.results || [];
+  const res = (R.results || []).filter(r => !r.customer.hidden);   // hidden customers only show under the Hidden filter
   if (!res.length) return ui.empty({ icon: 'magnifyingglass', title: 'No matches', text: R.query.length < 2 ? 'Type at least two characters.' : 'No customer matches “' + R.query + '”.' });
   return ui.list(ui.section({ header: res.length === 1 ? '1 match' : res.length + ' matches', footer: 'Searches every customer: names, contacts, phone numbers, emails and addresses.' },
     res.map(r => ui.row({ class: 'cu-crow', leading: avatar(r.customer), title: r.customer.name, subtitle: r.match, badge: lcBadge(r.customer), chevron: true, onTap: () => openDetail(r.customer.id) }))));
 }
-const custRow = c => ui.row({ class: 'cu-crow', leading: avatar(c), title: h('span.cu-name-row', c.name, c.successful && icon('star.fill', 13, 'var(--yellow)')),
-  subtitle: c.locations[0] ? c.locations[0].address.replace(/, Lakemont$/, '') : '', badge: c.stats.balance > 0 && WD.can('billing.view') ? ui.badge('Balance due', 'var(--red)') : null, chevron: true, onTap: () => openDetail(c.id) });
+/* The markers at the right of a customer: the amount owed above "Balance due", and the overdue amount above "Overdue", dark blue on light blue. */
+const mark = (amount, label) => h('span.cu-mark', h('b', fmt.money(amount)), label);
+const custRow = c => { const bill = WD.can('billing.view'), owed = bill ? owedBy(c) : 0, late = bill ? overdueOf(c).reduce((s, i) => s + i.amount, 0) : 0;
+  return ui.row({ class: 'cu-crow', leading: avatar(c), title: h('span.cu-name-row', c.name, c.successful && icon('star.fill', 13, 'var(--yellow)'), c.hidden && ui.badge('Hidden', 'var(--gray)')),
+    subtitle: [h('div', c.locations[0] ? c.locations[0].address.replace(/, Lakemont$/, '') : ''), ownerView() && h('div.cu-totals', c.stats.jobs + (c.stats.jobs === 1 ? ' job' : ' jobs') + ' done · ' + fmt.money(c.stats.invoiced) + ' invoiced')],
+    badge: owed > 0 || late > 0 ? h('span.cu-marks', owed > 0 && mark(owed, 'Balance due'), late > 0 && mark(late, 'Overdue')) : null, chevron: true, onTap: () => openDetail(c.id) }); };
 function customersView() {
-  let list = data.customers.filter(c => !PIPE.includes(c.lifecycle) || c.lifecycle === 'scheduled').sort((a, b) => a.name.localeCompare(b.name));
-  if (R.filter === 'balance') list = list.filter(c => c.stats.balance > 0); if (R.filter === 'household') list = list.filter(c => c.kind === 'household');
+  let list = data.customers.filter(c => (!PIPE.includes(c.lifecycle) || c.lifecycle === 'scheduled') && (R.filter === 'hidden' ? c.hidden : !c.hidden)).sort((a, b) => a.name.localeCompare(b.name));
+  if (R.filter === 'balance') list = list.filter(c => owedBy(c) > 0); if (R.filter === 'household') list = list.filter(c => c.kind === 'household');
+  if (R.filter === 'overdue') list = list.filter(c => overdueOf(c).length > 0); if (R.filter === 'recurring') list = list.filter(isRecurring); if (R.filter === 'onetime') list = list.filter(c => !isRecurring(c));
   const dupes = data.mergeSuggestions.filter(s => s.status === 'open').length, groups = new Map();
   list.forEach(c => { const k = R.filter === 'route' ? q.routeName(c.route) : (c.name[0] || '#').toUpperCase(); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(c); });
   const keys = [...groups.keys()]; if (R.filter === 'route') keys.sort((a, b) => (q.routes().findIndex(r => q.routeName(r) === a) + 99) % 99 - (q.routes().findIndex(r => q.routeName(r) === b) + 99) % 99);
   return ui.list(
+    R.filter === 'all' && WD.r11 && WD.can('billing.view') && WD.r11.unpaidSection(),
     R.filter === 'all' && WD.x.customerNotices(),
     dupes && WD.can('crm.edit') ? ui.section(null, ui.row({ icon: 'arrow.triangle.merge', iconColor: 'var(--orange)', title: dupes + (dupes === 1 ? ' possible duplicate' : ' possible duplicates'), subtitle: 'Review and merge matching records', chevron: true, onTap: () => WD.nav.push(mergesPage()) })) : null,
-    R.filter !== 'all' ? h('div.cu-filter', 'Showing ' + { balance: 'customers with a balance due', route: 'customers by route', household: 'residential customers' }[R.filter], h('button.cu-link', { onclick: () => { R.filter = 'all'; R.page && R.page.refresh(); } }, 'Show all')) : null,
-    list.length ? keys.map(k => ui.section(k, groups.get(k).map(custRow))) : ui.empty({ icon: 'person.2', title: 'No customers', text: 'Nothing matches this filter.' }),
+    R.filter !== 'all' ? h('div.cu-filter', 'Showing ' + FILTER_TEXT[R.filter], h('button.cu-link', { onclick: () => { R.filter = 'all'; R.page && R.page.refresh(); } }, 'Show all')) : null,
+    list.length ? keys.map(k => ui.section({ header: k, fold: R.filter === 'route' }, groups.get(k).map(custRow))) : ui.empty({ icon: 'person.2', title: 'No customers', text: 'Nothing matches this filter.' }),
     list.length ? h('div.cu-count', list.length + (list.length === 1 ? ' customer' : ' customers')) : null);
 }
 
@@ -330,9 +342,15 @@ async function toggleTask(t) {
 }
 function tasksView() {
   const open = data.tasks.filter(t => !t.done || R.justDone === t.id).sort((a, b) => a.due.localeCompare(b.due)), done = data.tasks.filter(t => t.done && R.justDone !== t.id).sort((a, b) => b.doneAt - a.doneAt).slice(0, 10);
-  const sec = (header, list) => list.length ? ui.section(header, list.map(t => taskRow(t))) : null;
-  return ui.list(sec('Overdue', open.filter(t => t.due < today)), sec('Today', open.filter(t => t.due === today)), sec('Upcoming', open.filter(t => t.due > today)),
-    !open.length ? ui.empty({ icon: 'checklist', title: 'All caught up', text: 'No follow-ups are due.' }) : null, sec('Done', done));
+  /* Every category starts collapsed, showing how many items it holds; tap one to open it. Postponed jobs (and price changes waiting for
+     approval) are in the same pipeline, so nothing waiting on someone is kept in a separate place. */
+  const sec = (header, list, footer) => ui.section({ header, footer, fold: true, folded: true, keepEmpty: true }, list.map(t => taskRow(t)));
+  const X = WD.r11, post = X ? X.postponedRows() : [], appr = X ? X.approvalRows() : [];
+  return ui.list(h('div', { style: 'padding:10px 4px 0' }, ui.note('Tap a category to open it. The number is how many items it holds.')),
+    sec('Overdue', open.filter(t => t.due < today)), sec('Today', open.filter(t => t.due === today)), sec('Upcoming', open.filter(t => t.due > today)),
+    X && ui.section({ header: 'Postponed jobs', footer: 'Jobs a customer postponed with no new date. Tap one to set a date, assign it to a route, edit it or cancel it.', fold: true, folded: true, keepEmpty: true }, post),
+    X && (appr.length > 0 || X.approvalsOn()) && ui.section({ header: 'Price changes to approve', footer: 'A driver changed a standing price for this and all future visits. It applies once an owner or admin approves it.', fold: true, folded: true, keepEmpty: true }, appr),
+    sec('Done', done));
 }
 function newTask(customerId) {
   let title = '', cid = customerId || null, due = D.add(today, 1); const ok = () => !!(title.trim() && cid);
@@ -379,11 +397,13 @@ function header(c) {
       qa('envelope', 'Email', () => ui.toast('New email to ' + p.email + ' in Gmail', 'envelope'), !p || !p.email), qa('arrow.triangle.turn.up.right', 'Directions', () => WD.workflow.openDirections({ title: c.name }), !loc),
       qa('plus', 'New job', () => newJob(c.id), !WD.can('jobs.edit'))));
 }
-const tile = (label, value, color) => h('div.cu-stat', h('b', { style: { color } }, value), h('span', label));
+const tile = (label, value, color, onTap) => h('div.cu-stat' + (onTap ? '.tap' : ''), { onclick: onTap, role: onTap ? 'button' : null }, h('b', { style: { color } }, value), h('span', label, onTap && icon('chevron.right', 10)));
 function statsSection(c) {
   const jobs = q.jobsForCustomer(c.id), next = jobs.find(isUpcoming), s = c.stats;
-  return ui.section(null, h('div.cu-stats', tile('Jobs', String(s.jobs)), tile('Last service', s.lastService ? fmt.day(s.lastService, 'rel') : '—'), tile('Next service', next ? fmt.day(next.day, 'rel') : '—'),
-    WD.can('billing.view') && [tile('Invoiced', fmt.money(s.invoiced)), tile('Paid', fmt.money(s.paid)), tile('Balance', fmt.money(s.balance), s.balance > 0 ? 'var(--red)' : null)]));
+  /* Jobs and Invoiced open the customer's invoices; Balance opens only the unpaid ones. */
+  const bill = WD.can('billing.view'), owed = owedBy(c), inv = unpaid => () => WD.nav.push(custInvoices(c.id, unpaid));
+  return ui.section(null, h('div.cu-stats', tile('Jobs', String(s.jobs), null, bill ? inv(false) : null), tile('Last service', s.lastService ? fmt.day(s.lastService, 'rel') : '—'), tile('Next service', next ? fmt.day(next.day, 'rel') : '—'),
+    bill && [tile('Invoiced', fmt.money(s.invoiced), null, inv(false)), tile('Paid', fmt.money(s.paid)), tile('Balance', fmt.money(owed), owed > 0 ? 'var(--red)' : null, inv(true))]));
 }
 function contactsSection(c, edit) {
   return ui.section('Contacts', c.contacts.map(p => ui.row({ icon: 'person.crop.circle', iconPlain: true, iconColor: 'var(--gray)', title: p.name, subtitle: [p.role, fmt.phone(p.phone, p.ext), p.email].filter(Boolean).join(' · '), onTap: () => contactActions(c, p, edit) })),
@@ -452,10 +472,18 @@ const allJobsPage = cid => ({ title: 'All jobs', render: () => { const jobs = q.
 /* ---------- Billing ---------- */
 const INV_COLOR = { Paid: 'var(--green)', Sent: 'var(--blue)', Overdue: 'var(--red)' };
 const invRow = inv => ui.row({ icon: 'doc.text', iconColor: 'var(--brown)', title: inv.number, subtitle: fmt.day(inv.day, 'md') + (inv.auto ? ' · Auto-charged' : ''), badge: ui.badge(inv.status, INV_COLOR[inv.status]), detail: fmt.money(inv.amount), chevron: true, onTap: () => WD.nav.push(invoicePage(inv.id)) });
+/** A customer's invoices, all of them or only the unpaid ones. */
+function custInvoices(cid, unpaid) {
+  const st = { unpaid: !!unpaid };
+  return { title: 'Invoices', render: page => { const c = q.customer(cid), all = invoicesFor(cid), open = all.filter(i => i.status !== 'Paid'), list = st.unpaid ? open : all, sum = open.reduce((s, i) => s + i.amount, 0);
+    return [h('div.cu-seg', ui.segmented([{ value: false, label: 'All · ' + all.length }, { value: true, label: 'Unpaid · ' + open.length }], st.unpaid, v => { st.unpaid = v; page.refresh(); })),
+      ui.list(list.length ? ui.section({ header: (c ? c.name : '') + (sum ? ' · ' + fmt.money(sum) + ' unpaid' : ''), fold: false, footer: 'Newest first. Tap an invoice to open it, send a reminder or record a payment.' }, list.map(invRow))
+        : ui.empty({ icon: 'doc.text', title: st.unpaid ? 'Nothing unpaid' : 'No invoices yet', text: st.unpaid ? 'Every invoice for this customer is paid.' : 'The first invoice marks this customer successful.' }))]; } };
+}
 function billingSection(c) {
   const invs = invoicesFor(c.id), open = invs.filter(i => i.status !== 'Paid').reduce((s, i) => s + i.amount, 0);
   return ui.section({ header: 'Invoices', footer: (open ? fmt.money(open) + ' open · ' : '') + 'Synced from Invoice Ninja' }, invs.length ? invs.slice(0, 4).map(invRow) : ui.row({ title: 'No invoices yet', subtitle: 'The first invoice marks this customer successful.' }),
-    invs.length > 4 && ui.row({ title: 'All invoices', detail: String(invs.length), chevron: true, onTap: () => WD.nav.push({ title: 'Invoices', render: () => ui.list(ui.section(null, invoicesFor(c.id).map(invRow))) }) }));
+    invs.length > 4 && ui.row({ title: 'All invoices', detail: String(invs.length), chevron: true, onTap: () => WD.nav.push(custInvoices(c.id, false)) }));
 }
 function pay(inv, method) {
   const c = q.customer(inv.customerId), j = inv.jobId && q.job(inv.jobId);
@@ -737,6 +765,11 @@ function merge(keep, drop) {
 WD.css(`
 .cu-seg { padding: 2px 16px 0; }
 .cu-filter { display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: var(--label2); padding: 14px 16px 0; }
+.cu-marks { display: inline-flex; gap: 4px; flex: none; }
+.cu-mark { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; min-width: 58px; padding: 3px 6px; border-radius: 8px; background: #D6E9FF; color: #0A3D8F; font-size: 9.5px; line-height: 11px; font-weight: 600; letter-spacing: 0; white-space: nowrap; }
+.cu-mark b { font-size: 13px; line-height: 15px; font-weight: 700; }
+.cu-totals { color: var(--label2); font-size: 12px; margin-top: 1px; }
+.cu-stat.tap { cursor: pointer; } .cu-stat.tap:active { background: var(--fill3); } .cu-stat.tap span .ic { margin: -1px 0 0 3px; color: var(--label3); }
 .cu-count { text-align: center; font-size: 13px; color: var(--label2); padding: 18px 0 0; }
 .cu-crow .avatar { margin-right: -2px; }
 .cu-crow + .row::before { left: 64px !important; }
@@ -809,7 +842,7 @@ function showSeg(seg) {
   R.seg = seg; R.query = ''; R.results = null; R.loading = false; WD.nav.switchTab('customers');
   if (R.page) { const inp = R.page.navbar.querySelector('.nav-search input'), box = R.page.navbar.querySelector('.search-box'); if (inp) inp.value = ''; if (box) box.classList.remove('filled'); R.page.refresh(); }
 }
-WD.screens.customers = { root, openDetail, openNew, simulateCall, invoicePage, invLines: linesFor, crm: { PIPE, LC, CHANNELS, LOST, mk, addI, addTask, logCall, moveStage, setNext, markLost, contactedYet, nextLabel, staff, first, startCall, timeline, describe, owners, tasksView, newTask }, noteEmailOf };
+WD.screens.customers = { root, openDetail, openNew, simulateCall, invoicePage, invoicesFor, invRow, custInvoices, taskRow, invLines: linesFor, crm: { PIPE, LC, CHANNELS, LOST, mk, addI, addTask, logCall, moveStage, setNext, markLost, contactedYet, nextLabel, staff, first, startCall, timeline, describe, owners, tasksView, newTask }, noteEmailOf };
 WD.panel.addAction('Incoming call (known customer)', () => simulateCall('c1'));
 WD.panel.addAction('Incoming call (unknown number)', () => simulateCall(null));
 WD.panel.addJump('Customer record', () => { WD.nav.switchTab('customers'); openDetail('c1'); });

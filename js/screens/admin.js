@@ -28,11 +28,19 @@ function signInSpec() {
 function typesSpec() {
   const reqN = list => (list || []).length;
   return { title: 'Job types and fields', render: page => ui.list(
-    ui.section({ header: 'Job types', footer: 'Each type has its own color on the board and map (the route color rims it), its own list of fields in the job editor, which of them are required, and whether it needs an address.' },
-      WD.jobTypes.map(t => { const n = (data.fieldConfig[t.id] || []).length, r = reqN((data.required.job[t.id] || []).filter(k => WD.asks(t.id, k)));
-        return ui.row({ leading: h('span.ad-swatch', { style: { background: t.color } }), title: t.title, subtitle: n + ' of ' + WD.fieldDefs.length + ' fields · ' + r + ' required · ' + ({ address: 'street address', cityzip: 'city or ZIP', none: 'no address' })[data.addressRules[t.id] || 'address'], chevron: true, onTap: () => page.push(typeSpec(t)) }); })),
+    ui.section({ header: 'Job types', fold: false, footer: 'Each type has its own color on the board and map (the route color rims it), its own list of fields in the job editor, which of them are required, and whether it needs an address. Add your own, rename them, and choose which are offered when creating a job.' },
+      WD.jobTypes.filter(t => !t.system).map(t => { const n = (data.fieldConfig[t.id] || []).length, r = reqN((data.required.job[t.id] || []).filter(k => WD.asks(t.id, k)));
+        return ui.row({ leading: h('span.ad-swatch', { style: { background: t.color } }), title: t.title, badge: t.hidden ? ui.badge('Not offered', 'var(--gray)') : null, subtitle: n + ' of ' + WD.fieldDefs.length + ' fields · ' + r + ' required · ' + ({ address: 'street address', cityzip: 'city or ZIP', none: 'no address' })[data.addressRules[t.id] || 'address'], chevron: true, onTap: () => page.push(typeSpec(t)) }); }),
+      WD.can('settings.manage') && ui.row({ icon: 'plus.circle.fill', iconPlain: true, iconColor: 'var(--green)', title: 'Add a job type', tint: true, onTap: async () => {
+        const r = await ui.alert({ title: 'New job type', message: 'For example “Hard drive pickup”, “Estimate” or “Warranty visit”.', input: { placeholder: 'Name' }, buttons: [{ label: 'Cancel', value: null }, { label: 'Add', value: true, bold: true }] }); if (!r || !r.value || !r.text.trim()) return;
+        const id = 't' + Date.now().toString(36), colors = ['#00897B', '#8E24AA', '#EF6C00', '#5D4037', '#1E88E5', '#C0CA33', '#D81B60'], t = { id, title: r.text.trim(), color: colors[WD.jobTypes.length % colors.length], custom: true };
+        WD.jobTypes.push(t); data.fieldConfig[id] = (data.fieldConfig.regular || []).slice(); data.required.job[id] = ['phone']; data.addressRules[id] = 'address'; WD.changed(); page.push(typeSpec(t)); } })),
+    WD.r11 && WD.r11.materialsSection(page),
     ui.section({ header: 'Customer types', footer: 'Customer type is separate from job type. Fields required here are required for every job and record of that kind of customer — for example email for government customers.' },
-      WD.custTypes.map(t => ui.row({ icon: t.id === 'residential' ? 'house' : 'building', iconColor: 'var(--indigo)', title: t.title, subtitle: reqN(data.required.cust[t.id]) ? 'Requires ' + data.required.cust[t.id].map(WD.fieldLabel).join(', ').toLowerCase() : 'Nothing extra required', chevron: true, onTap: () => page.push(custTypeSpec(t)) })))) };
+      WD.custTypes.map(t => ui.row({ icon: t.id === 'residential' ? 'house' : 'building', iconColor: 'var(--indigo)', title: t.title, subtitle: reqN(data.required.cust[t.id]) ? 'Requires ' + data.required.cust[t.id].map(WD.fieldLabel).join(', ').toLowerCase() : 'Nothing extra required', chevron: true, onTap: () => page.push(custTypeSpec(t)) })),
+      WD.can('settings.manage') && ui.row({ icon: 'plus.circle.fill', iconPlain: true, iconColor: 'var(--green)', title: 'Add a customer type', tint: true, onTap: async () => {
+        const r = await ui.alert({ title: 'New customer type', message: 'For example “Medical”, “Property manager” or “Non-profit”.', input: { placeholder: 'Name' }, buttons: [{ label: 'Cancel', value: null }, { label: 'Add', value: true, bold: true }] }); if (!r || !r.value || !r.text.trim()) return;
+        const id = 'ct' + Date.now().toString(36); WD.custTypes.push({ id, title: r.text.trim(), custom: true }); data.required.cust[id] = []; WD.changed(); page.refresh(); } }))) };
 }
 const STATES = [{ value: 'off', label: 'Hide' }, { value: 'ask', label: 'Ask' }, { value: 'req', label: 'Require' }];
 function typeSpec(t) {
@@ -40,7 +48,15 @@ function typeSpec(t) {
     const set = (k, v) => { v === 'off' ? on.delete(k) : on.add(k); v === 'req' ? req.add(k) : req.delete(k);
       data.fieldConfig[t.id] = WD.fieldDefs.map(x => x[0]).filter(x => on.has(x)); data.required.job[t.id] = WD.REQUIRABLE.filter(x => req.has(x)); page.refresh(); };
     const state = k => !on.has(k) ? 'off' : req.has(k) ? 'req' : 'ask';
+    const inUse = data.jobs.some(j => j.type === t.id) || data.customers.some(c => c.type === t.id), COLORS = ['#616161', '#F6BF26', '#D50000', '#E67C73', '#3F51B5', '#039BE5', '#00897B', '#8E24AA', '#EF6C00', '#5D4037', '#C0CA33', '#D81B60'];
     return ui.list(
+      edit && ui.section({ header: 'Name and color', fold: false, footer: t.hidden ? 'Not offered when creating a job. Jobs that already have this type keep it.' : 'Offered in the job type list when creating a job.' },
+        ui.row({ title: 'Name', detail: t.title, chevron: true, onTap: async () => { const r = await ui.alert({ title: 'Job type name', input: { value: t.title }, buttons: [{ label: 'Cancel', value: null }, { label: 'Save', value: true, bold: true }] }); if (r && r.value && r.text.trim()) { t.title = r.text.trim(); WD.changed(); page.setTitle(t.title); page.refresh(); } } }),
+        h('div.row', { style: 'flex-wrap:wrap;gap:8px' }, COLORS.map(c => h('button', { 'aria-label': 'Color ' + c, style: { width: '28px', height: '28px', borderRadius: '50%', border: c === t.color ? '3px solid var(--label)' : '1px solid var(--sep)', background: c, cursor: 'pointer', padding: 0 }, onclick: () => { t.color = c; WD.changed(); page.refresh(); } }))),
+        ui.toggleRow({ title: 'Offer when creating a job', value: !t.hidden, onChange: v => { if (!v && WD.shownJobTypes().length < 2) { ui.toast('Keep at least one job type', 'info.circle'); return false; } t.hidden = !v; WD.changed(); page.refresh(); } }),
+        ui.row({ title: 'Delete this job type', destructive: true, onTap: async () => { if (inUse) return ui.alert({ title: 'This type is in use', message: 'Jobs or customers already use “' + t.title + '”. Switch off “Offer when creating a job” to retire it; their history keeps the type.' });
+          if (WD.shownJobTypes().length < 2 && !t.hidden) return ui.toast('Keep at least one job type', 'info.circle');
+          if (await ui.actionSheet({ title: 'Delete “' + t.title + '”?', buttons: [{ label: 'Delete job type', value: true, role: 'destructive' }] })) { WD.jobTypes.splice(WD.jobTypes.indexOf(t), 1); delete data.fieldConfig[t.id]; delete data.required.job[t.id]; delete data.addressRules[t.id]; WD.changed(); page.pop(); } } })),
       ui.section({ header: 'Fields', footer: 'Hide leaves a field out of the editor (information already saved stays on the customer). Ask shows it. Require shows it in red and the job can’t be saved without it.' + (t.id === 'meet' ? ' Meet-the-truck jobs usually only need a name and phone.' : '') },
         ui.row({ title: 'Customer name', detail: 'Always required' }),
         WD.fieldDefs.map(([k, label]) => { const can = WD.REQUIRABLE.includes(k), opts = can ? STATES : STATES.slice(0, 2);
@@ -52,7 +68,12 @@ function typeSpec(t) {
 }
 function custTypeSpec(t) {
   return { title: t.title + ' customers', render: page => { const edit = WD.can('settings.manage'), req = new Set(data.required.cust[t.id] || []);
-    return ui.list(ui.section({ header: 'Required for ' + t.title.toLowerCase() + ' customers', footer: 'These are required on top of what the job type requires, on new customers and on their jobs.' },
+    const used = data.customers.some(c => c.custType === t.id) || data.jobs.some(j => j.custType === t.id);
+    return ui.list(edit && ui.section({ header: 'Name', fold: false, footer: t.id === 'business' ? 'Business customers can be marked “Credit card on file”, which charges the card when a stop is completed.' : null },
+        ui.row({ title: 'Name', detail: t.title, chevron: true, onTap: async () => { const r = await ui.alert({ title: 'Customer type name', input: { value: t.title }, buttons: [{ label: 'Cancel', value: null }, { label: 'Save', value: true, bold: true }] }); if (r && r.value && r.text.trim()) { t.title = r.text.trim(); WD.changed(); page.setTitle(t.title + ' customers'); page.refresh(); } } }),
+        WD.custTypes.length > 1 && ui.row({ title: 'Delete this customer type', destructive: true, onTap: async () => { if (used) return ui.alert({ title: 'This type is in use', message: 'Change the customers that are “' + t.title + '” to another type first.' });
+          if (await ui.actionSheet({ title: 'Delete “' + t.title + '”?', buttons: [{ label: 'Delete customer type', value: true, role: 'destructive' }] })) { WD.custTypes.splice(WD.custTypes.indexOf(t), 1); delete data.required.cust[t.id]; WD.changed(); page.pop(); } } })),
+      ui.section({ header: 'Required for ' + t.title.toLowerCase() + ' customers', footer: 'These are required on top of what the job type requires, on new customers and on their jobs.' },
       WD.REQUIRABLE.map(k => ui.toggleRow({ title: WD.fieldLabel(k), value: req.has(k), disabled: !edit, onChange: v => { v ? req.add(k) : req.delete(k); data.required.cust[t.id] = WD.REQUIRABLE.filter(x => req.has(x)); } }))));
   } };
 }

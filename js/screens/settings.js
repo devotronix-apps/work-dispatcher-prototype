@@ -83,12 +83,13 @@ function root() {
         ui.row(gated('settings.manage', { icon: 'doc.text', iconColor: 'var(--teal)', title: 'Templates', subtitle: 'Wording of every text, email, letter and the service agreement', chevron: true, onTap: () => push(WD.co.templatesSpec()) })),
         ui.row(gated('settings.manage', { icon: 'star', iconColor: 'var(--orange)', title: 'Reviews and feedback', subtitle: 'Follow-up text, review sites, QR code', chevron: true, onTap: () => push(WD.co.reviewsSpec()) })),
         ui.row(gated('settings.manage', { icon: 'funnel', iconColor: 'var(--purple)', title: 'CRM and leads', subtitle: 'Features, lead sources, territories', chevron: true, onTap: () => push(WD.co.crmSpec()) }))),
+      WD.r11 && WD.r11.settingsSection(push, gated),
       ui.section('Administration',
         ui.row(gated('settings.manage', { icon: 'calendar', iconColor: 'var(--blue)', title: 'Google Calendar mirror', badge: S.googleMirror.errors ? ui.badge(String(S.googleMirror.errors), 'var(--red)', true) : null, detail: S.googleMirror.enabled ? 'On' : 'Off', chevron: true, onTap: () => push(mirrorSpec()) })),
         ui.row(gated('users.manage', { icon: 'person.2', iconColor: 'var(--green)', title: 'Team and roles', detail: String(data.users.filter(u => u.status === 'active').length), chevron: true, onTap: () => push(teamSpec()) })),
         ui.row(gated('contracts.manage', { icon: 'signature', iconColor: 'var(--indigo)', title: 'Service agreements', detail: (n => n ? n + ' unsigned' : '')(data.agreements.filter(a => a.status === 'sent' || a.status === 'viewed').length), chevron: true, onTap: () => push(WD.x.agreementsSpec()) })),
-        (WD.can('hr.manage') || WD.can('users.manage')) && ui.row({ icon: 'calendar', iconColor: 'var(--red)', title: 'Time off', detail: (n => n ? n + ' to approve' : '')(data.timeOff.filter(t => t.status === 'pending').length), chevron: true, onTap: () => push(WD.x.timeOffSpec()) }),
-        ui.row({ icon: 'truck', iconColor: 'var(--orange)', title: 'Vehicles', detail: String(data.vehicles.filter(v => v.active !== false).length), chevron: true, onTap: () => push(vehiclesSpec()) }),
+        WD.can('hr.manage') && ui.row({ icon: 'calendar', iconColor: 'var(--red)', title: 'Time off', detail: (n => n ? n + ' to approve' : '')(data.timeOff.filter(t => t.status === 'pending').length), chevron: true, onTap: () => push(WD.x.timeOffSpec()) }),
+        ui.row({ icon: 'truck', iconColor: 'var(--orange)', title: 'Vehicles', subtitle: 'Capacity, what each truck can do, GPS, registration and inspections', detail: String(data.vehicles.filter(v => v.active !== false).length), chevron: true, onTap: () => push(vehiclesSpec()) }),
         ui.row(gated('settings.manage', { icon: 'link', iconColor: 'var(--purple)', title: 'Integrations', detail: INTEG.filter(connected).length + ' connected', chevron: true, onTap: () => push(integrationsSpec()) })),
         ui.row({ icon: 'checklist', iconColor: 'var(--indigo)', title: 'Field workflow', subtitle: 'Arrival, Complete stop, invoices, job titles, shift limit', chevron: true, onTap: () => push(WD.workflow.workflowSpec()) }),
         ui.row({ icon: 'tag', iconColor: 'var(--pink)', title: 'Job types and fields', subtitle: 'Fields asked and required, by job type and customer type', chevron: true, onTap: () => WD.admin && push(WD.admin.typesSpec()) }),
@@ -242,6 +243,9 @@ function mirrorSpec() {
       ui.toggleRow({ icon: 'calendar', iconColor: 'var(--blue)', title: 'Mirror to Google Calendar', value: M.enabled, onChange: toggleMirror }),
       M.enabled && ui.row({ title: 'Last sync', detail: fmt.rel(M.lastSync) }),
       ui.row({ title: 'Errors', detail: String(M.errors), chevron: M.errors > 0, onTap: M.errors ? () => page.push(errorsSpec()) : null })),
+    ui.section({ header: 'Order and times', footer: 'Jobs here are an ordered list with no clock times, but Google Calendar sorts by time. “Keep the board’s order” gives each event an estimated time so Google shows the stops in the same order as the board. When jobs are first brought in from Google Calendar, each day’s order comes from the events’ current start times, so nothing is reshuffled.' },
+      ui.pickerRow({ title: 'Times in Google Calendar', value: M.times || 'order', options: [{ value: 'order', label: 'Keep the board’s order' }, { value: 'allday', label: 'All-day until routed' }], onChange: v => { M.times = v; WD.changed(); page.refresh(); } }),
+      ui.row({ title: 'Order when importing', detail: 'By current start time' })),
     ui.section({ header: 'Route calendars', footer: 'Each calendar must be shared with the Work Dispatcher service account with “Make changes to events”.' },
       q.routes().map(r => ui.row({ leading: ui.dot(q.routeColor(r)), title: q.routeName(r), subtitle: r.googleCalendar || 'No calendar',
         trailing: !r.googleCalendar ? ui.badge('None', 'var(--gray)') : mirrorErrors.some(e => e.routeId === r.id) ? ui.badge('Not shared', 'var(--orange)') : ui.badge('Shared', 'var(--green)') })))); } };
@@ -277,6 +281,7 @@ function memberSpec(u) {
       ui.section({ header: 'Permissions for ' + u.name.split(' ')[0], footer: 'Starts from the ' + WD.roles[u.role].title + ' role. Anything you turn on or off here applies to this person only.' },
         WD.permissionList.map(([id, title, sub]) => ui.toggleRow({ title, subtitle: sub, value: permsOf(u).includes(id), disabled: self || u.role === 'owner', onChange: v => setPerm(id, v) })),
         custom && !self && ui.row({ title: 'Reset to ' + WD.roles[u.role].title + ' defaults', tint: true, onTap: () => { u.perms = base.slice(); WD.changed(); } })),
+      WD.r11 && WD.r11.memberSection(u, page),
       u.status === 'invited' ? ui.section('Invitation',
         ui.row({ title: 'Sent', detail: u.lastSeen.replace(/^Invited /, '') }),
         ui.row({ title: 'Resend invitation', tint: true, onTap: () => ui.run('Sending invitation…', () => { u.lastSeen = 'Invited just now'; }, { done: 'Invitation sent' }) }),
@@ -336,6 +341,8 @@ function vehicleSheet(v) {
   let active = !v || v.active !== false, name = v ? v.name : '', plate = v ? v.plate : '', kind = v ? v.kind : VEHICLE_KINDS[0], startId = v ? v.startId : 'p1', endId = v ? v.endId : 'p1', save;
   const places = data.places.map(p => ({ value: p.id, label: p.name })), gps = INTEG.find(x => x.id === 'onestep');
   const ok = () => !!(name.trim() && plate.trim()), sync = () => { save.disabled = !ok(); };
+  /* Capacity, capabilities, the license it takes to drive it, how it is tracked, registration and inspections (add-ons, round 11). */
+  const extra = WD.r11 ? WD.r11.vehicleDraft(v) : null;
   const sheet = ui.sheet({ title: v ? 'Edit vehicle' : 'New vehicle', leading: { label: 'Cancel', onTap: p => p.dismiss() }, trailing: () => (save = navBtn(v ? 'Save' : 'Add', submit, ok())),
     render: page => ui.list(ui.section(
       ui.inputRow({ label: 'Name', placeholder: 'Truck 15', caps: 'words', value: name, autofocus: !v, onInput: x => { name = x; sync(); } }),
@@ -346,11 +353,12 @@ function vehicleSheet(v) {
         ui.pickerRow({ title: 'Ends at', icon: 'flag', iconColor: 'var(--red)', value: endId, options: places, onChange: x => { endId = x; page.refresh(); } })),
       v && ui.section({ footer: active ? 'An inactive truck (sold, in the shop for a long repair, parked for the season) stays in history and reports but is not offered for routes or at clock-in, and is not counted for billing.' : 'Inactive: hidden from route and clock-in choices. Its history stays.' + (data.routes.some(r => r.vehicleId === v.id) ? ' It is still the default for ' + data.routes.filter(r => r.vehicleId === v.id).map(r => q.routeName(r)).join(', ') + '; pick another truck in Settings → Routes.' : '') },
         ui.toggleRow({ title: 'Active', value: active, onChange: x => { active = x; page.refresh(); } })),
+      extra && WD.r11.vehicleSections(v, extra, page),
       ui.section({ header: 'GPS tracker', footer: gps && gps.connected ? 'OneStep GPS reports this truck’s position even when the driver’s phone is off, and the spot it parked overnight can set its start automatically.' : 'Connect OneStep GPS in Settings → Integrations to link trackers.' },
         ui.row({ icon: 'location.fill', iconColor: 'var(--orange)', title: 'OneStep GPS device', detail: gps && gps.connected ? (v && v.gps) || 'Not linked' : 'Not connected' }))) }, { detent: 'large' });
   async function submit() {
     const rec = { name: name.trim(), plate: plate.trim().toUpperCase(), kind, startId, endId, active };
-    if (await ui.run(v ? 'Saving…' : 'Adding vehicle…', () => { if (v) Object.assign(v, rec); else data.vehicles.push({ id: uid('v'), ...rec }); }, { done: v ? 'Saved' : 'Vehicle added' })) sheet.close();
+    if (await ui.run(v ? 'Saving…' : 'Adding vehicle…', () => { const t = v || { id: uid('v') }; Object.assign(t, rec); if (!v) data.vehicles.push(t); if (extra) WD.r11.vehicleSave(t, extra); }, { done: v ? 'Saved' : 'Vehicle added' })) sheet.close();
   }
 }
 

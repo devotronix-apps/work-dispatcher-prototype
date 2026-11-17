@@ -247,7 +247,7 @@ const truckFor = routeId => data.trucks.find(t => t.routeId === routeId);
 const ago = ms => { const s = Math.max(0, Math.round((+WD.now() - ms) / 1000)); return s < 60 ? s + ' s ago' : Math.floor(s / 60) + ' min ago'; };
 const numberOf = job => { const s = q.stops(job.routeId, job.day).find(x => x.job === job); return s ? s.number : null; };
 /* Colors: the job type fills the pin and the route (calendar) color rims it. */
-const ringOf = job => q.routeColor(job.routeId), fillOf = job => q.jobType(job.type).color, pinStyle = job => ({ '--c': fillOf(job), '--ring': ringOf(job), '--fg': WD.textOn(fillOf(job)) });
+const ringOf = job => q.routeColor(job.routeId), fillOf = job => WD.cardColor(job), pinStyle = job => ({ '--c': fillOf(job), '--ring': ringOf(job), '--fg': WD.textOn(fillOf(job)) });
 const dayLabel = k => { const rel = fmt.day(k, 'rel'), base = fmt.day(k, 'weekday') + ' ' + fmt.day(k, 'md'); return /^(Today|Tomorrow|Yesterday)$/.test(rel) ? rel + ', ' + base : base; };
 const openDetails = id => { if (WD.screens.jobs && WD.screens.jobs.openDetails) WD.screens.jobs.openDetails(id); else ui.toast('Job details aren’t available', 'info.circle'); };
 const mini = (job, n) => h('span.mp-mini' + (DONE[job.status] ? '.done' : ''), { style: pinStyle(job) }, n);
@@ -257,6 +257,8 @@ let inst = null;
 function createMap() {
   /* The day is the dispatch board's day: one shared date, so switching between Map and Board never shows two different days. */
   const st = { get day() { return S.board.day || D.today(); }, set day(k) { S.board.day = k; }, hidden: new Set(), extra: new Set(), showTrucks: true, sel: null, follow: null };
+  /* A driver's map starts with only their own route. The other routes are one tap away on the chips. */
+  { const mine = S.me && S.me.role === 'driver' && data.routes.find(r => r.driverId === S.me.id); if (mine) q.routes().forEach(r => { if (r.id !== mine.id) st.hidden.add(r.id); }); }
   let shownDay = st.day;
   let W = 393, H = 769, view = { s: 1, x0: 0, y0: 0 }, fitted = false, raf = 0, anim = 0, ro = null;
   const base = buildBase();
@@ -397,7 +399,7 @@ function createMap() {
         h('button.mp-dlabel', { onclick: () => setDay(D.today()) }, dayLabel(st.day)), h('button.mp-dbtn', { 'aria-label': 'Next day', onclick: () => setDay(D.add(st.day, 1)) }, icon('chevron.right', 19))),
       routes.length > 1 && h('div.mp-chips', routes.map(r => h('button.mp-chip.mp-glass' + (st.hidden.has(r.id) ? '.off' : ''), { onclick: () => { st.hidden.has(r.id) ? st.hidden.delete(r.id) : st.hidden.add(r.id); st.sel = null; update(); } }, ui.dot(q.routeColor(r)), q.routeName(r)))));
     fill(side, 
-      h('div.mp-grp.mp-glass', btn('list.bullet', 'Stops list', openList), WD.r8 && btn('calendar', 'Next 45 days: jobs near an address', () => WD.r8.openPlanMap()), WD.can('jobs.edit') && btn('sparkles', 'AutoRoute', autoRoute), canLive && btn('truck', st.showTrucks ? 'Hide trucks' : 'Show trucks', () => { st.showTrucks = !st.showTrucks; ui.toast(st.showTrucks ? 'Showing live trucks' : 'Trucks hidden', 'truck', 1400); update(); }, !st.showTrucks)),
+      h('div.mp-grp.mp-glass', btn('list.bullet', 'Stops list', openList), WD.r8 && btn('calendar', 'Planning map: jobs near an address in the coming weeks', () => WD.r8.openPlanMap()), WD.can('jobs.edit') && btn('sparkles', 'AutoRoute', autoRoute), canLive && btn('truck', st.showTrucks ? 'Hide trucks' : 'Show trucks', () => { st.showTrucks = !st.showTrucks; ui.toast(st.showTrucks ? 'Showing live trucks' : 'Trucks hidden', 'truck', 1400); update(); }, !st.showTrucks)),
       h('div.mp-grp.mp-glass', btn(S.shift ? 'location.fill' : 'location', 'Show my location', locate), btn('mp.fit', 'Show all stops', () => { stopFollow(); fit(true); })),
       h('div.mp-grp.mp-glass', btn('plus', 'Zoom in', () => zoomAt({ x: W / 2, y: H / 2 }, 1.7, true)), btn('minus', 'Zoom out', () => zoomAt({ x: W / 2, y: H / 2 }, 1 / 1.7, true))));
     const fv = st.follow && truckFor(st.follow), fveh = fv && q.vehicle(fv.vehicleId);

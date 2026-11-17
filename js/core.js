@@ -4,7 +4,7 @@
 'use strict';
 const WD = window.WD = { screens: {}, data: {} };
 /** Prototype version (Settings → About). Bump on every publish; the “what’s new” tutorial shows once per version. */
-WD.version = '2.9';
+WD.version = '3.0';
 const $ = (s, r) => (r || document).querySelector(s);
 
 /* ================= DOM helper ================= */
@@ -58,6 +58,7 @@ const D = WD.date = {
 };
 const WK = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], WKL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const MO = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'], MOL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+WD.locale = { country: 'US', tag: 'en-US', currency: 'USD', units: 'us', language: 'en' };
 const F = WD.fmt = {
   /** style: 'short' "Fri, Nov 13" · 'long' "Friday, November 13" · 'weekday' "Fri" · 'md' "Nov 13" · 'rel' "Today"/"Tomorrow"/short */
   day(k, style = 'short') {
@@ -83,7 +84,11 @@ const F = WD.fmt = {
     const n = D.diff(D.today(), D.key(new Date(t))); if (n === 1) return 'Yesterday'; if (n < 7) return n + ' days ago';
     const x = new Date(t); return MO[x.getMonth()] + ' ' + x.getDate();
   },
-  money: (n, cents) => '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: cents ? 2 : 0, maximumFractionDigits: cents ? 2 : 0 }),
+  /** Currency and number format are company settings (WD.locale; Settings → Country, currency and units). */
+  money: (n, cents) => { const L = WD.locale; try { return new Intl.NumberFormat(L.tag, { style: 'currency', currency: L.currency, minimumFractionDigits: cents ? 2 : 0, maximumFractionDigits: cents ? 2 : 0 }).format(Number(n) || 0); } catch (e) { return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: cents ? 2 : 0, maximumFractionDigits: cents ? 2 : 0 }); } },
+  /** Distances are kept in miles and weights in pounds; they show in the company's units. */
+  dist: mi => WD.locale.units === 'metric' ? (k => (k < 10 ? k.toFixed(1) : Math.round(k)) + ' km')(mi * 1.609) : (mi < 10 ? (+mi).toFixed(1) : Math.round(mi)) + ' mi',
+  weight: lb => WD.locale.units === 'metric' ? Math.round(lb * 0.4536).toLocaleString('en-US') + ' kg' : Math.round(lb).toLocaleString('en-US') + ' lb',
   /** "559-968-4175" (plus " ext. 12" when given). Anything that isn't exactly 10 digits is returned as typed. */
   phone(p, ext) { const d = F.phoneDigits(p); return d.length === 10 ? d.slice(0, 3) + '-' + d.slice(3, 6) + '-' + d.slice(6) + (ext ? ' ext. ' + ext : '') : (p || ''); },
   /** The 10 digits of a US number: drops punctuation and a leading country code 1. */
@@ -203,7 +208,7 @@ WD.permissionList = [
   ['team.locations', 'Team locations', 'See where clocked-in employees are and where they stopped'],
   ['crm.view', 'View customers', 'Customer records and history'], ['crm.edit', 'Edit customers', 'Change customers, notes and follow-ups'],
   ['analytics.view', 'Analytics', 'Driver, stop and route reports'], ['billing.view', 'View billing', 'Invoices and payments'],
-  ['billing.field', 'Field invoicing', 'Edit job charges, collect signatures and payment on site'], ['billing.manage', 'Manage billing', 'Create invoices and charge cards'], ['users.manage', 'Manage team', 'Invite people and change roles'], ['hr.manage', 'HR and payroll', 'See everyone’s hours, overtime, federal overtime, time cards and reports for any dates; fix clock-in/out times and add missed shifts'], ['settings.manage', 'Company settings', 'Integrations and the Google mirror'],
+  ['billing.field', 'Field invoicing', 'Edit job charges, collect signatures and payment on site'], ['billing.manage', 'Manage billing', 'Create invoices and charge cards'], ['users.manage', 'Manage team', 'Invite people and change roles'], ['hr.manage', 'HR authority', 'Approve time off; see everyone’s hours, overtime, federal overtime, time cards and reports for any dates; fix clock-in/out times and add missed shifts. Owners and admins have it; it can be granted to anyone'], ['settings.manage', 'Company settings', 'Integrations and the Google mirror'],
   ['contracts.manage', 'Service agreements', 'Create, send and track service agreements to signature'], ['comms.view', 'Call and message history', 'Call transcripts and summaries of past calls, texts and emails when a customer calls'],
   ['leads.view', 'CRM: leads and pipeline', 'The CRM tab: leads, follow-ups, quotes, referrals and customer feedback'], ['leads.all', 'CRM: all territories', 'See every lead. Off = only leads in the regions, ZIP codes or area codes assigned to this person'],
 ];
@@ -211,7 +216,7 @@ const S = WD.state = {
   signedIn: false, role: 'owner', me: null, org: null,
   offline: false, sim: { conflictNext: false },
   theme: (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light',
-  pending: [], abandoned: [],
+  pending: [], abandoned: [], folded: {},        // folded: which collapsible sections are closed, by page title | section header
   board: { day: null, mode: 'routes', routeId: null, dayCount: 3 },
   shift: null,                                   // set by the Shift screen while clocked in
   tracking: { consent: false, consentAt: null }, // employee location-tracking consent (Settings + clock-in)
@@ -246,7 +251,13 @@ ui.section = (o, ...rows) => {
   if (o == null || typeof o !== 'object' || o instanceof Node || Array.isArray(o)) { if (typeof o === 'string') o = { header: o }; else { rows.unshift(o); o = {}; } }
   const flat = rows.flat(Infinity).filter(r => r != null && r !== false);
   if (!flat.length && !o.keepEmpty) return null;
-  return h('div.section', o.header && h('div.section-header' + (o.plainHeader ? '.plain' : ''), o.header), flat.length ? h('div.cells', flat) : null, o.footer && h('div.section-footer', o.footer));
+  /* Sections with a plain-text header fold: tap the header to collapse it to its name and the number of items it holds (o.fold forces it,
+     o.fold === false prevents it, o.folded starts it collapsed, o.count overrides the number). Forms with text fields don't fold. */
+  const text = typeof o.header === 'string' && !o.plainHeader ? o.header : null, n = o.count != null ? o.count : flat.length;
+  const fold = !!text && o.fold !== false && (o.fold || flat.length >= 2) && (o.fold || !flat.some(r => r instanceof Element && (r.matches('.row') ? r : r).querySelector('input.field, textarea.field')));
+  const el = h('div.section', o.header && h('div.section-header' + (o.plainHeader ? '.plain' : '') + (fold ? '.fold' : ''), fold ? { role: 'button', 'aria-label': text + ', ' + n + (n === 1 ? ' item' : ' items') } : null, o.header, fold && h('span.fold-n', String(n)), fold && WD.icon('chevron.down', 12)), flat.length ? h('div.cells', flat) : null, o.footer && h('div.section-footer', o.footer));
+  if (fold) { el.dataset.fold = o.foldKey || text.split(' · ')[0]; if (o.folded) el.dataset.folded = '1'; }
+  return el;
 };
 /** A list cell. {title, subtitle, detail, icon, iconColor, iconPlain, leading, trailing, chevron, onTap, tint, destructive, center, disabled, badge} */
 ui.row = o => {
@@ -343,13 +354,14 @@ ui.alert = o => new Promise(resolve => {
   add(overlays(), [dim, el]); openSoon(dim, el); if (input) setTimeout(() => input.focus(), 300);
 });
 /** iOS pull-down menu anchored to an element. items: {label, subtitle, icon, checked, destructive, disabled, onTap} | 'divider' | {header: 'text'} */
-ui.menu = (anchor, items) => {
-  const dim = h('div.dim.clear'), el = h('div.menu'), close = () => closeAfter(260, dim, el);
+ui.menu = (anchor, items, o = {}) => {
+  const dim = h('div.dim.clear'), el = h('div.menu' + (o.compact ? '.compact' : '')), close = () => closeAfter(260, dim, el);
   dim.onclick = close;
   const anyCheck = items.some(i => i && i.checked !== undefined);
   items.filter(Boolean).forEach(it => {
     if (it === 'divider') return add(el, h('div.menu-divider'));
     if (it.header) return add(el, h('div.menu-head', it.header));
+    if (it.node) return add(el, it.node);   // a custom block, e.g. the board's row of route chips
     add(el, h('button.menu-item' + (it.destructive ? '.destructive' : ''), { disabled: !!it.disabled, onclick: () => { close(); it.onTap && setTimeout(it.onTap, 120); } },
       anyCheck && h('span.mi-check', it.checked ? WD.icon('checkmark', 16) : null), h('span.mi-label', it.label, it.subtitle && h('span.mi-sub', it.subtitle)), it.icon && WD.icon(it.icon, 20)));
   });
@@ -421,8 +433,12 @@ function makePage(spec, stack, prev) {
     let content = spec.render ? spec.render(page) : null;
     if (typeof content === 'string') content = h('div', { html: content });
     body.replaceChildren(); if (spec.large) add(body, h('div.large-title', evalSpec(spec.title)));
-    add(body, content); body.scrollTop = top;
+    add(body, content);
+    body.querySelectorAll('.section[data-fold]').forEach(sec => { const v = S.folded[foldKey(sec)]; if (v != null ? v : sec.dataset.folded === '1') sec.classList.add('folded'); });
+    body.scrollTop = top;
   };
+  const foldKey = sec => (title.textContent || evalSpec(spec.title) || '') + '|' + sec.dataset.fold;
+  body.addEventListener('click', e => { const hd = e.target.closest('.section-header.fold'); if (!hd || !body.contains(hd) || e.target.closest('button, a, input')) return; const sec = hd.parentNode, on = !sec.classList.contains('folded'); sec.classList.toggle('folded', on); S.folded[foldKey(sec)] = on; });
   /** Close the enclosing sheet (or pop if this page is not in a sheet). */
   page.dismiss = result => stack.sheet ? stack.sheet.close(result) : stack.pop();
   page.pop = () => stack.pop();
@@ -482,15 +498,22 @@ ui.closeAllSheets = () => sheets.slice().reverse().forEach(s => s.close());
 
 const app = WD.app = { tabs: [
   { id: 'board', title: 'Dispatch', icon: 'calendar' }, { id: 'map', title: 'Map', icon: 'map' },
-  { id: 'customers', title: 'Customers', icon: 'person.2', can: 'crm.view' }, { id: 'crm', title: 'CRM', icon: 'funnel', can: 'leads.view' }, { id: 'invoices', title: 'Invoices', icon: 'doc.text', can: () => WD.can('billing.view') || WD.can('billing.field') }, { id: 'shift', title: 'Shift', icon: 'truck' }, { id: 'settings', title: 'Settings', icon: 'gearshape' },
+  /* Customers, CRM and Invoices are one Admin tab with a selector (CRM first). The three keep their own entries, hidden, so their badges and screens still register. */
+  { id: 'office', get title() { const s = app.officeSegs(); return s.length === 1 ? OFFICE[s[0]][0] : 'Admin'; }, get icon() { const s = app.officeSegs(); return s.length === 1 ? OFFICE[s[0]][1] : 'briefcase'; }, can: () => app.officeSegs().length > 0, badge: () => app.officeSegs().reduce((n, id) => { const t = app.tabs.find(x => x.id === id); return n + (t && t.badge ? t.badge() : 0); }, 0) },
+  { id: 'customers', title: 'Customers', icon: 'person.2', can: 'crm.view', hidden: true }, { id: 'crm', title: 'CRM', icon: 'funnel', can: 'leads.view', hidden: true }, { id: 'invoices', title: 'Invoices', icon: 'doc.text', can: () => WD.can('billing.view') || WD.can('billing.field'), hidden: true }, { id: 'shift', title: 'Shift', icon: 'truck' }, { id: 'settings', title: 'Settings', icon: 'gearshape' },
 ] };
+const OFFICE = { crm: ['CRM', 'funnel'], customers: ['Customers', 'person.2'], invoices: ['Invoices', 'doc.text'] };
+/** The Admin tab's views this person may see, in order: CRM, Customers, Invoices. */
+app.officeSegs = () => [WD.can('leads.view') && 'crm', WD.can('crm.view') && 'customers', (WD.can('billing.view') || WD.can('billing.field')) && 'invoices'].filter(Boolean);
+app.officeSeg = null; app.officeNames = OFFICE;
 let tabState = null, rootStack = null;
 const nav = WD.nav = {
   /** The stack a push should go to: the top sheet if one is open, else the active tab (or the sign-in flow). */
   current: () => sheets.length ? sheets[sheets.length - 1].stack : tabState ? tabState.stacks[tabState.active] : rootStack,
   push: spec => nav.current().push(spec),
   pop: () => nav.current().pop(),
-  switchTab: id => tabState && tabState.select(id),
+  /** 'customers', 'crm' and 'invoices' open the Admin tab on that view. */
+  switchTab: id => { if (!tabState) return; if (OFFICE[id]) { app.officeSeg = id; id = 'office'; WD.emit('officeSeg'); } tabState.select(id); },
   activeTab: () => tabState && tabState.active,
 };
 function clearRoot() { stacks.forEach(st => { if (!st.sheet) stacks.delete(st); }); tabState = null; rootStack = null; $('#root').replaceChildren(); }
@@ -499,7 +522,7 @@ app.showRoot = spec => { ui.closeAllSheets(); clearRoot(); rootStack = makeStack
 /** Show the signed-in tab interface. */
 app.showMain = tabId => {
   ui.closeAllSheets(); clearRoot();
-  const tabs = app.tabs.filter(t => !t.can || (typeof t.can === 'function' ? t.can() : WD.can(t.can))), panes = h('div.tabpanes'), bar = h('div.tabbar'), state = tabState = { stacks: {}, active: null, buttons: {} };
+  const tabs = app.tabs.filter(t => !t.hidden && (!t.can || (typeof t.can === 'function' ? t.can() : WD.can(t.can)))), panes = h('div.tabpanes'), bar = h('div.tabbar'), state = tabState = { stacks: {}, active: null, buttons: {} };
   tabs.forEach(t => { const b = state.buttons[t.id] = h('button.tab', { onclick: () => state.select(t.id) }, WD.icon(t.icon, 27), h('span', t.title)); bar.appendChild(b); });
   state.select = id => {
     const t = tabs.find(x => x.id === id) || tabs[0]; id = t.id;

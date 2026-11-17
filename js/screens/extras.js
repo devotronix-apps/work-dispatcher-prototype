@@ -125,7 +125,7 @@ const letterSpec = (c, doc) => ({ title: 'Letter', trailing: [{ icon: 'share', l
 /** Change a customer's rates, container quantities or service interval from a service date on, with an optional letter. o: {effective, reason} */
 X.changeService = (c, o = {}) => {
   promote(c); const base = WD.copyItems(loc(c).items), t = today(), email = c.billingEmail || (c.contacts[0] || {}).email || '';
-  const f = { items: WD.copyItems((c.upcoming || {}).items || base), freq: (c.upcoming || {}).freq || c.freq, effective: o.effective || firstVisitFrom(c, D.add(t, 30)), letter: true, pct: 0 };
+  const f = { items: WD.copyItems((c.upcoming || {}).items || base), freq: (c.upcoming || {}).freq || c.freq, effective: o.effective || firstVisitFrom(c, D.add(t, WD.r11 ? WD.r11.cfg.letters.days : 30)), letter: true, method: WD.r11 ? WD.r11.cfg.letters.method : 'email', pct: 0 };
   WD.CONTAINERS.filter(id => id !== 'box').forEach(id => { if (!f.items.some(i => i.id === id)) f.items.push({ id, qty: 0, rate: pb(id).rate }); });
   const diff = () => { const tmp = { changes: [] }; return recordChanges(tmp, base, f.items.filter(i => i.qty > 0 || base.some(b => b.id === i.id)), c.freq, f.freq, f.effective, false); };
   const sheet = ui.sheet({ title: 'Change pricing or service', leading: [{ label: 'Cancel', onTap: p => p.dismiss() }],
@@ -137,7 +137,8 @@ X.changeService = (c, o = {}) => {
         if (f.effective <= t) { loc(c).items = WD.copyItems(items); loc(c).containers = WD.itemsLabel(items); c.freq = f.freq; c.upcoming = null; } else c.upcoming = { items: WD.copyItems(items), freq: f.freq, effective: f.effective, letter: send && !!email };
         n = applyToJobs(c, items, f.effective);
         if (doc) c.documents.push({ id: 'doc-l' + Date.now(), kind: 'other', name: 'Price change letter ' + f.effective + '.pdf', size: '64 KB', at: +WD.now() });
-      }, { done: send && email ? 'Saved · letter sent' : 'Saved' })) return;
+      }, { done: send && email && f.method !== 'print' ? 'Saved · letter sent' : 'Saved' })) return;
+      if (send && f.method !== 'email') setTimeout(() => ui.toast('Letter added to the print-and-mail list', 'doc.text', 2800), 400);
       p.dismiss(); ui.toast(n ? n + (n === 1 ? ' scheduled visit' : ' scheduled visits') + ' updated from ' + fmt.day(f.effective, 'md') : 'New pricing starts ' + fmt.day(f.effective, 'md'), 'checkmark', 2800); } }],
     render: p => { const changes = diff(), was = perVisit(base), now = perVisit(f.items), up = now > was, visits = q.jobsForCustomer(c.id).filter(j => j.status === 'scheduled' && j.day >= f.effective).length;
       const setPct = n => { f.pct = n; f.items.forEach(i => { const b = base.find(x => x.id === i.id); if (b) i.rate = Math.round(b.rate * (1 + n / 100) * 100) / 100; }); p.refresh(); };
@@ -152,21 +153,25 @@ X.changeService = (c, o = {}) => {
         ui.section('Service interval', ui.pickerRow({ title: 'Service every', value: f.freq, options: FREQS.includes(f.freq) ? FREQS : [f.freq].concat(FREQS), onChange: v => { f.freq = v; p.refresh(); } })),
         ui.section({ header: 'Starts with service on', footer: (visits ? visits + (visits === 1 ? ' scheduled visit' : ' scheduled visits') + ' on or after this date will use the new pricing.' : 'Every visit on or after this date uses the new pricing.') + ' Earlier visits keep the current pricing.' },
           ui.dateRow({ title: 'Service date', icon: 'calendar', iconColor: 'var(--red)', value: f.effective, onChange: v => { f.effective = v; p.refresh(); } })),
-        ui.section({ header: 'Letter to the customer', footer: email ? 'Sent automatically to ' + email + ' when you save, and kept with the customer’s documents.' : 'No email on file. Add one to send the letter automatically; you can still print it from the preview.' },
+        ui.section({ header: 'Letter to the customer', footer: (f.method === 'print' ? 'Added to the print-and-mail list when you save, and kept with the customer’s documents.' : email ? 'Sent automatically to ' + email + ' when you save, and kept with the customer’s documents.' : 'No email on file. Add one to send the letter automatically; you can still print it from the preview.') + ' The notice period (' + (WD.r11 ? WD.r11.cfg.letters.days : 30) + ' days) and how letters go out are set in Settings → Pricing, letters and agreements.' },
           ui.toggleRow({ title: 'Send a letter about this change', value: f.letter, onChange: v => { f.letter = v; p.refresh(); } }),
+          f.letter && ui.pickerRow({ title: 'Send it by', value: f.method, options: [{ value: 'email', label: 'Email' }, { value: 'print', label: 'Print and mail' }, { value: 'both', label: 'Email, and print and mail' }], onChange: v => { f.method = v; p.refresh(); } }),
           f.letter && ui.row({ title: 'Preview letter', icon: 'doc.text', iconPlain: true, tint: true, chevron: true, disabled: !changes.length, onTap: () => p.push(letterSpec(c, { effective: f.effective, changes })) })));
     } });
   return sheet;
 };
 /** After the price on an invoice was changed: offer to make it the price for this and all future visits. Resolves false to cancel creating the invoice. */
+/* Anyone who can invoice in the field (drivers included) may change a standing price for this and all future visits. A company can require an
+   owner or admin to approve it first (Settings → Pricing, letters and agreements); the request then waits in CRM → Tasks. */
 X.priceChangePrompt = async (job, lines) => {
-  const c = q.customer(job.customerId); if (!c || !canPrice()) return true;
+  const c = q.customer(job.customerId), needsOK = !canPrice() && WD.r11 && WD.r11.approvalsOn(); if (!c || !(canPrice() || WD.can('billing.field'))) return true;
   const changed = lines.filter(l => l.id && WD.CONTAINERS.includes(l.id)).map(l => ({ l, it: (job.items || []).find(i => i.id === l.id) })).filter(x => x.it && x.it.rate !== l_rate(x.l));
   if (!changed.length) return true;
   const future = q.jobsForCustomer(c.id).filter(j => j.status === 'scheduled' && j.day > job.day && j.id !== job.id).length;
   const v = await ui.actionSheet({ title: 'You changed the price', message: h('div', changed.map(x => h('div', pb(x.l.id).name + ': ' + money(x.it.rate) + ' → ' + money(l_rate(x.l)))), h('div', { style: 'margin-top:4px' }, 'Apply the new price to:')),
-    buttons: [{ label: 'This invoice only', value: 'one' }, { label: 'This and all future visits' + (future ? ' (' + future + ')' : ''), value: 'future' }], cancel: 'Back to the invoice' });
+    buttons: [{ label: 'This invoice only', value: 'one' }, { label: 'This and all future visits' + (future ? ' (' + future + ')' : '') + (needsOK ? ' · needs approval' : ''), value: 'future' }], cancel: 'Back to the invoice' });
   if (!v) return false; if (v === 'one') return true;
+  if (needsOK) { WD.r11.requestPrice(c, job, changed.map(x => ({ id: x.l.id, name: pb(x.l.id).name, from: x.it.rate, to: l_rate(x.l) }))); ui.toast('This invoice uses the new price. Future visits change once an owner or admin approves.', 'clock', 3600); return true; }
   promote(c); const before = WD.copyItems(loc(c).items), after = WD.copyItems(before);
   changed.forEach(x => { const a = after.find(i => i.id === x.l.id); if (a) a.rate = l_rate(x.l); else after.push({ id: x.l.id, qty: x.it.qty, rate: l_rate(x.l) }); x.it.rate = l_rate(x.l); });
   recordChanges(c, before, after, c.freq, c.freq, job.day, false); loc(c).items = after;
@@ -211,7 +216,7 @@ X.agreementsFor = cid => (data.agreements || []).filter(a => a.customerId === ci
 /** The agreement a driver can still get signed in person: sent to the customer but not signed yet. */
 X.unsignedFor = cid => X.agreementsFor(cid).find(a => a.status === 'sent' || a.status === 'viewed') || null;
 X.createAgreement = c => {
-  const a = { id: 'ag' + Date.now().toString(36), number: 'SA-' + (1041 + data.agreements.length), customerId: c.id, status: 'draft', term: 12, start: firstVisitFrom(c, today()), createdBy: me(), createdAt: +WD.now(), sentVia: null, sentAt: null, viewedAt: null, signedAt: null, signer: '', sig: null, method: null, to: (c.contacts[0] || {}).email || '' };
+  const a = { id: 'ag' + Date.now().toString(36), number: 'SA-' + (1041 + data.agreements.length), customerId: c.id, status: 'draft', term: WD.r11 ? WD.r11.cfg.contract.term : 12, start: firstVisitFrom(c, today()), createdBy: me(), createdAt: +WD.now(), sentVia: null, sentAt: null, viewedAt: null, signedAt: null, signer: '', sig: null, method: null, to: (c.contacts[0] || {}).email || '' };
   data.agreements.push(a); WD.changed(); return a;
 };
 async function sendAgreement(a, via) {
@@ -247,7 +252,8 @@ X.agreementSpec = (a, job) => ({ title: () => a.number, render: page => {
         step(rank >= 2 || !!a.viewedAt, 'Opened by the customer', a.viewedAt ? when(a.viewedAt) : null), step(signed, 'Signed', signed ? a.signer + ' · ' + when(a.signedAt) + (a.method === 'inperson' ? ' · in person' : ' · from the link') : null))),
       !signed && ui.section({ header: 'Get it signed', footer: manage ? 'Any driver can also collect the signature in person from the job once the agreement has been sent.' : 'The customer can sign here on your iPhone.' },
         manage && WD.co && ui.row({ icon: 'pencil', iconPlain: true, title: 'Edit this agreement', subtitle: a.revised ? 'Changed after it was sent — send the link again' : 'Wording, containers, rates, schedule and every section', tint: true, chevron: true, onTap: () => WD.co.editAgreementDoc(a, { onSave: () => page.refresh() }) }),
-        manage && a.status === 'draft' && ui.pickerRow({ title: 'Term', value: a.term, options: [{ value: 0, label: 'Month to month' }].concat([12, 24, 36, 60].map(n => ({ value: n, label: n + ' months' }))), onChange: v => { a.term = v; page.refresh(); } }),
+        manage && a.status === 'draft' && ui.pickerRow({ title: 'Term', value: a.term, options: [{ value: 0, label: 'Month to month' }].concat([12, 24, 36, 48, 60].filter(n => n <= (WD.r11 ? WD.r11.cfg.contract.max : 60)).map(n => ({ value: n, label: n / 12 + (n === 12 ? ' year' : ' years') }))), onChange: v => { a.term = v; page.refresh(); } }),
+        manage && ui.row({ title: 'After the term', subtitle: 'It can be canceled with ' + (WD.r11 ? WD.r11.cfg.contract.notice : 60) + ' days’ notice. Only your staff can set the term; the customer sees it on the signing page but cannot change it.' }),
         manage && a.status === 'draft' && ui.dateRow({ title: 'Starts', value: a.start, onChange: v => { a.start = v; page.refresh(); } }),
         manage && ui.row({ icon: 'envelope', iconPlain: true, title: a.sentAt ? 'Send the link again by email' : 'Email a signing link', tint: true, onTap: () => sendAgreement(a, 'Email') }),
         manage && ui.row({ icon: 'message', iconPlain: true, title: a.sentAt ? 'Send the link again by text' : 'Text a signing link', tint: true, onTap: () => sendAgreement(a, 'Text') }),
@@ -279,7 +285,8 @@ X.jobAgreementSection = (job, pushSpec) => {
 };
 
 /* ================= Time off ================= */
-const canApprove = () => WD.can('hr.manage') || WD.can('users.manage');
+/* Approving time off needs HR authority (owner and admins by default; it can be granted to anyone). */
+const canApprove = () => WD.can('hr.manage');
 const TO = { pending: ['Waiting for approval', 'var(--orange)'], approved: ['Approved', 'var(--green)'], denied: ['Not approved', 'var(--red)'] };
 function requestTimeOff() {
   let from = D.add(today(), 7), to = from, allDay = true, fromTime = '13:00', untilTime = '17:00', reason = '';
@@ -305,7 +312,7 @@ X.timeOffSection = () => {
     canApprove() && ui.row({ icon: 'person.2', iconColor: 'var(--indigo)', title: 'Team time-off requests', badge: waiting ? ui.badge(waiting + ' to approve', 'var(--orange)') : null, chevron: true, onTap: () => WD.nav.push(X.timeOffSpec()) }));
 };
 X.timeOffSpec = () => ({ title: 'Time off', render: page => {
-  if (!canApprove()) return ui.empty({ icon: 'lock', title: 'Ask an admin', text: 'Approving time off needs the HR or Manage team permission.' });
+  if (!canApprove()) return ui.empty({ icon: 'lock', title: 'Ask an admin', text: 'Approving time off needs HR authority. An owner or admin can grant it in Team and roles.' });
   const decide = (t, status) => ui.run(status === 'approved' ? 'Approving…' : 'Saving…', () => { t.status = status; t.decidedBy = me(); }, { done: status === 'approved' ? 'Approved' : 'Not approved' });
   const impact = t => { const r = data.routes.find(x => x.driverId === t.userId); if (!r) return null; let n = 0; for (let d = t.from; d <= t.to; d = D.add(d, 1)) n += q.stopList(r.id, d).filter(j => !WD.calledOff(j)).length; return 'Drives ' + q.routeName(r) + ' · ' + n + (n === 1 ? ' stop' : ' stops') + ' on those days'; };
   const row = (t, acts) => { const u = q.user(t.userId) || { name: 'Former employee' };
@@ -423,18 +430,14 @@ X.contactSummary = (c, items, describe) => {
 
 /* ================= What's new tutorial ================= */
 const TOUR = [
-  { icon: 'sparkles', title: 'What’s new in version ' + WD.version, text: 'A quick look at what changed. It takes under a minute, and you can run it again from Settings → About.' },
-  { tab: 'Invoices', icon: 'doc.text', title: 'Fix an invoice after it’s created', list: ['Open any invoice and tap Edit invoice.', 'Change quantities, prices or lines, the service date, PO or who it goes to.', 'A reason is required. Every correction is kept with who made it and when, and a corrected copy can be emailed.'] },
-  { tab: 'Dispatch', icon: 'calendar', title: 'Move several jobs at once', list: ['In the routes menu, choose “Select jobs to move”.', 'Tap the jobs you want, on any routes and days, then Move.', 'Send them to another route, another day, or both.'] },
-  { tab: 'Map', icon: 'map', title: 'Map: the next 45 days', list: ['The distance now goes out to 50 miles.', 'Typing an address offers matching addresses to pick from, like “123 Main St”.'] },
-  { tab: 'Settings', icon: 'gearshape', title: 'For any route business', list: ['Settings → Business type and wording: pick your industry and the wording on invoices.', 'Service checklists with required photos, and your own custom fields.', 'Fleet: pre-trip inspections, maintenance and expiring documents.', 'Load sheet and truck capacity, mileage and expenses, route performance, and sales tax.'] },
-  { tab: 'Customers', icon: 'building', title: 'Pause a customer’s service', text: 'For a vacation or a seasonal closing: open the customer and choose Pause service. Visits in those dates come off the routes and return afterward.' },
-  /* 2.9 — added after the 2.8 steps above, which stay for this release because they had not been seen yet. */
-  { tab: 'Dispatch', icon: 'barcode', title: 'Scan at the job, before the invoice', list: ['Open a job with hard drives: “Scan at the job” is right under the Complete button.', 'Scan each drive’s serial number while you are there. No invoice is needed first.', 'The numbers are saved on the job and are already in billing details when you create the invoice or service note.'] },
-  { tab: 'Customers', icon: 'barcode', title: 'Customers who require container scans', list: ['Edit customer → At the job → Scan container barcodes.', 'Their jobs then get the same “Scan at the job” step for each container.', 'Every container is scanned, or a reason is given, before the invoice or service note.'] },
-  { tab: 'Dispatch', icon: 'pencil', title: 'Type the number of hard drives', text: 'When creating a job, tap the number beside “Hard drives to destroy” and type it. The − and + buttons still work. Container counts can be typed the same way.' },
-  { tab: 'Invoices', icon: 'doc.text', title: 'Invoices match your everyday invoice', list: ['Route and purge invoices now follow your samples: Item, Description, Unit Cost, Quantity and Line Total.', 'Total, Paid to Date and Balance Due sit beside the signature, with a PAID stamp once paid.', 'The service-summary layout is kept for master invoices built from service notes.'] },
-  { tab: 'Dispatch', icon: 'dollarsign.circle', title: 'Confirm the price when you schedule', list: ['The confirmation for a new job has a new Pricing choice.', 'Include the pricing rates, or the estimated total worked out from what the customer told you.', 'Set how it starts in Settings → Job confirmations.'] },
+  { icon: 'sparkles', title: 'What’s new in version ' + WD.version, text: 'A big update from your last round of feedback. This takes about a minute, and you can run it again from Settings → About.' },
+  { tab: 'Admin', icon: 'briefcase', title: 'One Admin tab', list: ['CRM, Customers and Invoices are now one tab with a selector at the top. CRM comes first.', 'CRM → Tasks: every category starts collapsed with a count. Postponed jobs are in there too, to set a date, assign or edit.', 'Sections all over the app now fold: tap a section’s heading to collapse it to its name and item count.'] },
+  { tab: 'Admin', icon: 'dollarsign.circle', title: 'Unpaid invoices', list: ['Customers has an “Unpaid invoices” row at the top with everyone who owes and how much.', 'Balance due and Overdue markers show the amount. New filters: Overdue, Recurring, One time and Hidden.', 'On a customer, tap Jobs or Invoiced for their invoices, or Balance for only the unpaid ones.', 'Settings → Unpaid invoices sets when the warning starts.'] },
+  { tab: 'Dispatch', icon: 'calendar', title: 'Dispatch', list: ['The routes button is now “…”, with a compact menu. Card detail moved out: use − / + or pinch.', 'Customers over your unpaid limit show red and yellow stripes, with a warning line and Review.', 'Hard drive jobs, non-paper purges and exact-time jobs stand out. Jobs with the wrong driver or truck are flagged.', 'Tap a route’s heading to add a note for the driver or office. It sits in a bright bar at the top of the route.', '“Move a route’s jobs” can now change the day, the route, or both, for unfinished jobs only.'] },
+  { tab: 'Dispatch', icon: 'sparkles', title: 'AutoRoute', list: ['When a truck will fill up, AutoRoute proposes a stop at your nearest recycler or landfill. Accept it, pick another site, or leave it out.', 'On the day, “Now” sends a full truck to unload and re-plans the remaining stops from there.', 'Change any customer’s window before accepting. Windows now start an hour before the expected arrival.'] },
+  { tab: 'Map', icon: 'map', title: 'Planning map', list: ['Tap the range button to look ahead 1 week, 2 weeks, 4 weeks, 45 days or 90 days.', 'Select a pin and tap Change Route: other routes with jobs nearby are listed best first.', 'Move the entire series or only the days you pick. You are told how many days earlier or later before anything moves.'] },
+  { tab: 'Settings', icon: 'gearshape', title: 'Add-ons in Settings', list: ['Your own job types and customer types. Government and card on file are now about the customer.', 'Skills, licenses and clearances: prison clearances with expiry dates, CDL trucks, hard-drive-capable trucks. Choose to flag or block.', 'Compliance and reminders: registrations, CARB checks, and maintenance by miles, engine hours or time. Choose 30, 60 or more days’ notice.', 'Inventory (off to start), disposal sites, how trucks are tracked, and country, currency and units.'] },
+  { tab: 'Settings', icon: 'dollarsign.circle', title: 'Your answers are now the defaults', list: ['Pallet 40 boxes, gaylord 35, file cabinet 7. Stairs $2.50 down and $4 up per box.', 'Stop time: 5 minutes including one bin, +1 for a console, +3 per extra console, +8 per extra bin.', 'Legal and extra-large boxes bill as their own lines at 1.65× and 2×.', 'Any job can be given its own time on site. All of these can be changed in Settings.'] },
 ];
 X.tutorial = () => {
   const screen = document.getElementById('screen'), old = screen.querySelector('.x-tour'); if (old) old.remove();

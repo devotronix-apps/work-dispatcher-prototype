@@ -89,6 +89,21 @@ WD.css(`
 .bd-mev { font-size: 9px; line-height: 12px; letter-spacing: 0; white-space: nowrap; overflow: hidden; border-radius: 3px; padding: 0 2px; margin-top: 1px; background: color-mix(in srgb, var(--c) 30%, var(--cell)); border-left: 3px solid var(--ring); }
 .bd-mev.struck { text-decoration: line-through; opacity: .6; }
 .bd-more { font-size: 9px; line-height: 12px; color: var(--label2); padding-left: 3px; letter-spacing: 0; }
+.bd-pill.bd-more { width: 38px; padding: 0; justify-content: center; }
+.menu.compact .menu-item .mi-sub { display: none; }
+.bd-rchips { display: flex; flex-wrap: wrap; gap: 5px; padding: 2px 10px 9px; }
+.bd-rchips button { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--sep); background: none; border-radius: 13px; height: 26px; padding: 0 8px 0 6px; font: inherit; font-size: 13px; color: var(--label3); cursor: pointer; letter-spacing: -.1px; max-width: 100%; }
+.bd-rchips button span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .bd-rchips button .dot { width: 9px; height: 9px; opacity: .35; }
+.bd-rchips button.on { color: var(--label); border-color: color-mix(in srgb, var(--c) 55%, transparent); background: color-mix(in srgb, var(--c) 14%, transparent); font-weight: 600; } .bd-rchips button.on .dot { opacity: 1; }
+.bd-rnote { margin: 0 0 5px; border-radius: 8px; background: #FFE066; color: #1C1C1E; border-left: 4px solid #E0A800; font-size: 12px; line-height: 15px; font-weight: 600; padding: 5px 6px; cursor: pointer; letter-spacing: -.05px; overflow-wrap: anywhere; }
+.bd-rnote small { display: block; font-weight: 700; font-size: 9.5px; letter-spacing: .3px; text-transform: uppercase; opacity: .7; }
+.bd-colhead { cursor: pointer; }
+/* More unpaid invoices than the company's limit: red and yellow diagonal stripes, with the text on a light panel so it stays readable. */
+.bd-job.unpaid .bd-job-in { background-image: repeating-linear-gradient(135deg, #D32F2F 0 9px, #FBC02D 9px 18px); }
+.bd-job.unpaid .bd-job-main { background: rgba(255,255,255,.88); color: #1C1C1E; border-radius: 5px; padding: 1px 4px; }
+.bd-job.unpaid .bd-tag { background: rgba(0,0,0,.6); }
+.bd-flag { display: inline-flex; align-items: center; gap: 2px; font-size: 10px; line-height: 13px; font-weight: 800; letter-spacing: .2px; text-transform: uppercase; border-radius: 4px; padding: 0 4px; margin: 2px 3px 0 0; background: rgba(0,0,0,.3); color: #fff; }
+.bd-flag.bad { background: #fff; color: #D70015; } .bd-flag.warn { background: #fff; color: #9A5B00; }
 .bd-cal { padding: 0 14px 12px; }
 .bd-cal-top { display: flex; align-items: center; justify-content: space-between; padding: 0 4px 6px; font-weight: 600; }
 .bd-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); row-gap: 2px; text-align: center; }
@@ -131,7 +146,8 @@ function topBar() {
     WD.can('jobs.edit') && btn('plus', 'New job', () => jobsScreen().openEditor && jobsScreen().openEditor({ day: b.day, routeId: b.mode === 'days' ? b.routeId : (q.visibleRoutes()[0] || q.routes()[0]).id })));
 }
 const syncItems = () => [WD.can('jobs.edit') && WD.r9 && S.board.mode !== 'month' && { label: 'Select jobs to move…', subtitle: 'Several jobs to another route, day or both', icon: 'checkmark.circle', onTap: () => { S.board.select = new Set(); refresh(); } },
-  WD.can('jobs.edit') && WD.ops && { label: 'Move this day’s jobs…', subtitle: 'A whole route to another day', icon: 'arrow.left.arrow.right', onTap: () => WD.ops.moveSheet({ routeId: S.board.mode === 'days' ? S.board.routeId : q.visibleRoutes().length === 1 ? q.visibleRoutes()[0].id : (q.visibleRoutes()[0] || q.routes()[0]).id, from: S.board.day }) },
+  WD.can('jobs.edit') && WD.r11 && S.board.mode !== 'month' && { label: 'Note for the driver or office…', icon: 'note', onTap: () => WD.r11.pickNoteRoute(S.board.mode === 'days' ? [S.board.routeId] : q.visibleRoutes().map(r => r.id), S.board.day) },
+  WD.can('jobs.edit') && WD.ops && { label: 'Move a route’s jobs…', subtitle: 'Unfinished jobs to another day, another route, or both', icon: 'arrow.left.arrow.right', onTap: () => WD.ops.moveSheet({ routeId: S.board.mode === 'days' ? S.board.routeId : q.visibleRoutes().length === 1 ? q.visibleRoutes()[0].id : (q.visibleRoutes()[0] || q.routes()[0]).id, from: S.board.day }) },
   WD.biz && S.board.mode !== 'month' && { label: 'Load sheet and truck capacity', icon: 'shippingbox', onTap: () => WD.nav.push(WD.biz.loadSpec(S.board.day)) },
   WD.r8 && { label: 'Postponed, no date yet' + (WD.r8.postponed().length ? ' (' + WD.r8.postponed().length + ')' : ''), icon: 'clock', onTap: () => WD.r8.openPostponed() },
   WD.can('jobs.edit') && WD.ops && { label: 'Holidays and schedule changes', icon: 'calendar', onTap: () => WD.ops.openSchedule() }, { label: 'Pending changes' + (S.pending.length ? ' (' + S.pending.length + ')' : ''), icon: 'sync', onTap: () => WD.screens.settings && WD.screens.settings.openPending && WD.screens.settings.openPending() },
@@ -139,19 +155,18 @@ const syncItems = () => [WD.can('jobs.edit') && WD.r9 && S.board.mode !== 'month
 function boardMenu(anchor) {
   const b = S.board, n = S.pending.length;
   ui.menu(anchor, [
-    { header: S.org.name + ' · routes on the board' },
-    ...q.routes().map(r => ({ label: q.routeName(r), checked: r.visible, onTap: () => { r.visible = !r.visible; WD.changed(); } })),
-    'divider', { header: 'Card detail · or pinch the board' }, ...DETAIL.map((t, i) => ({ label: t, checked: b.detail === i, onTap: () => setDetail(i) })),
+    { header: 'Routes on the board · tap to show or hide' },
+    { node: h('div.bd-rchips', q.routes().map(r => { const el = h('button' + (r.visible ? '.on' : ''), { style: { '--c': q.routeColor(r) }, 'aria-pressed': String(!!r.visible), onclick: () => { r.visible = !r.visible; el.classList.toggle('on', r.visible); el.setAttribute('aria-pressed', String(r.visible)); WD.changed(); } }, ui.dot(q.routeColor(r)), h('span', q.routeName(r))); return el; })) },
     'divider', ...syncItems(),
-  ]);
+  ], { compact: true });
 }
 function modeRow() {
   const b = S.board, route = q.route(b.routeId);
   const pill = b.mode === 'days'
     ? h('button.bd-pill', { onclick: e => ui.menu(e.currentTarget, [{ header: 'Route' }, ...q.routes().map(r => ({ label: q.routeName(r), checked: r.id === b.routeId, onTap: () => { b.routeId = r.id; refresh(); } })), 'divider',
-        { label: 'Show 1 day', checked: b.dayCount === 1, onTap: () => { b.dayCount = 1; refresh(); } }, { label: 'Show 3 days', checked: b.dayCount === 3, onTap: () => { b.dayCount = 3; refresh(); } }, 'divider', { header: 'Card detail · or pinch the board' }, ...DETAIL.map((t, i) => ({ label: t, checked: b.detail === i, onTap: () => setDetail(i) })), 'divider', ...syncItems()]) },
+        { label: 'Show 1 day', checked: b.dayCount === 1, onTap: () => { b.dayCount = 1; refresh(); } }, { label: 'Show 3 days', checked: b.dayCount === 3, onTap: () => { b.dayCount = 3; refresh(); } }, 'divider', ...syncItems()], { compact: true }) },
         ui.dot(q.routeColor(route)), h('span.n', q.routeName(route)), icon('chevron.down', 13))
-    : h('button.bd-pill', { onclick: e => boardMenu(e.currentTarget) }, h('span.n', q.visibleRoutes().length + ' of ' + q.routes().length + ' routes'), icon('chevron.down', 13));
+    : h('button.bd-pill.bd-more', { 'aria-label': 'Routes and more · ' + q.visibleRoutes().length + ' of ' + q.routes().length + ' routes shown', onclick: e => boardMenu(e.currentTarget) }, icon('ellipsis', 20));
   const zoom = b.mode !== 'month' && h('span.bd-zoombtns', h('button', { 'aria-label': 'Less detail', disabled: b.detail <= 0, onclick: () => setDetail(S.board.detail - 1, true) }, icon('minus', 16)), h('button', { 'aria-label': 'More detail', disabled: b.detail >= DETAIL.length - 1, onclick: () => setDetail(S.board.detail + 1, true) }, icon('plus', 16)));
   return h('div.bd-mode', ui.segmented([{ value: 'routes', label: 'Routes' }, { value: 'days', label: 'Days' }, { value: 'month', label: 'Month' }], b.mode, v => { b.mode = v; keep(undefined, 0); refresh(); }), pill, zoom);
 }
@@ -183,7 +198,7 @@ function offStrip() {
 
 /* ---------- Ordered lists ---------- */
 /* Colors: the job type fills the card and the route (calendar) color rims it. */
-const cardStyle = job => { const c = q.jobType(job.type).color; return { '--c': c, '--ring': q.routeColor(job.routeId), '--fg': WD.textOn(c) }; };
+const cardStyle = job => { const c = WD.cardColor(job); return { '--c': c, '--ring': q.routeColor(job.routeId), '--fg': WD.textOn(c) }; };
 /* Card detail: pinch vertically on the board (or ⌘/ctrl-scroll, or the routes menu) — 0 shows more jobs with just the name, 2 shows fewer jobs with everything a dispatcher needs. Addresses are left off; they're one tap away. */
 const DETAIL = ['Less detail', 'Standard', 'More detail'];
 if (S.board.detail == null) S.board.detail = 1;
@@ -191,7 +206,8 @@ const shortT = m => { const hh = Math.floor(m / 60), mm = m % 60; return (hh % 1
 function facts(job, full) {
   const out = [], items = WD.itemsLabel(job.items, job.type === 'purge'), est = job.type === 'purge' && job.purge && WD.purgeEstimate(job.purge), m = fmt.fromHHMM;
   if (items) out.push(['shippingbox', items]); else if (job.containers) out.push(['shippingbox', job.containers]);
-  if (job.custFrom || job.custUntil) out.push(['clock', (job.windowBy === 'us' ? 'Told ' : 'Asked ') + (job.custFrom ? shortT(m(job.custFrom)) : 'any') + '–' + (job.custUntil ? shortT(m(job.custUntil)) : 'any') + (job.custStrict ? ' · required' : '')]);
+  if (job.exactAt) out.push(['clock', 'Exactly ' + shortT(m(job.exactAt))]);
+  else if (job.custFrom || job.custUntil) out.push(['clock', (job.windowBy === 'us' ? 'Told ' : 'Asked ') + (job.custFrom ? shortT(m(job.custFrom)) : 'any') + '–' + (job.custUntil ? shortT(m(job.custUntil)) : 'any') + (job.custStrict ? ' · required' : '')]);
   else if (job.needsWindow) out.push(['clock', 'Needs window']);
   if (est && est.minutes) out.push(['timer', (est.guess ? est.low + '–' + est.high : est.minutes) + ' min on site']); else if (job.dur && full) out.push(['timer', '~' + WD.siteMinutes(job).minutes + ' min on site']);
   return out;
@@ -210,11 +226,12 @@ function cell(job, number) {
   const type = q.jobType(job.type), st = { enroute: 'truck', arrived: 'mappin', completed: 'checkmark', skipped: 'xmark', canceled: 'xmark', rescheduled: 'calendar', postponed: 'clock' }[job.status], struck = WD.struck[job.status];
   const tag = { skipped: 'Skipped', canceled: 'Canceled', rescheduled: 'Rescheduled', postponed: 'Postponed' }[job.status];
   const wf = WD.workflow, notBilled = job.status === 'completed' && !wf.billed(job) && job.type !== 'meet', noAddr = !WD.closed[job.status] && WD.addressIssue(job);
-  return h('div.bd-job.' + job.status + (struck ? '.struck' : '') + (WD.calledOff(job) ? '.calledoff' : '') + (wf.dimmed(job) ? '.faded' : '') + (job.pending ? '.pending' : '') + (drag && drag.job.id === job.id ? '.dragging' : '') + (flashId === job.id ? '.flash' : '') + (S.board.select && S.board.select.has(job.id) ? '.sel' : ''),
+  return h('div.bd-job.' + job.status + (WD.cardClass ? WD.cardClass(job) : '') + (struck ? '.struck' : '') + (WD.calledOff(job) ? '.calledoff' : '') + (wf.dimmed(job) ? '.faded' : '') + (job.pending ? '.pending' : '') + (drag && drag.job.id === job.id ? '.dragging' : '') + (flashId === job.id ? '.flash' : '') + (S.board.select && S.board.select.has(job.id) ? '.sel' : ''),
     { 'data-job': job.id, style: cardStyle(job) }, S.board.select && canSelect(job) && h('span.bd-check', icon('checkmark', 11)),
     h('div.bd-job-in', h('span.bd-num', number),
       h('div.bd-job-main', h('div.bd-job-title', !job.located && job.address && job.type !== 'meet' ? h('span.bd-q', '?') : null, st && icon(st, 12), job.pending && icon('sync', 11), h('span.d0', job.title), h('span.d12', wf.titleNode(job)), job.recurring ? h('span', { style: 'opacity:.8;font-weight:400' }, ' ↻') : null),
         tag ? h('div.bd-tag', tag + (job.rescheduledTo ? ' · ' + fmt.day(job.rescheduledTo, 'md') : '')) : notBilled ? h('div.bd-tag.nb', 'Not billed') : noAddr ? h('div.bd-tag.na', noAddr) : job.offWindow && !WD.closed[job.status] ? h('div.bd-tag.na', { title: job.offWindow }, 'Outside window') : null,
+        WD.cardTags && !WD.closed[job.status] && (t => t.length ? h('div.d12', t) : null)(WD.cardTags(job)),
         !tag && h('div.bd-job-sub.d1', facts(job).map(x => x[1]).join(' · ') || type.title),
         !tag && h('div.d2', details(job)))));
 }
@@ -236,11 +253,12 @@ function grid() {
   const colW = Math.floor(W / Math.min(cols.length, 3)), showHead = cols.length > 1, today = D.today(), canEdit = WD.can('jobs.edit');
   layout = { cols, colW };
   const lists = cols.map(c => ({ notes: q.jobsFor(c.routeId, c.day).filter(j => j.allDay), stops: q.stopList(c.routeId, c.day) }));
-  const head = showHead && h('div.bd-head', h('div.bd-hrow', cols.map((c, i) => h('div.bd-colhead' + (c.today && b.mode === 'days' ? '.today' : ''), { style: { width: colW + 'px' } },
+  const head = showHead && h('div.bd-head', h('div.bd-hrow', cols.map((c, i) => h('div.bd-colhead' + (c.today && b.mode === 'days' ? '.today' : ''), { style: { width: colW + 'px' }, onclick: e => colMenu(e.currentTarget, c) },
     c.color && ui.dot(c.color), h('span.n', c.title), (t => t && h('span.bd-offrow', h('span.bd-off', { title: WD.timeOffLabel(t) }, offText(c, t))))(offFor(c)), (m => m && h('span.bd-offrow', h('span.bd-off.' + m.kind, { title: m.label }, m.label)))(WD.dayMark && WD.dayMark(c.routeId, c.day)), h('span.c', (d => d ? 'Leave ' + shortT(d.depart) + ' · ' : '')(data.routeDays[c.routeId + '|' + c.day]) + lists[i].stops.filter(j => !WD.calledOff(j)).length)))));
   const body = h('div.bd-body', cols.map((c, i) => {
     const { notes, stops } = lists[i];
     return h('div.bd-col' + (c.day < today ? '.past' : ''), { 'data-i': i, style: { width: colW + 'px' } },
+      (n => n && h('div.bd-rnote', { 'data-note': i, onclick: () => WD.can('jobs.edit') && WD.r11.editNote(c.routeId, c.day) }, h('small', n.to === 'office' ? 'Note for the office' : n.to === 'driver' ? 'Note for the driver' : 'Note for the driver and office'), n.text))(WD.r11 && WD.r11.noteFor(c.routeId, c.day)),
       notes.map(j => h('div.bd-chip', { style: { '--c': q.routeColor(j.routeId) }, onclick: () => jobsScreen().openDetails && jobsScreen().openDetails(j.id) }, icon('note', 11), j.title)),
       (k => stops.map(j => cell(j, WD.calledOff(j) ? '–' : ++k)))(0),
       !stops.length && h('div.bd-empty', 'No stops'),
@@ -290,7 +308,7 @@ function onWheel(e) {
 
 /* ---------- Tap, swipe and drag ---------- */
 function onPointerDown(e) {
-  if (e.button > 0 || e.target.closest('.bd-chip') || drag || pinch) return;
+  if (e.button > 0 || e.target.closest('.bd-chip, .bd-rnote') || drag || pinch) return;
   if (S.board.select) { const c0 = e.target.closest('.bd-job'), j0 = c0 && q.job(c0.dataset.job), x0 = e.clientX, y0 = e.clientY; if (!j0) return;
     const up0 = ev => { document.removeEventListener('pointerup', up0); if (Math.abs(ev.clientX - x0) + Math.abs(ev.clientY - y0) < 9 && S.board.select) toggleSelect(j0); }; document.addEventListener('pointerup', up0); return; }
   const cellEl = e.target.closest('.bd-job'), colEl = e.target.closest('.bd-col'), addEl = e.target.closest('.bd-add'), sx = e.clientX, sy = e.clientY, touch = e.pointerType === 'touch', el = scroller;
@@ -314,6 +332,13 @@ function onPointerDown(e) {
   };
   const cancel = () => { cleanup(); if (active) { drag.ghost.remove(); drag.ins.remove(); drag.slot.remove(); drag = null; refresh(); } };
   document.addEventListener('pointermove', move); document.addEventListener('pointerup', up); document.addEventListener('pointercancel', cancel);
+}
+/** Tapping a column's header: a note for that route's day, AutoRoute, or show just that route. */
+function colMenu(el, c) {
+  const edit = WD.can('jobs.edit'), has = WD.r11 && WD.r11.noteFor(c.routeId, c.day);
+  ui.menu(el, [{ header: q.routeName(c.routeId) + ' · ' + fmt.day(c.day) }, edit && WD.r11 && { label: has ? 'Edit the note' : 'Add a note for the driver or office', icon: 'note', onTap: () => WD.r11.editNote(c.routeId, c.day) },
+    edit && { label: 'AutoRoute this route', icon: 'sparkles', onTap: () => jobsScreen().openAutoRoute && jobsScreen().openAutoRoute(c.routeId, { day: c.day }) },
+    S.board.mode === 'routes' && { label: 'Show only this route', icon: 'columns', onTap: () => { S.board.mode = 'days'; S.board.routeId = c.routeId; S.board.dayCount = 1; keep(undefined, 0); refresh(); } }], { compact: true });
 }
 function lockedReason(job) {
   if (job.pending) return 'This stop is still syncing. Try again in a moment.';
@@ -376,6 +401,8 @@ WD.boardHelpers = { SCOPES, seriesJobs };
 async function dropped(job, t) {
   const routeChanged = t.routeId !== job.routeId, dayChanged = t.day !== job.day, pos = q.position(job);
   if (!routeChanged && !dayChanged && t.index === pos.n - 1) return;
+  /* Skills, licenses, clearances and truck capability: block the move or flag it, as the company chose in Settings. */
+  if (routeChanged && WD.r11 && !(await WD.r11.checkAssign([job], t.routeId, t.day))) return;
   const where = 'Stop ' + (t.index + 1) + ' on ' + (routeChanged ? q.routeName(t.routeId) : 'the list') + (dayChanged ? ' · ' + fmt.day(t.day) : ''), me = S.me.name;
   let scope = 'This job', kind = 'edit';
   if (routeChanged) { kind = 'reassign';
@@ -405,7 +432,7 @@ function monthView() {
   return h('div.bd-month', h('div.bd-mhead', ['S', 'M', 'T', 'W', 'T', 'F', 'S'].map(x => h('span', x))), weeks.map(days => h('div.bd-week', days.map(day => {
     const jobs = q.jobsOn(day).filter(j => routes.includes(j.routeId)).sort(boardSort);
     return h('div.bd-mday' + (D.parse(day).getMonth() !== month ? '.other' : '') + (day === today ? '.today' : ''), { onclick: () => { b.day = day; b.mode = 'routes'; keep(null, 0); refresh(); } },
-      h('div.bd-mnum', D.parse(day).getDate()), jobs.slice(0, 4).map(j => h('div.bd-mev' + (WD.struck[j.status] ? '.struck' : ''), { style: { '--c': j.allDay ? q.routeColor(j.routeId) : q.jobType(j.type).color, '--ring': q.routeColor(j.routeId) } }, j.title)), jobs.length > 4 && h('div.bd-more', '+' + (jobs.length - 4) + ' more'));
+      h('div.bd-mnum', D.parse(day).getDate()), jobs.slice(0, 4).map(j => h('div.bd-mev' + (WD.struck[j.status] ? '.struck' : ''), { style: { '--c': j.allDay ? q.routeColor(j.routeId) : WD.cardColor(j), '--ring': q.routeColor(j.routeId) } }, j.title)), jobs.length > 4 && h('div.bd-more', '+' + (jobs.length - 4) + ' more'));
   }))));
 }
 function pickDate() {
@@ -424,7 +451,7 @@ function render(p) {
   page = p; const b = S.board;
   if (scroller && scroller.isConnected) saved = { top: scroller.scrollTop, left: scroller.scrollLeft };
   if (!q.route(b.routeId)) { const mine = data.routes.find(r => r.driverId === S.me.id); b.routeId = (mine || q.visibleRoutes()[0] || q.routes()[0]).id; }
-  return [topBar(), modeRow(), statusStrip(), addressStrip(), offStrip(), markStrip(), b.mode === 'month' ? monthView() : grid(), selectBar()];
+  return [topBar(), modeRow(), statusStrip(), addressStrip(), WD.r11 && WD.r11.boardStrips(), offStrip(), markStrip(), b.mode === 'month' ? monthView() : grid(), selectBar()];
 }
 WD.screens.board = {
   root: () => ({ title: 'Dispatch', navbar: false, noScroll: true, live: false, render, onChange: p => { if (pinch) staleWhilePinching = true; else if (!drag) p.refresh(); }, onReappear: p => p.refresh() }),

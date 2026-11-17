@@ -291,7 +291,7 @@ async function completeStop(job) {
   let mode = W.onComplete;
   if (mode === 'ask') { mode = await ui.actionSheet({ title: 'Complete ' + job.title + '?', buttons: [{ label: 'Complete and bill', value: 'billing' }, { label: 'Just complete', value: 'complete' }] }); if (!mode) return; }
   if (job.status !== 'completed') { const inferred = job.arrivedAt == null && W.arrival !== 'button'; api.setStatus(job.id, 'completed', inferred ? 'arrival time from GPS' : null); WD.emit('stopCompleted', job.id); }
-  const auto = job.type === 'creditCard';
+  const auto = WD.cardJob(job);
   if (mode === 'complete' || !canInvoice() || auto || job.type === 'meet') { ui.toast(auto ? 'Completed · card on file is charged automatically' : 'Stop completed', 'checkmark', 2200); if (mode !== 'complete' || auto) afterBilling(job); return; }
   setTimeout(() => billing().openEditor && billing().openEditor(job.id, { flow: true, onDone: () => afterBilling(job) }), 250);
 }

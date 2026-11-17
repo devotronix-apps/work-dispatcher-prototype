@@ -6,9 +6,20 @@ let seed = 20261113; const rnd = () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0
 const pick = a => a[Math.floor(rnd() * a.length)];
 
 WD.jobTypes = [
-  { id: 'regular', title: 'Route service (recurring)', color: '#616161' }, { id: 'purge', title: 'Purge (one time)', color: '#F6BF26' }, { id: 'government', title: 'Government', color: '#3F51B5' },
-  { id: 'creditCard', title: 'Credit card on file', color: '#039BE5' }, { id: 'setup', title: 'Setup / first service', color: '#D50000' }, { id: 'meet', title: 'Meet the truck', color: '#E67C73' },
+  { id: 'regular', title: 'Route', color: '#616161' }, { id: 'purge', title: 'Purge', color: '#F6BF26' }, { id: 'setup', title: 'Setup / First Service', color: '#D50000' }, { id: 'meet', title: 'Meet the Truck', color: '#E67C73' },
+  /* Government and credit card on file are now about the customer (customer type, and a card-on-file switch for businesses). The two old job
+     types stay for jobs that already carry them, hidden from the job type list. A company can add, rename, hide and delete types in Settings. */
+  { id: 'government', title: 'Government', color: '#3F51B5', hidden: true }, { id: 'creditCard', title: 'Credit card on file', color: '#039BE5', hidden: true },
+  /* An unload stop at a recycler or landfill, added by AutoRoute. Not offered in the job editor. */
+  { id: 'dump', title: 'Unload / disposal', color: '#795548', hidden: true, system: true },
 ];
+/** The job types offered when creating a job (the current type is always kept so an old job can still be edited). */
+WD.shownJobTypes = cur => WD.jobTypes.filter(t => (!t.hidden && !t.system) || t.id === cur);
+/** The job type a customer's visits start with, and whether a job is charged to a card on file when it is completed. */
+WD.jobTypeFor = c => c.type === 'government' || c.type === 'creditCard' ? 'regular' : c.type;
+WD.cardJob = j => j.type === 'creditCard' || !!((j.customerId && WD.q.customer(j.customerId)) || {}).cardOnFile;
+/** The color that fills a job's card and pin: its job type, except a route visit for a government or card-on-file customer keeps those colors. */
+WD.cardColor = job => { const t = WD.q.jobType(job.type); if (job.type === 'regular') { const c = job.customerId && WD.q.customer(job.customerId); if (c && c.cardOnFile) return '#039BE5'; if ((c ? c.custType : job.custType) === 'government') return '#3F51B5'; } return t.color; };
 WD.jobStatuses = {
   scheduled: { title: 'Scheduled', color: 'var(--gray)', icon: 'circle' }, enroute: { title: 'En route', color: 'var(--blue)', icon: 'truck' },
   arrived: { title: 'On site', color: 'var(--orange)', icon: 'mappin' }, completed: { title: 'Completed', color: 'var(--green)', icon: 'checkmark.circle.fill' }, skipped: { title: 'Skipped', color: 'var(--red)', icon: 'xmark.circle.fill' },
@@ -23,22 +34,23 @@ WD.calledOff = j => j.status === 'canceled' || j.status === 'rescheduled' || j.s
 /** Whether a called-off job drops to the bottom of its day's list (Settings → Routing assumptions). Off: it stays where it was, still without a stop number. */
 WD.sinks = j => WD.calledOff(j) && data.workflow.sinkCalledOff !== false;
 /** Customer type is separate from job type: who the customer is, not what the visit is. */
-WD.custTypes = [{ id: 'business', title: 'Business' }, { id: 'government', title: 'Government' }, { id: 'residential', title: 'Residential' }];
+WD.custTypes = [{ id: 'business', title: 'Business' }, { id: 'residential', title: 'Residential' }, { id: 'government', title: 'Government' }];
 WD.custType = id => WD.custTypes.find(t => t.id === id) || WD.custTypes[0];
 /** Containers and pricing. A customer (and each job) holds items [{id, qty, rate}]; rates start from the price book and can be changed per customer and per job. */
 data.priceBook = [
   { id: 'console', name: 'Console service', unit: 'console', rate: 30 }, { id: 'bin64', name: 'Bin service (64 gal)', unit: 'bin (64 gal)', rate: 45 }, { id: 'bin96', name: 'Bin service (96 gal)', unit: 'bin (96 gal)', rate: 60 },
-  { id: 'box', name: 'Purge, per box', unit: 'box', rate: 8 }, { id: 'trip', name: 'Trip charge', unit: 'trip', rate: 25 }, { id: 'cod', name: 'Certificate of destruction', unit: 'certificate', rate: 0 },
-  { id: 'stairsDown', name: 'Stairs — carried down, per box', unit: 'box', rate: 3 }, { id: 'stairsUp', name: 'Stairs — carried up, per box', unit: 'box', rate: 4 }, { id: 'haul', name: 'Haul away empty boxes, per box', unit: 'box', rate: 2 },
+  { id: 'box', name: 'Purge, per box', unit: 'box', rate: 8 }, { id: 'boxLegal', name: 'Purge, per legal box', unit: 'legal box', rate: 13.2 }, { id: 'boxXL', name: 'Purge, per extra-large box', unit: 'extra-large box', rate: 16 }, { id: 'trip', name: 'Trip charge', unit: 'trip', rate: 25 }, { id: 'cod', name: 'Certificate of destruction', unit: 'certificate', rate: 0 },
+  { id: 'stairsDown', name: 'Stairs — carried down, per box', unit: 'box', rate: 2.5 }, { id: 'stairsUp', name: 'Stairs — carried up, per box', unit: 'box', rate: 4 }, { id: 'haul', name: 'Haul away empty boxes, per box', unit: 'box', rate: 2 },
   { id: 'hdd', name: 'Hard drive destruction', unit: 'hard drive', rate: 15 },
   { id: 'binFlat', name: 'Purge, up to 2 bins (65 gal)', unit: 'flat fee', rate: 150 }, { id: 'binExtra', name: 'Purge, each additional bin (65 gal)', unit: 'bin (65 gal)', rate: 60 },
 ];
 /** Purge estimating (Settings → Purge estimates). Box sizes count as standard banker boxes (10×12×15"); bins, pallets, gaylords and cabinets convert to boxes.
-    Time on site: a 10-minute minimum covers up to 10 boxes, then 100 boxes an hour. Stairs take 2–3× as long; hauling the empties away doubles the time.
-    pallet / gaylord / cabinet are starting guesses to be confirmed by the owner. learned: completed purges with recorded times, used to tune the estimate. */
-data.purgeRules = { minMin: 10, minBoxes: 10, perHour: 100, legal: 1.65, xl: 2, bin65: 8, pallet: 40, gaylord: 35, cabinet: 6, stairsFactor: 2.5, haulFactor: 2, learned: 0 };
+    Time on site: a 10-minute minimum covers up to 10 boxes, then 100 boxes an hour. Stairs add minutes per box (10 to 20 minutes for 10 boxes) and
+    hauling the empties away adds seconds per box (45 to 60). pallet 40, gaylord 35 and cabinet 7 (a cabinet is also about one bin) are the owner's
+    starting numbers; all are settings. learned: completed purges with recorded times, used to tune the estimate. */
+data.purgeRules = { minMin: 10, minBoxes: 10, perHour: 100, legal: 1.65, xl: 2, bin65: 8, pallet: 40, gaylord: 35, cabinet: 7, stairsMin: 1.5, haulSec: 50, learned: 0 };
 WD.PURGE_UNITS = [['std', 'Standard boxes', '10×12×15" bankers box', 1], ['legal', 'Legal boxes', '10×12×24" · counts 1.65', 'legal'], ['xl', 'Extra-large boxes', '10×15×24" · counts 2', 'xl'],
-  ['bin65', '65-gallon bins', '8 boxes per bin', 'bin65'], ['pallet', 'Pallets', '≈ boxes per pallet', 'pallet'], ['gaylord', 'Gaylords', '≈ boxes per gaylord', 'gaylord'], ['cabinet', 'File cabinets', '≈ boxes per 4-drawer cabinet', 'cabinet']];
+  ['bin65', '65-gallon bins', '8 boxes per bin', 'bin65'], ['pallet', 'Pallets', '≈ boxes per pallet', 'pallet'], ['gaylord', 'Gaylords', '≈ boxes per gaylord', 'gaylord'], ['cabinet', 'File cabinets', '≈ boxes per cabinet (about 1 bin)', 'cabinet']];
 /** p: {std, legal, xl, bin65, pallet, gaylord, cabinet, stairs: 'none'|'down'|'up', haul} → {boxes (standard-box equivalents), minutes, low, high, guess, why}.
     Exact counts (62) are usually close; round numbers (20, 50, 100, 150…) and pallets, gaylords or cabinets are guesses, so those get a range. */
 WD.purgeEstimate = p => {
@@ -46,7 +58,7 @@ WD.purgeEstimate = p => {
   const per = k => typeof k === 'number' ? k : P[k], boxes = WD.PURGE_UNITS.reduce((s, [id, , , k]) => s + (+p[id] || 0) * per(k), 0);
   const counts = WD.PURGE_UNITS.map(([id]) => +p[id] || 0).filter(n => n > 0), rough = ['pallet', 'gaylord', 'cabinet'].some(id => +p[id] > 0);
   const roundNum = counts.some(n => n >= 20 && n % 10 === 0), guess = rough || roundNum;
-  const time = b => { let m = P.minMin + Math.max(0, b - P.minBoxes) / P.perHour * 60; if (p.stairs && p.stairs !== 'none') m *= P.stairsFactor; if (p.haul) m *= P.haulFactor; return Math.round(m); };
+  const time = b => { let m = P.minMin + Math.max(0, b - P.minBoxes) / P.perHour * 60; if (p.stairs && p.stairs !== 'none') m += b * P.stairsMin; if (p.haul) m += b * P.haulSec / 60; return Math.round(m); };
   const minutes = boxes > 0 ? time(boxes) : 0;
   return { boxes: Math.round(boxes * 10) / 10, billable: Math.ceil(boxes), minutes, low: guess ? time(boxes * 0.5) : minutes, high: guess ? time(boxes * 1.5) : minutes, guess, why: rough ? 'counted by pallets, gaylords or cabinets' : roundNum ? 'round numbers are usually guesses' : '' };
 };
@@ -56,8 +68,9 @@ WD.purgeExtras = (p, boxes) => { const out = [], pb = id => data.priceBook.find(
   if (p && p.haul) out.push({ id: 'haul', qty: boxes, rate: pb('haul').rate }); return out; };
 /** How purge jobs are priced (Settings → Purge pricing). 'box': a rate per box. 'bin': by the 65-gallon bin, a flat fee that covers the first
     bins and a rate for each one after. Boxes turn into bins with data.purgeRules.bin65 (boxes that fit in a bin). */
-data.purgePricing = { method: 'box', binFlat: 150, binIncluded: 2, binExtra: 60 };
-WD.PURGE_IDS = ['box', 'binFlat', 'binExtra', 'stairsDown', 'stairsUp', 'haul'];
+/* legalMult / xlMult: a legal or extra-large box is billed as its own line, at the standard box rate times this (1.65 and 2 to start). */
+data.purgePricing = { method: 'box', binFlat: 150, binIncluded: 2, binExtra: 60, legalMult: 1.65, xlMult: 2 };
+WD.PURGE_IDS = ['box', 'boxLegal', 'boxXL', 'binFlat', 'binExtra', 'stairsDown', 'stairsUp', 'haul'];
 WD.purgeBins = boxes => boxes > 0 ? Math.max(1, Math.ceil(boxes / (data.purgeRules.bin65 || 8) - 1e-9)) : 0;
 /** Keep the two bin items in the price book in step with the pricing settings. */
 WD.syncPurgeBook = () => { const PP = data.purgePricing, f = data.priceBook.find(x => x.id === 'binFlat'), x = data.priceBook.find(x => x.id === 'binExtra');
@@ -65,20 +78,30 @@ WD.syncPurgeBook = () => { const PP = data.purgePricing, f = data.priceBook.find
 /** Billing lines for a purge: p = what the customer has, e = WD.purgeEstimate(p), boxRate = this job's per-box rate (box pricing only). */
 WD.purgeItems = (p, e, boxRate) => { const PP = data.purgePricing, extras = WD.purgeExtras(p, e.billable); if (!e.billable) return extras;
   if (PP.method === 'bin') { const bins = WD.purgeBins(e.boxes), more = Math.max(0, bins - PP.binIncluded); return [{ id: 'binFlat', qty: 1, rate: PP.binFlat, bins }].concat(more ? [{ id: 'binExtra', qty: more, rate: PP.binExtra }] : [], extras); }
-  return [{ id: 'box', qty: e.billable, rate: boxRate != null ? boxRate : data.priceBook.find(x => x.id === 'box').rate }].concat(extras); };
+  /* By the box: legal and extra-large boxes are billed as physical boxes at their own rate; everything else (standard boxes, and bins, pallets,
+     gaylords and cabinets converted to boxes) is billed at the standard rate. Stairs and haul-away stay per standard-box equivalent. */
+  const P = data.purgeRules, rate = boxRate != null ? boxRate : data.priceBook.find(x => x.id === 'box').rate, lg = +p.legal || 0, xl = +p.xl || 0, std = Math.max(0, Math.ceil(e.boxes - lg * P.legal - xl * P.xl - 1e-9)), r2 = n => Math.round(n * 100) / 100;
+  return [std > 0 && { id: 'box', qty: std, rate }, lg > 0 && { id: 'boxLegal', qty: lg, rate: r2(rate * PP.legalMult) }, xl > 0 && { id: 'boxXL', qty: xl, rate: r2(rate * PP.xlMult) }].filter(Boolean).concat(extras); };
 /** The two bin lines for a count of bins (used when the driver changes the count on site). */
 WD.binLines = bins => { const PP = data.purgePricing, more = Math.max(0, bins - PP.binIncluded); return [{ id: 'binFlat', qty: 1, rate: PP.binFlat, bins }].concat(more ? [{ id: 'binExtra', qty: more, rate: PP.binExtra }] : []); };
 /** ETA windows given to customers who asked for one: 2 hours before 10 AM, 3 hours from 10 to 1, 4 hours after 1 PM. */
-WD.etaWindow = eta => { const E = data.workflow.eta, len = eta < 10 * 60 ? E.early : eta < 13 * 60 ? E.mid : E.late, from = Math.max(6 * 60, Math.round((eta - len / 2) / 30) * 30); return { from, until: from + len }; };
+/* The window opens E.before minutes ahead of the ETA (1 hour to start, in case the truck runs ahead or an earlier customer cancels) and the rest
+   of it falls after the ETA. The lengths and the two times of day that separate them are settings (Settings → Routing assumptions). */
+WD.etaWindow = eta => { const E = data.workflow.eta, len = eta < E.b1 ? E.early : eta < E.b2 ? E.mid : E.late, from = Math.max(5 * 60, Math.round((eta - Math.min(E.before, len)) / 15) * 15); return { from, until: from + len }; };
 /** Time on site for a stop with no recorded visits (Settings → Time on site). Route service: a minimum stop time plus minutes per container.
     A new setup adds setupExtra minutes to whatever the stop would otherwise take. pace is the time a truck takes as a percentage of normal
     (120 = 20% longer); a vehicle's own pace wins over the overall one. Purge jobs use data.purgeRules instead. */
-data.siteRules = { route: { min: 10, console: 2, bin64: 3, bin96: 4 }, setupExtra: 10, pace: 100 };
+/* Route service: the minimum stop time (5 minutes) includes one bin. A console adds a minute; each console after the first adds 3; each bin after the first adds 8. */
+data.siteRules = { route: { min: 5, console1: 1, console: 3, bin64: 8, bin96: 8 }, setupExtra: 10, pace: 100 };
 WD.paceFor = routeId => { const r = WD.q.route(routeId), v = r && WD.q.vehicle(r.vehicleId); return ((v && v.pace) || data.siteRules.pace || 100) / 100; };
 WD.routeFormula = job => { const R = data.siteRules.route, n = id => +(((job.items || []).find(i => i.id === id) || {}).qty) || 0, c = n('console'), b = n('bin64'), g = n('bin96');
-  return c + b + g ? { minutes: R.min + c * R.console + b * R.bin64 + g * R.bin96, counted: true } : { minutes: data.workflow.defaultStopMin, counted: false }; };
+  const free = b ? 'b' : g ? 'g' : '';   // the one bin the minimum already covers
+  return c + b + g ? { minutes: R.min + (c ? R.console1 + (c - 1) * R.console : 0) + (b - (free === 'b' ? 1 : 0)) * R.bin64 + (g - (free === 'g' ? 1 : 0)) * R.bin96, counted: true } : { minutes: data.workflow.defaultStopMin, counted: false }; };
 /** Minutes on site AutoRoute plans for a job, and where the number came from: 'purge' (box estimate), 'history' (median of recorded visits) or 'formula'. */
 WD.siteMinutes = job => {
+  /* A time typed on the job wins (extra people or a second truck were sent, or the dispatcher knows better). An unload stop uses the disposal setting. */
+  if (job.durOverride > 0) return { minutes: job.durOverride, source: 'override', counted: true, pace: 1, setup: 0 };
+  if (job.type === 'dump') return { minutes: job.dur || 25, source: 'override', counted: true, pace: 1, setup: 0 };
   const pace = WD.paceFor(job.routeId), setup = job.type === 'setup' || (job.flags && job.flags.setup) ? data.siteRules.setupExtra : 0;
   if (job.type === 'purge' && job.purge) { const e = WD.purgeEstimate(job.purge); if (e.minutes) return { minutes: Math.round(e.minutes * pace), source: 'purge', est: e, pace, setup: 0 }; }
   const c = job.customerId && WD.q.customer(job.customerId);
@@ -88,12 +111,12 @@ WD.siteMinutes = job => {
 /** Planned departure per route and day: key routeId + '|' + day → { depart (minutes), manual }. */
 data.routeDays = {};
 WD.CONTAINERS = ['console', 'bin64', 'bin96', 'box'];
-const plural = (n, w) => n + ' ' + (n === 1 ? w : w.replace(/^(\w+)/, m => m === 'box' ? 'boxes' : m + 's'));
+const plural = (n, w) => n + ' ' + (n === 1 ? w : /box$/.test(w) ? w + 'es' : w.replace(/^(\w+)/, m => m + 's'));
 WD.parseItems = str => { const out = []; String(str || '').split(',').forEach(part => { const m = /(\d+)\s*(.*)/.exec(part.trim()); if (!m) return; const n = +m[1], t = m[2].toLowerCase();
   const id = /box/.test(t) ? 'box' : /96/.test(t) ? 'bin96' : /bin/.test(t) ? 'bin64' : 'console'; const pb = data.priceBook.find(x => x.id === id); out.push({ id, qty: n, rate: pb.rate }); }); return out; };
 /** "4 consoles, 1 bin (64 gal)" — or "≈40 boxes (estimate)" for purge jobs. */
 WD.itemsLabel = (items, purge) => { const bf = (items || []).find(i => i.id === 'binFlat' && i.qty > 0), ex = (items || []).find(i => i.id === 'binExtra'), bins = bf ? bf.bins || data.purgePricing.binIncluded + (ex ? ex.qty : 0) : 0;
-  return (bf ? ['≈' + bins + (bins === 1 ? ' bin' : ' bins') + ' (65 gal)'] : []).concat((items || []).filter(i => WD.CONTAINERS.includes(i.id) && i.qty > 0).map(i => (purge && i.id === 'box' ? '≈' : '') + plural(i.qty, data.priceBook.find(x => x.id === i.id).unit))).join(', '); };
+  return (bf ? ['≈' + bins + (bins === 1 ? ' bin' : ' bins') + ' (65 gal)'] : []).concat((items || []).filter(i => (WD.CONTAINERS.includes(i.id) || i.id === 'boxLegal' || i.id === 'boxXL') && i.qty > 0).map(i => (purge && /^box/.test(i.id) ? '≈' : '') + plural(i.qty, data.priceBook.find(x => x.id === i.id).unit))).join(', '); };
 WD.copyItems = items => (items || []).map(i => ({ ...i }));
 WD.lifecycle = ['lead', 'contacted', 'quoted', 'scheduled', 'serviced', 'customer'];
 /* Which fields the job editor and new-customer form ask for, per job type (Settings → Job types and fields). Name is always asked. */
@@ -134,7 +157,7 @@ data.workflow = {
   normalOpen: '08:00', normalClose: '17:00',
   pretripMin: 15,           // minutes for the pre-trip check and loading, added before the recommended departure
   dayStartMin: 7 * 60 + 30, // when a driver's day starts if AutoRoute has nothing better to go on
-  eta: { early: 120, mid: 180, late: 240 }, // minutes of arrival window given to customers: before 10 AM, 10 to 1, after 1 PM
+  eta: { early: 120, mid: 180, late: 240, before: 60, b1: 10 * 60, b2: 13 * 60 }, // minutes of arrival window given to customers: before b1 (10 AM), b1 to b2 (1 PM), after b2; `before` = how much of it falls ahead of the ETA
   defaultStopMin: 20,       // minutes on site assumed for a stop with no history
   sinkCalledOff: true,      // canceled, postponed and rescheduled jobs drop to the bottom of the day's list
   speedPct: 100,            // drive-time estimate, as a percentage of the map's normal estimate (110 = allow 10% longer)
@@ -190,7 +213,7 @@ const C = (id, name, route, x, y, address, o = {}) => ({ id, name, kind: o.kind 
   contacts: o.contacts || [], locations: [{ id: id + 'l1', label: o.label || 'Main office', address: address + ', Lakemont', x, y, containers: o.containers || '2 consoles', bizOpen: o.open || '08:00', bizClose: o.close || '17:00', notes: o.notes || '',
     lunchFrom: o.lunch ? o.lunch[0] : '', lunchUntil: o.lunch ? o.lunch[1] : '', closedDays: o.closed || [], callAhead: o.call || 0 }],
   owner: o.owner || 'u3', nextAction: o.next || null, notes: o.cnotes || '', tags: o.tags || [], stats: null,
-  custType: o.kind === 'household' ? 'residential' : o.type === 'government' ? 'government' : 'business', billingEmail: o.billing || '', po: o.po || '', contract: o.contract || '', signature: o.sig || (o.type === 'government' ? 'always' : 'optional'), billingMode: o.mode || 'invoice', documents: [], poSchedule: [] });
+  custType: o.kind === 'household' ? 'residential' : o.type === 'government' ? 'government' : 'business', cardOnFile: o.type === 'creditCard', billingEmail: o.billing || '', po: o.po || '', contract: o.contract || '', signature: o.sig || (o.type === 'government' ? 'always' : 'optional'), billingMode: o.mode || 'invoice', documents: [], poSchedule: [] });
 /** Customer signature policy: 'always' (required on every invoice), 'optional' (driver asks if needed) or 'never' (not asked). */
 WD.sigPolicy = c => !c ? 'optional' : c.signature || (c.requiresSignature ? 'always' : 'optional');
 WD.SIG_POLICIES = [{ value: 'always', label: 'Always required' }, { value: 'optional', label: 'Optional — driver decides' }, { value: 'never', label: 'Never needed' }];
@@ -218,6 +241,7 @@ data.customers = [
   C('c11', 'Bright Smile Orthodontics', 'r3', 180, 420, '705 Larkspur Ln', { contacts: [P('Kim Tran', 'Office manager', '0184', 'kim@brightsmileortho.example')], containers: '1 console', type: 'creditCard', channel: 'Yelp', freq: 'Every 4 weeks', call: 30 }),
   C('c14', 'Westfield Veterinary Clinic', 'r3', 120, 560, '1890 Westfield Rd', { contacts: [P('Dr. Priya Shah', 'Owner', '0193', 'office@westfieldvet.example')], containers: '2 consoles', channel: 'Google Maps' }),
   C('c17', 'County Records Annex', 'r3', 240, 600, '22 Archive Row', { type: 'government', contacts: [P('Walt Brenner', 'Supervisor', '0201', 'wbrenner@county.example')], containers: '10 bins (96 gal)', notes: 'Dock access 7–11 only.', close: '11:00', open: '07:00', channel: 'Referral', freq: 'Weekly', po: 'PO 7731-B', contract: 'County RFP 24-019', billing: 'accountspayable@county.example', mode: 'serviceNote' }),
+  C('c31', 'Lakemont Correctional Facility', 'r3', 70, 640, '9000 Institution Rd', { label: 'Records office', type: 'government', contacts: [P('Lt. Dana Ruiz', 'Records', '0244', 'druiz@lcf.example')], containers: '6 bins (96 gal)', open: '07:00', close: '14:00', notes: 'Background clearance required. Check in at the sally port; no phones past the gate.', channel: 'Referral', freq: 'Every 2 weeks' }),
   C('c27', 'Larkspur Senior Living', 'r3', 90, 440, '4400 Larkspur Ln', { contacts: [P('Beth Collins', 'Administrator', '0221', 'bcollins@larkspursl.example')], containers: '3 consoles', channel: 'Website' }),
   C('c28', 'Mason & Pike Engineering', 'r3', 330, 560, 'New office by the mall', { contacts: [P('Cal Mason', 'Partner', '0226', 'cal@masonpike.example')], containers: '2 consoles', notes: 'They moved — confirm the new suite number.', channel: 'Google Ads', unlocated: true }),
   C('c29', 'Tri-County Hospice', 'r3', 200, 500, '610 Lantern St', { contacts: [P('Ruth Adeyemi', 'Compliance', '0233', 'ruth@tricountyhospice.example')], containers: '2 consoles', channel: 'Referral' }),
@@ -246,7 +270,7 @@ const nextSeq = (routeId, day) => data.jobs.reduce((m, j) => j.routeId === route
 function makeJob(o) {
   const c = o.customerId && data.customers.find(x => x.id === o.customerId), loc = c && c.locations[0];
   const j = Object.assign({ id: 'j' + (++jobSeq), routeId: 'r1', day: today, allDay: false, seq: null, dur: 30, title: c ? c.name : 'Job', customerId: null, locationId: loc ? loc.id : null,
-    address: loc ? loc.address : '', located: loc ? loc.located !== false : false, x: loc ? loc.x : null, y: loc ? loc.y : null, notes: loc ? loc.notes : '', type: c ? c.type : 'regular', custType: c ? c.custType : 'business', cityZip: '', containers: loc ? loc.containers : '',
+    address: loc ? loc.address : '', located: loc ? loc.located !== false : false, x: loc ? loc.x : null, y: loc ? loc.y : null, notes: loc ? loc.notes : '', type: c ? WD.jobTypeFor(c) : 'regular', custType: c ? c.custType : 'business', cityZip: '', containers: loc ? loc.containers : '',
     bizOpen: loc ? loc.bizOpen : '', bizClose: loc ? loc.bizClose : '', custFrom: '', custUntil: '', custStrict: false, windowBy: 'customer', needsWindow: false, purge: null, lunchFrom: loc ? loc.lunchFrom : '', lunchUntil: loc ? loc.lunchUntil : '', closedDays: loc ? loc.closedDays.slice() : [], callAhead: loc ? loc.callAhead : 0, flags: {}, billing: null, items: loc ? WD.copyItems(loc.items) : [], po: c ? c.po : '', contract: c ? c.contract : '', status: 'scheduled', recurring: null, version: 1, pending: false, attachments: [], events: [], invoice: null, arrivedAt: null, departedAt: null }, o);
   if (j.purge && j.type === 'purge') j.dur = WD.purgeEstimate(j.purge).minutes || j.dur;
   delete j.start; if (j.seq == null) j.seq = j.allDay ? 0 : nextSeq(j.routeId, j.day);

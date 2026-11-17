@@ -156,6 +156,7 @@ R8.postponedSpec = () => ({ title: 'Postponed', render: page => { const list = R
       !list.length && ui.row({ title: 'Nothing is waiting for a date', subtitle: 'To postpone a job, open it and choose Customer called → Postponed.' })));
 } });
 R8.openPostponed = () => WD.nav.push(R8.postponedSpec());
+R8.setNewDate = setNewDate; R8.postponedAt = postponedAt;
 /* Sample postponed jobs, so the list has something in it. */
 [[1, 'r3', 1, 3, 'Customer is moving offices and will call with a date'], [2, 'r1', 2, 16, 'Office closed for remodeling'], [3, 'r2', 0, 6, 'Asked to skip this visit and reschedule later']].forEach(([n, rid, idx, ago, why]) => {
   let day = D.add(today(), n); if (D.parse(day).getDay() === 0) day = D.add(day, 1);
@@ -164,13 +165,16 @@ R8.openPostponed = () => WD.nav.push(R8.postponedSpec());
 });
 
 /* ================= 45-day planning map: jobs near an address ================= */
-const DAYS = 45, MILE = 25 /* map units to a mile */, RADII = [1, 3, 5, 10, 50];
-const PM = { text: '', target: null, radius: 3, sel: null, sites: null, at: null, manual: false };
+const MILE = 25 /* map units to a mile */, RADII = [1, 3, 5, 10, 50], RANGES = [[7, '1 week'], [14, '2 weeks'], [28, '4 weeks'], [45, '45 days'], [90, '90 days']];
+const PM = { text: '', target: null, radius: 3, sel: null, sites: null, at: null, manual: false, days: 45 };
+/* How far ahead the map looks is chosen on the map (1 week to 90 days). Distances follow the company's units (miles or kilometers). */
+const rangeText = () => (RANGES.find(r => r[0] === PM.days) || [0, PM.days + ' days'])[1], rangeLabel = () => 'Next ' + rangeText();
+const metric = () => WD.locale.units === 'metric', rMi = () => metric() ? PM.radius / 1.609 : PM.radius, uLabel = () => metric() ? ' km' : ' mi', rText = () => PM.radius + (metric() ? ' km' : PM.radius === 1 ? ' mile' : ' miles');
 const hash = s => { let n = 7; for (const c of String(s)) n = (n * 31 + c.charCodeAt(0)) >>> 0; return n; };
-/** Every place with a job from today through the next 45 days, with its service dates. Jobs on the board come first; past the days already on
+/** Every place with a job from today through the chosen range (45 days to start), with its service dates. Jobs on the board come first; past the days already on
     the board, dates come from each customer's recurring schedule. */
 function buildSites() {
-  const t0 = today(), t1 = D.add(t0, DAYS), sites = new Map(), ok = j => !j.allDay && j.located !== false && j.x != null && !WD.calledOff(j) && j.status !== 'skipped';
+  const t0 = today(), t1 = D.add(t0, PM.days), sites = new Map(), ok = j => !j.allDay && j.located !== false && j.x != null && !WD.calledOff(j) && j.status !== 'skipped';
   const put = (j, day, projected) => { const c = q.customer(j.customerId), key = c ? c.id + '|' + (j.locationId || '') : 'j|' + j.title + '|' + j.address, loc = c && (c.locations.find(l => l.id === j.locationId) || c.locations[0]);
     let s = sites.get(key); if (!s) sites.set(key, s = { key, customerId: c ? c.id : null, name: c ? c.name : j.title, place: c && c.locations.length > 1 && loc ? loc.label : '', address: j.address || (loc && loc.address) || '', x: j.x, y: j.y, routeId: j.routeId, type: j.type, freq: c ? c.freq : 'One time', containers: WD.itemsLabel(j.items, j.type === 'purge'), dates: [] });
     if (!s.dates.some(d => d.day === day)) s.dates.push({ day, routeId: j.routeId, projected, jobId: projected ? null : j.id }); };
@@ -191,61 +195,65 @@ function suggestions(text) {
   const found = (WD.addressSuggestions ? WD.addressSuggestions(t) : []).filter(x => !x.typed && x.l && x.l.x != null).slice(0, 8).map(x => ({ label: x.address.replace(/, Lakemont$/, ''), sub: x.sub, x: x.l.x, y: x.l.y }));
   return found.concat(typed);
 }
-const miles = (s, t) => Math.hypot(s.x - t.x, s.y - t.y) / MILE, milesText = d => (d < 10 ? d.toFixed(1) : Math.round(d)) + ' mi';
+const miles = (s, t) => Math.hypot(s.x - t.x, s.y - t.y) / MILE, milesText = d => fmt.dist(d);
 const dateChip = d => h('span' + (d.projected ? '.proj' : ''), fmt.day(d.day, 'weekday') + ' ' + fmt.day(d.day, 'md'));
 function planMapEl(page, near) {
   const A = 1.25, t = PM.target, sites = PM.sites; let cx = 500, cy = 500, half = 520;
-  if (t) { cx = t.x; cy = t.y; half = Math.max(60, PM.radius * MILE * 1.3); }
+  if (t) { cx = t.x; cy = t.y; half = Math.max(60, rMi() * MILE * 1.3); }
   const x0 = cx - half, y0 = cy - half / A, w = half * 2, hh = w / A;
-  const ring = t ? [{ pts: Array.from({ length: 49 }, (_, i) => ({ x: t.x + Math.cos(i / 48 * Math.PI * 2) * PM.radius * MILE, y: t.y + Math.sin(i / 48 * Math.PI * 2) * PM.radius * MILE })), color: '#FF3B30', dash: true, width: 2 }] : [];
-  const mm = WD.miniMap({ points: [], lines: [{ pts: [{ x: x0, y: y0 }, { x: x0 + w, y: y0 + hh }], color: 'transparent', width: 0.01 }].concat(ring), aspect: A, pad: 0.01, caption: t ? 'Within ' + plural(PM.radius, 'mile') : 'Next ' + DAYS + ' days' });
+  const ring = t ? [{ pts: Array.from({ length: 49 }, (_, i) => ({ x: t.x + Math.cos(i / 48 * Math.PI * 2) * rMi() * MILE, y: t.y + Math.sin(i / 48 * Math.PI * 2) * rMi() * MILE })), color: '#FF3B30', dash: true, width: 2 }] : [];
+  const mm = WD.miniMap({ points: [], lines: [{ pts: [{ x: x0, y: y0 }, { x: x0 + w, y: y0 + hh }], color: 'transparent', width: 0.01 }].concat(ring), aspect: A, pad: 0.01, caption: t ? 'Within ' + rText() : rangeLabel() });
   const pos = (x, y) => ({ left: ((x - x0) / w * 100).toFixed(2) + '%', top: ((y - y0) / hh * 100).toFixed(2) + '%' }), inBox = s => s.x > x0 && s.x < x0 + w && s.y > y0 && s.y < y0 + hh, isNear = s => !t || near.includes(s);
-  sites.filter(inBox).sort((a, b) => isNear(a) - isNear(b)).forEach(s => mm.appendChild(h('button.pm-pin' + (isNear(s) ? '' : '.faded') + (PM.sel === s.key ? '.sel' : ''), { 'aria-label': s.name + ', ' + plural(s.dates.length, 'service date'), style: { ...pos(s.x, s.y), ...WD.pinStyle({ routeId: s.routeId, type: s.type }) }, onclick: () => { PM.sel = PM.sel === s.key ? null : s.key; page.refresh(); } }, s.dates.length)));
+  sites.filter(inBox).sort((a, b) => isNear(a) - isNear(b)).forEach(s => mm.appendChild(h('button.pm-pin' + (isNear(s) ? '' : '.faded') + (PM.sel === s.key ? '.sel' : ''), { 'aria-label': s.name + ', ' + plural(s.dates.length, 'service date'), style: { ...pos(s.x, s.y), ...WD.pinStyle({ routeId: s.routeId, type: s.type, customerId: s.customerId }) }, onclick: () => { PM.sel = PM.sel === s.key ? null : s.key; page.refresh(); } }, s.dates.length)));
   if (t) mm.appendChild(h('div.pm-target', { style: pos(t.x, t.y) }));
   return h('div.pm-map', mm);
 }
 function siteCard(s, page) {
   const c = q.customer(s.customerId), t = PM.target, real = s.dates.filter(d => !d.projected).length;
   return ui.section({ header: 'Selected pin', footer: s.dates.some(d => d.projected) ? 'Outlined dates come from the recurring schedule and are not on the board yet.' : null },
-    ui.row({ leading: h('span.mm-p', { style: { position: 'static', transform: 'none', flex: 'none', ...WD.pinStyle({ routeId: s.routeId, type: s.type }) } }), title: s.name, subtitle: [s.place, s.address.replace(/, Lakemont$/, ''), [q.routeName(s.routeId), s.freq, s.containers].filter(Boolean).join(' · ')].filter(Boolean).map(x => h('div', x)), detail: t ? milesText(miles(s, t)) : null }),
-    h('div.row', h('div.row-main', h('div.row-title', plural(s.dates.length, 'service date') + ' in the next ' + DAYS + ' days'), h('div.row-sub', real + ' on the board' + (s.dates.length > real ? ' · ' + (s.dates.length - real) + ' from the recurring schedule' : '')))),
+    ui.row({ leading: h('span.mm-p', { style: { position: 'static', transform: 'none', flex: 'none', ...WD.pinStyle({ routeId: s.routeId, type: s.type, customerId: s.customerId }) } }), title: s.name, subtitle: [s.place, s.address.replace(/, Lakemont$/, ''), [q.routeName(s.routeId), s.freq, s.containers].filter(Boolean).join(' · ')].filter(Boolean).map(x => h('div', x)), detail: t ? milesText(miles(s, t)) : null }),
+    h('div.row', h('div.row-main', h('div.row-title', plural(s.dates.length, 'service date') + ' in the ' + rangeLabel().toLowerCase()), h('div.row-sub', real + ' on the board' + (s.dates.length > real ? ' · ' + (s.dates.length - real) + ' from the recurring schedule' : '')))),
     h('div.pm-dates', s.dates.map(dateChip)),
+    WD.r11 && WD.can('jobs.edit') && ui.row({ icon: 'arrow.left.arrow.right', iconPlain: true, title: 'Change Route', subtitle: 'Routes with jobs close to this one, best first', tint: true, chevron: true, onTap: () => WD.r11.changeRoute(s, PM, () => { loadSites(true); PM.sel = null; page.refresh(); }) }),
     c && WD.can('crm.view') && ui.row({ title: 'Open ' + c.name, tint: true, chevron: true, onTap: () => WD.screens.customers.openDetail(c.id) }),
     ui.row({ title: 'Close', tint: true, onTap: () => { PM.sel = null; page.refresh(); } }));
 }
-R8.planMapSpec = () => ({ title: 'Next ' + DAYS + ' days', backLabel: 'Map',
+R8.planMapSpec = () => ({ title: () => rangeLabel(), backLabel: 'Map',
   search: { placeholder: 'Type an address to see jobs near it', value: PM.text, onInput: (v, page) => { PM.text = v; if (!v.trim() || (PM.target && PM.target.label !== v)) { PM.target = null; PM.sel = null; } page.refresh(); } },
   trailing: () => [{ icon: 'arrow.clockwise', label: 'Update now', onTap: async page => { if (await ui.run('Updating the map…', () => loadSites(true), { done: 'Up to date', min: 600, max: 1100 })) page.refresh(); } }],
   render: page => { if (!PM.sites) loadSites(false);
-    const t = PM.target, sites = PM.sites, near = t ? sites.filter(s => miles(s, t) <= PM.radius).sort((a, b) => miles(a, t) - miles(b, t)) : [], sel = sites.find(s => s.key === PM.sel);
+    const t = PM.target, sites = PM.sites, near = t ? sites.filter(s => miles(s, t) <= rMi()).sort((a, b) => miles(a, t) - miles(b, t)) : [], sel = sites.find(s => s.key === PM.sel);
     const sugg = !t && PM.text.trim().length >= 2 ? suggestions(PM.text) : [];
     const choose = sg => { PM.target = { label: sg.label, x: sg.x, y: sg.y, typed: sg.typed }; PM.text = sg.label; PM.sel = null; const i = page.navbar.querySelector('.search-box input'); if (i) { i.value = sg.label; i.blur(); i.parentNode.classList.add('filled'); } page.refresh(); page.body.scrollTop = 0; };
     /* Which days already have stops near the address: the answer to “when should we schedule this?” */
     const byDay = new Map(); near.forEach(s => s.dates.forEach(d => { const e = byDay.get(d.day) || byDay.set(d.day, { day: d.day, n: 0, routes: new Set(), closest: 99 }).get(d.day); e.n++; e.routes.add(d.routeId); e.closest = Math.min(e.closest, miles(s, t)); }));
     const days = [...byDay.values()].sort((a, b) => a.day.localeCompare(b.day));
-    const siteRow = s => ui.row({ leading: h('span.mm-p', { style: { position: 'static', transform: 'none', flex: 'none', ...WD.pinStyle({ routeId: s.routeId, type: s.type }) } }, s.dates.length), title: s.name + (s.place ? ' · ' + s.place : ''),
+    const siteRow = s => ui.row({ leading: h('span.mm-p', { style: { position: 'static', transform: 'none', flex: 'none', ...WD.pinStyle({ routeId: s.routeId, type: s.type, customerId: s.customerId }) } }, s.dates.length), title: s.name + (s.place ? ' · ' + s.place : ''),
       subtitle: [s.address.replace(/, Lakemont$/, ''), 'Next: ' + s.dates.slice(0, 3).map(d => fmt.day(d.day, 'weekday') + ' ' + fmt.day(d.day, 'md')).join(', ') + (s.dates.length > 3 ? ' +' + (s.dates.length - 3) + ' more' : '')].map(x => h('div', x)), detail: t ? milesText(miles(s, t)) : null, chevron: true, onTap: () => { PM.sel = s.key; page.refresh(); page.body.scrollTop = 0; } });
     return [
       sugg.length > 0 && ui.list(ui.section({ header: 'Addresses', footer: 'Suggestions come from Apple Maps as you type. Tap one to center the map on it.' }, sugg.map(sg => ui.row({ icon: sg.typed ? 'magnifyingglass' : 'mappin', iconPlain: true, iconColor: sg.typed ? 'var(--label2)' : 'var(--red)', title: sg.label, subtitle: sg.sub, onTap: () => choose(sg) })))),
-      h('div.pm-wrap', planMapEl(page, near), h('div.pm-stamp', h('span', plural(sites.length, 'place') + ' · today to ' + fmt.day(D.add(today(), DAYS), 'md')), h('span', stamp()))),
-      t && h('div.pm-seg', ui.segmented(RADII.map(r => ({ value: r, label: r + ' mi' })), PM.radius, v => { PM.radius = v; page.refresh(); })),
+      /* How far ahead to look: tap to choose 1 week, 2 weeks, 4 weeks, 45 days or 90 days. */
+      h('div.pm-range', h('button', { 'aria-label': 'Date range: ' + rangeLabel(), onclick: e => ui.menu(e.currentTarget, [{ header: 'Show jobs in the' }].concat(RANGES.map(([n, label]) => ({ label: 'Next ' + label, checked: PM.days === n, onTap: () => { PM.days = n; PM.sel = null; PM.allDays = PM.allSites = false; loadSites(PM.manual); page.refresh(); } }))), { compact: true }) }, icon('calendar', 15), h('span', rangeLabel()), icon('chevron.down', 12)), h('span', 'today to ' + fmt.day(D.add(today(), PM.days), 'md'))),
+      h('div.pm-wrap', planMapEl(page, near), h('div.pm-stamp', h('span', plural(sites.length, 'place') + ' · today to ' + fmt.day(D.add(today(), PM.days), 'md')), h('span', stamp()))),
+      t && h('div.pm-seg', ui.segmented(RADII.map(r => ({ value: r, label: r + uLabel() })), PM.radius, v => { PM.radius = v; page.refresh(); })),
       ui.list(
         sel && siteCard(sel, page),
-        !t && !sel && h('div', { style: 'padding:10px 4px 0' }, ui.note('Type an address above. The map zooms to it and shows every job nearby in the next ' + DAYS + ' days, so you can pick a day when a truck is already in the area. Tap a pin for the customer and all of its service dates.')),
-        t && ui.section({ header: 'Days a truck is nearby · ' + days.length, footer: days.length ? 'Days with a stop within ' + plural(PM.radius, 'mile') + ' of ' + t.label + '. Tap a day to see it on the board or put a job on it.' : 'Nothing within ' + plural(PM.radius, 'mile') + '. Try a wider distance.' },
+        !t && !sel && h('div', { style: 'padding:10px 4px 0' }, ui.note('Type an address above. The map zooms to it and shows every job nearby in the ' + rangeLabel().toLowerCase() + ', so you can pick a day when a truck is already in the area. Tap a pin for the customer and all of its service dates.')),
+        t && ui.section({ header: 'Days a truck is nearby · ' + days.length, footer: days.length ? 'Days with a stop within ' + rText() + ' of ' + t.label + '. Tap a day to see it on the board or put a job on it.' : 'Nothing within ' + rText() + '. Try a wider distance.' },
           days.slice(0, PM.allDays ? 60 : 8).map(d => ui.row({ leading: h('span.hstack', { style: { gap: '3px' } }, [...d.routes].map(r => ui.dot(q.routeColor(r)))), title: fmt.day(d.day, 'long'), subtitle: plural(d.n, 'stop') + ' nearby · closest ' + milesText(d.closest) + ' · ' + [...d.routes].map(r => q.routeName(r)).join(', '), chevron: true, onTap: async () => {
-            const v = await ui.actionSheet({ title: fmt.day(d.day, 'long'), message: plural(d.n, 'stop') + ' within ' + plural(PM.radius, 'mile') + ' of ' + t.label + '.', buttons: [WD.can('jobs.edit') && { label: 'New job on this day', value: 'new' }, { label: 'Show this day on the board', value: 'board' }].filter(Boolean) });
+            const v = await ui.actionSheet({ title: fmt.day(d.day, 'long'), message: plural(d.n, 'stop') + ' within ' + rText() + ' of ' + t.label + '.', buttons: [WD.can('jobs.edit') && { label: 'New job on this day', value: 'new' }, { label: 'Show this day on the board', value: 'board' }].filter(Boolean) });
             if (v === 'board') WD.screens.board.show(d.day); else if (v === 'new') { S.board.day = d.day; WD.screens.jobs.openEditor({ day: d.day, routeId: [...d.routes][0] }); } } })),
           days.length > 8 && !PM.allDays && ui.row({ title: 'Show all ' + days.length + ' days', tint: true, onTap: () => { PM.allDays = true; page.refresh(); } })),
         t && near.length > 0 && ui.section({ header: 'Jobs near this address · ' + plural(near.length, 'customer') }, near.map(siteRow)),
-        !t && ui.section({ header: 'Everything in the next ' + DAYS + ' days · ' + plural(sites.length, 'place'), footer: 'The map is refreshed twice a day, at 6 AM and 1 PM. Tap the arrows at the top to update it now.' }, sites.slice().sort((a, b) => a.name.localeCompare(b.name)).slice(0, PM.allSites ? 500 : 12).map(siteRow),
+        !t && ui.section({ header: 'Everything in the ' + rangeLabel().toLowerCase() + ' · ' + plural(sites.length, 'place'), footer: 'The map is refreshed twice a day, at 6 AM and 1 PM. Tap the arrows at the top to update it now.' }, sites.slice().sort((a, b) => a.name.localeCompare(b.name)).slice(0, PM.allSites ? 500 : 12).map(siteRow),
           sites.length > 12 && !PM.allSites && ui.row({ title: 'Show all ' + sites.length, tint: true, onTap: () => { PM.allSites = true; page.refresh(); } })))];
   } });
 R8.openPlanMap = () => { WD.nav.switchTab('map'); WD.nav.push(R8.planMapSpec()); };
 
 /* ================= Control panel ================= */
 const openSet = spec => { WD.nav.switchTab('settings'); WD.nav.push(spec); };
-WD.panel.addJump('45-day map', () => R8.openPlanMap());
+WD.panel.addJump('Planning map', () => R8.openPlanMap());
+WD.css('.pm-range { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 16px 0; font-size: 12px; color: var(--label2); } .pm-range button { display: inline-flex; align-items: center; gap: 5px; border: 0; border-radius: 15px; height: 30px; padding: 0 11px; background: var(--cell); color: var(--tint); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }');
 WD.panel.addJump('Postponed jobs', () => { WD.nav.switchTab('board'); R8.openPostponed(); });
 WD.panel.addJump('Purge pricing', () => openSet(R8.pricingSpec()));
 WD.panel.addJump('Export and backup', () => openSet(R8.exportSpec()));
