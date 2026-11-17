@@ -248,12 +248,12 @@ function searchView() {
   return ui.list(ui.section({ header: res.length === 1 ? '1 match' : res.length + ' matches', footer: 'Searches every customer: names, contacts, phone numbers, emails and addresses.' },
     res.map(r => ui.row({ class: 'cu-crow', leading: avatar(r.customer), title: r.customer.name, subtitle: r.match, badge: lcBadge(r.customer), chevron: true, onTap: () => openDetail(r.customer.id) }))));
 }
-/* The markers at the right of a customer: the amount owed above "Balance due", and the overdue amount above "Overdue", dark blue on light blue. */
-const mark = (amount, label) => h('span.cu-mark', h('b', fmt.money(amount)), label);
+/* The markers at the right of a customer: the amount owed above "Balance due", and below it the overdue amount above "Overdue". Balance is dark blue on light blue; overdue is the red badge style. */
+const mark = (amount, label, late) => h('span.cu-mark' + (late ? '.late' : ''), h('b', fmt.money(amount)), label);
 const custRow = c => { const bill = WD.can('billing.view'), owed = bill ? owedBy(c) : 0, late = bill ? overdueOf(c).reduce((s, i) => s + i.amount, 0) : 0;
   return ui.row({ class: 'cu-crow', leading: avatar(c), title: h('span.cu-name-row', c.name, c.successful && icon('star.fill', 13, 'var(--yellow)'), c.hidden && ui.badge('Hidden', 'var(--gray)')),
     subtitle: [h('div', c.locations[0] ? c.locations[0].address.replace(/, Lakemont$/, '') : ''), ownerView() && h('div.cu-totals', c.stats.jobs + (c.stats.jobs === 1 ? ' job' : ' jobs') + ' done · ' + fmt.money(c.stats.invoiced) + ' invoiced')],
-    badge: owed > 0 || late > 0 ? h('span.cu-marks', owed > 0 && mark(owed, 'Balance due'), late > 0 && mark(late, 'Overdue')) : null, chevron: true, onTap: () => openDetail(c.id) }); };
+    badge: owed > 0 || late > 0 ? h('span.cu-marks', owed > 0 && mark(owed, 'Balance due'), late > 0 && mark(late, 'Overdue', true)) : null, chevron: true, onTap: () => openDetail(c.id) }); };
 function customersView() {
   let list = data.customers.filter(c => (!PIPE.includes(c.lifecycle) || c.lifecycle === 'scheduled') && (R.filter === 'hidden' ? c.hidden : !c.hidden)).sort((a, b) => a.name.localeCompare(b.name));
   if (R.filter === 'balance') list = list.filter(c => owedBy(c) > 0); if (R.filter === 'household') list = list.filter(c => c.kind === 'household');
@@ -765,7 +765,8 @@ function merge(keep, drop) {
 WD.css(`
 .cu-seg { padding: 2px 16px 0; }
 .cu-filter { display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: var(--label2); padding: 14px 16px 0; }
-.cu-marks { display: inline-flex; gap: 4px; flex: none; }
+.cu-marks { display: inline-flex; flex-direction: column; align-items: stretch; gap: 3px; flex: none; }
+.cu-mark.late { background: color-mix(in srgb, var(--red) 16%, transparent); color: var(--red); }
 .cu-mark { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; min-width: 58px; padding: 3px 6px; border-radius: 8px; background: #D6E9FF; color: #0A3D8F; font-size: 9.5px; line-height: 11px; font-weight: 600; letter-spacing: 0; white-space: nowrap; }
 .cu-mark b { font-size: 13px; line-height: 15px; font-weight: 700; }
 .cu-totals { color: var(--label2); font-size: 12px; margin-top: 1px; }

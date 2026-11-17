@@ -4,7 +4,7 @@
 'use strict';
 const WD = window.WD = { screens: {}, data: {} };
 /** Prototype version (Settings → About). Bump on every publish; the “what’s new” tutorial shows once per version. */
-WD.version = '3.0';
+WD.version = '3.1';
 const $ = (s, r) => (r || document).querySelector(s);
 
 /* ================= DOM helper ================= */
