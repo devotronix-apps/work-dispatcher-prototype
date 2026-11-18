@@ -267,14 +267,17 @@ function invoicesSpec() {
       const open = list.filter(r => r.status !== 'Paid').reduce((t, r) => t + r.amount, 0), alerts = WD.can('billing.view') && !s ? poAlerts() : [];
       const ownRoute = S.shift || q.routes().some(r => r.driverId === (S.me && S.me.id));
       return [h('div.wf-inv-seg', ui.segmented([{ value: 'invoices', label: 'Invoices' }, { value: 'notes', label: 'Service notes' }], IV.kind, v => { IV.kind = v; IV.limit = 40; page.refresh(); })),
-        h('div.wf-inv-seg', ui.segmented([{ value: 'mine', label: ownRoute ? 'My route' : 'One route' }, { value: 'all', label: 'All routes' }], IV.scope, v => { IV.scope = v; IV.limit = 40; page.refresh(); })),
-        WD.rc && WD.rc.filterBar && WD.rc.filterBar(WD.rc.invFilter, () => { IV.limit = 40; page.refresh(); }, { status: true }),
+        /* One row of filters: route, dates, status, and the payment-status check. The route used to take a second selector and a row of its own. */
+        (bar => { if (!bar) return null; const re = () => { IV.limit = 40; page.refresh(); };
+          const rp = h('button.rc-pill' + (IV.scope === 'mine' ? '.on' : ''), { 'aria-label': 'Route', onclick: () => ui.menu(rp, [{ header: 'Route' }, { label: 'All routes', checked: IV.scope === 'all', onTap: () => { IV.scope = 'all'; re(); } },
+            ...(ownRoute ? [{ label: 'My route · ' + q.routeName(route), checked: IV.scope === 'mine', onTap: () => { IV.scope = 'mine'; re(); } }] : q.routes().map(r => ({ label: q.routeName(r), checked: IV.scope === 'mine' && r.id === route, onTap: () => { IV.scope = 'mine'; IV.routeId = r.id; re(); } })))], { compact: true }) },
+            IV.scope === 'mine' ? [ui.dot(q.routeColor(route)), ' ', q.routeName(route)] : 'All routes', icon('chevron.down', 13));
+          bar.prepend(rp); bar.classList.add('scroll');
+          if (IV.kind === 'invoices' && WD.co && WD.co.hasBooks && WD.co.hasBooks()) { const bk = h('button.rc-pill', { 'aria-label': 'Payment status', onclick: () => ui.menu(bk, [{ node: (WD.co.booksSection() || h('div')).querySelector('.row') || h('div') }]) }, icon('sync', 14), 'Payments'); bar.appendChild(bk); }
+          return bar; })(WD.rc && WD.rc.filterBar && WD.rc.filterBar(WD.rc.invFilter, () => { IV.limit = 40; page.refresh(); }, { status: true })),
         ui.list(
-          IV.scope === 'mine' && ui.section(null, ownRoute ? ui.row({ leading: ui.dot(q.routeColor(route)), title: q.routeName(route), subtitle: S.shift ? 'The route you’re clocked in on' : 'Your route' })
-            : ui.pickerRow({ title: 'Route', icon: 'route', iconColor: q.routeColor(route), value: route, options: q.routes().map(r => ({ value: r.id, label: q.routeName(r) })), onChange: v => { IV.routeId = v; page.refresh(); } })),
-          IV.kind === 'invoices' && !s && WD.co && WD.co.booksSection(),
           IV.kind === 'notes' && notesList(page, s),
-          IV.kind === 'invoices' && alerts.length > 0 && ui.section('Purchase orders', alerts.map(x => h('div', h('div.footnote', { style: 'padding:10px 16px 0;font-weight:600' }, x.c.name), alertRow(x.a, () => guard('customers', 'openDetail', x.c.id))))),
+          IV.kind === 'invoices' && alerts.length > 0 && ui.section({ header: 'Purchase orders to fix', fold: true, folded: true }, alerts.map(x => h('div', h('div.footnote', { style: 'padding:10px 16px 0;font-weight:600' }, x.c.name), alertRow(x.a, () => guard('customers', 'openDetail', x.c.id))))),
           IV.kind !== 'invoices' ? null : list.length ? ui.section({ header: (s ? list.length + (list.length === 1 ? ' match' : ' matches') : 'Newest first') + (open ? ' · ' + fmt.money(open) + ' open' : ''), footer: 'Every invoice created' + (books() ? ', from ' + books() : '') + ', newest first. Invoices paid there are marked paid here automatically. Search by invoice number (“2417” finds INV-2417) or customer.' },
             list.slice(0, IV.limit).map(r => { const c = q.customer(r.customerId), rt = recRoute(r);
               return ui.row({ icon: r.master ? 'tray' : 'doc.text', iconColor: r.master ? 'var(--brown)' : 'var(--indigo)', title: c ? c.name : r.number, subtitle: h('span', h('b.rc-date', fmt.day(r.day, 'md') + ', ' + r.day.slice(0, 4)), h('span.rc-num', ' · ' + r.number + (IV.scope === 'all' && rt ? ' · ' : '')), IV.scope === 'all' && rt ? h('span.cu-route', ui.dot(q.routeColor(rt)), q.routeName(rt)) : null),

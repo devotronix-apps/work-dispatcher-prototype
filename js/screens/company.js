@@ -486,7 +486,7 @@ CO.crmSpec = () => ({ title: 'CRM and leads', render: page => { if (!admin()) re
 /* ================= The hub: Settings and assumptions ================= */
 CO.hubSpec = () => ({ title: 'Settings and assumptions', render: page => { if (!admin()) return locked(); const push = s => page.push(s), R = data.timeRules, tc = WD.timeclock;
   const row = (ic, color, title, detail, spec, sub) => ui.row({ icon: ic, iconColor: color, title, subtitle: [detail && h('div', { style: 'color:var(--label);font-weight:500' }, detail), sub && h('div', sub)], chevron: true, onTap: () => push(spec()) });
-  return ui.list(note('Every assumption the app makes for ' + org().name + ' can be changed here. Each page says what the setting does and where it shows up.'),
+  return ui.hub(page, () => [
     ui.section('Routes and drivers',
       row('route', 'var(--blue)', 'Routing assumptions', fmt.time(W.dayStartMin) + ' · ' + W.pretripMin + ' min to roll', CO.routingSpec, 'Start time, time to get rolling, drive time, arrival windows, called-off jobs'),
       row('timer', 'var(--orange)', 'Time on site', data.siteRules.route.min + ' min minimum · new setup +' + data.siteRules.setupExtra, () => WD.ops.siteSpec(), 'Formulas for stops with no history, purge jobs, and each truck’s pace'),
@@ -510,7 +510,7 @@ CO.hubSpec = () => ({ title: 'Settings and assumptions', render: page => { if (!
       row('tag', 'var(--pink)', 'Job types and fields', '', () => WD.admin.typesSpec(), 'Fields asked and required')),
     WD.biz && WD.biz.hubSection(row),
     WD.r11 && WD.r11.hubSection(row),
-    ui.section('Company', row('lock', 'var(--gray)', 'Sign-in and security', '', () => WD.admin.signInSpec()), WD.r8 && row('share', 'var(--teal)', 'Export and backup', '', () => WD.r8.exportSpec(), 'Download your information, and automatic backups'), ui.row({ icon: 'clock', iconColor: 'var(--orange)', title: 'Location stays', subtitle: 'Logged after ' + R.stayMinutes + ' minutes in one place', chevron: true, onTap: () => push(tc.rulesSpec()) })));
+    ui.section('Company', row('lock', 'var(--gray)', 'Sign-in and security', '', () => WD.admin.signInSpec()), WD.r8 && row('share', 'var(--teal)', 'Export and backup', '', () => WD.r8.exportSpec(), 'Download your information, and automatic backups'), ui.row({ icon: 'clock', iconColor: 'var(--orange)', title: 'Location stays', subtitle: 'Logged after ' + R.stayMinutes + ' minutes in one place', chevron: true, onTap: () => push(tc.rulesSpec()) }))], { placeholder: 'Search settings and assumptions' });
 } });
 
 /* ================= Control panel ================= */

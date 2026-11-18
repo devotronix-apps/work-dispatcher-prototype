@@ -68,7 +68,15 @@ api.setStatus = (jobId, status, note) => {
 
 /* ================= Job details ================= */
 function openDetails(jobId) {
-  ui.sheet({ title: 'Job details', trailing: [{ label: 'Done', bold: true, onTap: p => p.dismiss() }],
+  /* Edit, Reassign, Canceled and Delete live in one actions menu in the bar, not in a block of rows. */
+  const acts = p => { const job = q.job(jobId), route = job && q.route(job.routeId); if (!job || !(WD.can('jobs.edit') && route && route.writable)) return [];
+    return [{ icon: 'ellipsis.circle', label: 'Job actions', onTap: (pg, el) => ui.menu(el, [
+      { label: 'Edit job', icon: 'pencil', disabled: job.pending, onTap: () => openEditor({ jobId: job.id }) },
+      { label: 'Reassign', icon: 'arrow.left.arrow.right', disabled: job.pending, onTap: () => openReassign(job) },
+      !job.allDay && !WD.closed[job.status] && { label: 'Customer canceled or rescheduled…', icon: 'phone', disabled: job.pending, onTap: () => callOff(job) },
+      'divider', { label: 'Delete job', icon: 'trash', destructive: true, disabled: job.pending, onTap: () => deleteJob(job, pg) }]) },
+      { label: 'Edit', disabled: job.pending, onTap: () => openEditor({ jobId: job.id }) }]; };
+  ui.sheet({ title: 'Job details', leading: acts, trailing: [{ label: 'Done', bold: true, onTap: p => p.dismiss() }],
     render(p) { const job = q.job(jobId); if (!job) { setTimeout(() => p.dismiss(), 0); return null; } return details(job, p); } });
 }
 function details(job, p) {
@@ -99,24 +107,18 @@ function details(job, p) {
   return ui.list(
     ui.section(null, head, steps),
     WD.co && WD.co.jobScanSection(job, () => p.refresh(), canEdit || WD.can('billing.field')),
-    canEdit && ui.section({ footer: job.pending ? 'This job is waiting to sync. You can change it again once that finishes.' : null },
-      ui.row({ title: 'Edit job', icon: 'pencil', iconPlain: true, tint: true, disabled: job.pending, onTap: () => openEditor({ jobId: job.id }) }),
-      ui.row({ title: 'Reassign', icon: 'arrow.left.arrow.right', iconPlain: true, tint: true, disabled: job.pending, onTap: () => openReassign(job) }),
-      !job.allDay && !WD.closed[job.status] && ui.row({ title: 'Customer canceled or rescheduled…', icon: 'phone', iconPlain: true, tint: true, disabled: job.pending, onTap: () => callOff(job) }),
-      ui.row({ title: 'Delete job', icon: 'trash', iconPlain: true, iconColor: 'var(--red)', destructive: true, disabled: job.pending, onTap: () => deleteJob(job, p) })),
+    canEdit && job.pending && ui.section({ footer: 'This job is waiting to sync. You can change it again once that finishes.', keepEmpty: true }),
     cust && ui.section('Customer',
-      ui.row({ leading: ui.avatar(cust.name, { size: 36, icon: cust.kind === 'household' ? 'house' : 'building' }), title: cust.name, subtitle: contact ? contact.name + (contact.role ? ' · ' + contact.role : '') : null, chevron: WD.can('crm.view'), onTap: WD.can('crm.view') ? () => guard('customers', 'openDetail', cust.id) : null }),
-      contact && ui.row({ title: fmt.phone(contact.phone, contact.ext), icon: 'phone', iconPlain: true, tint: true, onTap: () => ui.toast('Calling ' + contact.name + ' via Quo…', 'phone') }),
-      contact && ui.row({ title: 'Send a text', icon: 'message', iconPlain: true, tint: true, onTap: () => ui.toast('Opening a text to ' + contact.name + '…', 'message') })),
+      ui.row({ leading: ui.avatar(cust.name, { size: 36, icon: cust.kind === 'household' ? 'house' : 'building' }), title: cust.name, subtitle: contact ? contact.name + (contact.role ? ' · ' + contact.role : '') + ' · ' + fmt.phone(contact.phone, contact.ext) : null, onTap: WD.can('crm.view') ? () => guard('customers', 'openDetail', cust.id) : null,
+        trailing: contact && h('span.row-acts', ui.iconBtn('phone', 'Call ' + contact.name, () => ui.toast('Calling ' + contact.name + ' via Quo…', 'phone')), ui.iconBtn('message', 'Send a text', () => ui.toast('Opening a text to ' + contact.name + '…', 'message'))) })),
     !cust && job.phone && ui.section('Contact', ui.row({ title: fmt.phone(job.phone, job.ext), subtitle: job.contactName || null, icon: 'phone', iconPlain: true, tint: true, onTap: () => ui.toast('Calling via Quo…', 'phone') })),
     !job.address && !job.allDay && WD.addressIssue(job) && ui.section({ header: 'Location', footer: job.addrIgnored ? 'Marked as not needing an address for now.' : 'Saved without ' + (data.addressRules[job.type] === 'cityzip' ? 'a city or ZIP' : 'an address') + '. It can’t be mapped or routed until one is added.' },
       ui.row({ title: WD.addressIssue(job), icon: 'mappin', iconPlain: true, iconColor: 'var(--red)', detail: canEdit && !job.pending ? 'Add' : null, tint: false, onTap: canEdit && !job.pending ? () => openEditor({ jobId: job.id }) : null })),
     !job.address && job.cityZip && ui.section('Location', ui.row({ title: job.cityZip, subtitle: 'Where the customer is coming from', icon: 'mappin', iconPlain: true, iconColor: 'var(--label2)' })),
     WD.x.jobAgreementSection(job, s => p.push(s)),
     job.address && ui.section({ header: 'Location', footer: unresolved ? 'Apple Maps could not find this address, so the stop has no pin and is left out of routing. Edit the job to fix it.' : null },
-      ui.row({ title: job.address, icon: 'mappin', iconPlain: true, iconColor: unresolved ? 'var(--red)' : 'var(--label2)' }),
-      ui.row({ title: 'Directions', subtitle: wf.mapsName(), icon: 'arrow.triangle.turn.up.right', iconPlain: true, tint: true, onTap: () => wf.openDirections(job) }),
-      job.located && ui.row({ title: 'Show on map', icon: 'map', iconPlain: true, tint: true, onTap: () => { p.dismiss(); setTimeout(() => guard('map', 'focusJob', job.id), 350); } })),
+      ui.row({ title: job.address, icon: 'mappin', iconPlain: true, iconColor: unresolved ? 'var(--red)' : 'var(--label2)',
+        trailing: h('span.row-acts', ui.iconBtn('arrow.triangle.turn.up.right', 'Directions in ' + wf.mapsName(), () => wf.openDirections(job)), job.located && ui.iconBtn('map', 'Show on map', () => { p.dismiss(); setTimeout(() => guard('map', 'focusJob', job.id), 350); })) })),
     ui.section('Service',
       ui.row({ title: 'Job type', trailing: h('span.hstack.secondary', type.color && ui.dot(type.color), type.title) }),
       !job.allDay && ui.row({ title: 'Customer type', detail: WD.custType(cust ? cust.custType : job.custType).title }),
@@ -135,7 +137,7 @@ function details(job, p) {
     ui.section('Attachments', job.attachments.map(a => attachmentRow(a)),
       ui.row({ title: 'Add photo or file', icon: 'paperclip', iconPlain: true, tint: true, onTap: () => addAttachment(job.attachments) })),
     (WD.can('billing.view') || WD.can('billing.field')) && !job.allDay && !WD.struck[job.status] && WD.screens.billing && ui.section({ header: 'Billing', footer: job.invoice || job.billing ? null : job.status === 'completed' ? 'This stop is completed but not billed. It stays bright on the board until it is.' : 'Nothing is sent until you review the charges.' }, WD.screens.billing.billingRows(job)),
-    ui.section({ header: 'History', footer: 'Shows who did what. Tap an edit to see exactly what changed. ' + (S.googleMirror.enabled && route ? 'Copied to the ' + route.name + ' Google calendar a few seconds after each change syncs. ' : '') + 'Version ' + job.version + '.' },
+    ui.section({ header: 'History', fold: true, folded: true, footer: 'Shows who did what. Tap an edit to see exactly what changed. ' + (S.googleMirror.enabled && route ? 'Copied to the ' + route.name + ' Google calendar a few seconds after each change syncs. ' : '') + 'Version ' + job.version + '.' },
       job.events.slice().reverse().map(e => ui.row({ leading: ui.avatar(e.actor, { size: 28 }), title: e.text + (e.changes && e.changes.length ? ' · ' + e.changes.length + (e.changes.length === 1 ? ' change' : ' changes') : ''), subtitle: e.actor + ' · ' + fmt.rel(e.at) + (e.changes && e.changes.length ? ' · ' + e.changes.map(c => c.label).slice(0, 3).join(', ') : ''), chevron: !!(e.changes && e.changes.length), onTap: e.changes && e.changes.length ? () => WD.x.showChanges(e) : null }))));
 }
 const windowText = j => (j.custFrom ? fmt.time(fmt.fromHHMM(j.custFrom)) : 'Any') + ' – ' + (j.custUntil ? fmt.time(fmt.fromHHMM(j.custUntil)) : 'Any');
@@ -448,21 +450,21 @@ function openEditor(o = {}) {
           f.repeat !== 'none' && f.ends === 'until' && ui.dateRow({ title: 'Last visit by', value: f.until, onChange: v => set('until', v) })),
         asks('items') && ui.section({ header: f.type === 'purge' ? 'Boxes' : 'Containers', footer: f.type === 'creditCard' || (cust && cust.cardOnFile) ? 'Card-on-file jobs are charged automatically when the stop is completed.' : asks('pricing') ? 'Rates start from ' + (cust ? cust.name + '’s pricing' : 'the price book') + ' and print on the invoice. Changes here apply to this job.' : null }, itemsRows(p)),
         WD.r11 && WD.r11.editorSections(f, p, () => { dirty = true; }, linked()),
-        !f.allDay && f.type !== 'meet' && ui.section({ header: 'Hard drives', footer: f.hdd > 0 ? (f.hddScan ? 'The driver scans each drive’s barcode or serial number before it is destroyed, and the numbers print on the invoice.' : 'Drives are counted and destroyed without scanning. Some customers need the serial numbers recorded; switch scanning on for those.') + ' ' + fmt.money(hddRate(), true) + ' each to start; change the price on the invoice or the customer.' : 'Add a count if this job includes hard drives to destroy.' },
+        !f.allDay && f.type !== 'meet' && ui.section({ header: 'Hard drives', fold: true, folded: true, footer: f.hdd > 0 ? (f.hddScan ? 'The driver scans each drive’s barcode or serial number before it is destroyed, and the numbers print on the invoice.' : 'Drives are counted and destroyed without scanning. Some customers need the serial numbers recorded; switch scanning on for those.') + ' ' + fmt.money(hddRate(), true) + ' each to start; change the price on the invoice or the customer.' : 'Add a count if this job includes hard drives to destroy.' },
           ui.row({ icon: 'barcode', iconColor: 'var(--indigo)', title: 'Hard drives to destroy', subtitle: 'Type the number or use − / +', trailing: h('span.hstack', ui.numField(f.hdd, 0, 5000, v => { f.hdd = v; dirty = true; p.refresh(); }, 'Hard drives to destroy'), ui.stepper(f.hdd, 0, 5000, v => { f.hdd = v; dirty = true; p.refresh(); })) }),
           f.hdd > 0 && ui.toggleRow({ title: 'Scan each drive', subtitle: 'Barcode or serial number, for this job', value: !!f.hddScan, onChange: v => { f.hddScan = v; dirty = true; p.refresh(); } })),
-        asks('hours') && ui.section({ header: 'Office hours', footer: 'When the business is open. AutoRoute never plans a stop outside these hours.' },
+        asks('hours') && ui.section({ header: 'Office hours', fold: true, folded: true, footer: 'When the business is open. AutoRoute never plans a stop outside these hours.' },
           ui.quarterRow({ title: 'Opens', value: f.bizOpen, onChange: v => set('bizOpen', v) }), ui.quarterRow({ title: 'Closes', value: f.bizClose, onChange: v => set('bizClose', v) })),
-        showWindow && ui.section({ header: 'Requested time window', footer: f.needsWindow ? 'They want a window but don’t mind when. When the route is finalized (usually the day before), AutoRoute gives them one around the planned arrival — 2 hours before 10 AM, 3 hours from 10 to 1, 4 hours after 1 — and reminds you to let them know.' : 'A time the customer asked for on this visit — for example a homeowner who is only home 1–3 PM. Preferred: AutoRoute fits it in when it can. Required: AutoRoute plans around it and warns if it can’t be met.' },
+        showWindow && ui.section({ header: 'Requested time window', fold: true, folded: true, footer: f.needsWindow ? 'They want a window but don’t mind when. When the route is finalized (usually the day before), AutoRoute gives them one around the planned arrival — 2 hours before 10 AM, 3 hours from 10 to 1, 4 hours after 1 — and reminds you to let them know.' : 'A time the customer asked for on this visit — for example a homeowner who is only home 1–3 PM. Preferred: AutoRoute fits it in when it can. Required: AutoRoute plans around it and warns if it can’t be met.' },
           ui.toggleRow({ title: 'Needs a window', subtitle: 'Time chosen when the route is finalized', value: f.needsWindow, onChange: v => { f.needsWindow = v; if (v) { f.custFrom = ''; f.custUntil = ''; } dirty = true; p.refresh(); } }),
           !f.needsWindow && [timeRows(), h('div.row', h('div.row-main', h('div.row-title', 'Who set it')), h('div', { style: 'width:190px;flex:none' }, ui.segmented([{ value: 'customer', label: 'They asked' }, { value: 'us', label: 'We told them' }], f.windowBy, v => { f.windowBy = v; dirty = true; }))),
           h('div.row', h('div.row-main', h('div.row-title', 'This window is')), h('div', { style: 'width:190px;flex:none' }, ui.segmented([{ value: false, label: 'Preferred' }, { value: true, label: 'Required' }], f.custStrict, v => { f.custStrict = v; dirty = true; })))]),
-        (asks('po') || asks('contract') || asks('signature')) && ui.section({ header: 'Billing', footer: poList().length ? 'This job uses the PO whose dates cover ' + fmt.day(f.day, 'md') + (WD.workflow.poFor({ poSchedule: poList() }, f.day).po ? ': ' + WD.workflow.poFor({ poSchedule: poList() }, f.day).po + '.' : ' (none does).') + ' The PO list is saved with the customer.' : 'PO and contract numbers print on the invoice. ' + (cust ? 'They come from the customer; changes here apply to this job only.' : 'They’re saved to the new customer.') },
+        (asks('po') || asks('contract') || asks('signature')) && ui.section({ header: 'Billing', fold: true, folded: true, footer: poList().length ? 'This job uses the PO whose dates cover ' + fmt.day(f.day, 'md') + (WD.workflow.poFor({ poSchedule: poList() }, f.day).po ? ': ' + WD.workflow.poFor({ poSchedule: poList() }, f.day).po + '.' : ' (none does).') + ' The PO list is saved with the customer.' : 'PO and contract numbers print on the invoice. ' + (cust ? 'They come from the customer; changes here apply to this job only.' : 'They’re saved to the new customer.') },
           asks('po') && WD.x.poRows({ st: poSt, getPO: () => f.po, setPO: v => { f.po = v; dirty = true; }, schedule: poList(), docs: cust ? cust.documents : null, required: req('po'), refresh: () => { dirty = true; blurAndRefresh(); } }), asks('contract') && inp('Contract', 'contract', { placeholder: 'None', required: req('contract') }),
           asks('signature') && ui.pickerRow({ title: 'Customer signature', value: f.sig, options: WD.SIG_POLICIES, onChange: v => { f.sig = v; dirty = true; p.refresh(); } })),
         !f.allDay && f.type !== 'meet' && headsUp(p),
         asks('notes') && ui.section('Notes', ui.inputRow({ multiline: true, placeholder: 'Access notes, contact, what to bring', value: f.notes, onInput: v => set('notes', v) })),
-        isNew && ui.section('Attachments', f.attachments.map(attachmentRow), ui.row({ title: 'Add photo or file', icon: 'paperclip', iconPlain: true, tint: true, onTap: () => addAttachment(f.attachments) })),
+        isNew && ui.section({ header: 'Attachments', fold: true, folded: !f.attachments.length }, f.attachments.map(attachmentRow), ui.row({ title: 'Add photo or file', icon: 'paperclip', iconPlain: true, tint: true, onTap: () => addAttachment(f.attachments) })),
         h('div', { style: 'margin-top:14px' }, ui.note(type.title + ' jobs ask for these fields. ' + (WD.can('settings.manage') ? 'Change them in Settings → Job types and fields.' : 'An admin can change them in Settings.'))));
     } });
 }

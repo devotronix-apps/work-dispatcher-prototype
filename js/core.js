@@ -4,7 +4,9 @@
 'use strict';
 const WD = window.WD = { screens: {}, data: {} };
 /** Prototype version (Settings → About). Bump on every publish; the “what’s new” tutorial shows once per version. */
-WD.version = '4.1';
+WD.version = '4.2';
+/** Earlier releases kept on the published site under v/<version>/ (Settings → Older versions). Add the outgoing version on every publish. */
+WD.olderVersions = ['4.1'];
 const $ = (s, r) => (r || document).querySelector(s);
 
 /* ================= DOM helper ================= */
@@ -257,8 +259,14 @@ ui.section = (o, ...rows) => {
      o.fold === false prevents it, o.folded starts it collapsed, o.count overrides the number). Forms with text fields don't fold. */
   const text = typeof o.header === 'string' && !o.plainHeader ? o.header : null, n = o.count != null ? o.count : flat.length;
   const fold = !!text && o.fold !== false && (o.fold || flat.length >= 2) && (o.fold || !flat.some(r => r instanceof Element && (r.matches('.row') ? r : r).querySelector('input.field, textarea.field')));
-  const el = h('div.section', o.header && h('div.section-header' + (o.plainHeader ? '.plain' : '') + (fold ? '.fold' : ''), fold ? { role: 'button', 'aria-label': text + ', ' + n + (n === 1 ? ' item' : ' items') } : null, o.header, fold && h('span.fold-n', String(n)), fold && WD.icon('chevron.down', 12)), flat.length ? h('div.cells', flat) : null, o.footer && h('div.section-footer', o.footer));
-  if (fold) { el.dataset.fold = o.foldKey || text.split(' · ')[0]; if (o.folded) el.dataset.folded = '1'; }
+  /* A long explanation under a section is tucked away: behind an ⓘ on the header (tap for a popover), or, with no header, cut to one line
+     that opens on tap. Short footers, footers that are elements, and o.showFooter stay as they are. */
+  const long = typeof o.footer === 'string' && o.footer.length > 64 && !o.showFooter, tuck = long && !!text;
+  const info = tuck && h('button.sec-info', { 'aria-label': 'About ' + text, onclick: e => { e.stopPropagation(); ui.popover(info, o.footer); } }, WD.icon('info.circle', 15));
+  const foot = o.footer && h('div.section-footer' + (tuck ? '.tucked' : long ? '.clamp' : ''), long && !tuck ? { role: 'button', onclick: e => e.currentTarget.classList.toggle('clamp') } : null, o.footer);
+  const el = h('div.section', o.header && h('div.section-header' + (o.plainHeader ? '.plain' : '') + (fold ? '.fold' : '') + (info ? '.has-info' : ''), fold ? { role: 'button', 'aria-label': text + ', ' + n + (n === 1 ? ' item' : ' items') } : null, info ? h('span.sh-t', o.header) : o.header, info, fold && h('span.fold-n', String(n)), fold && WD.icon('chevron.down', 12)), flat.length ? h('div.cells', flat) : null, foot);
+  if (text) el.dataset.title = text;
+  if (fold) { el.dataset.fold = o.foldKey || text.split(' · ')[0]; if (o.folded && !flat.some(r => r instanceof Element && r.querySelector('.field-label.missing'))) el.dataset.folded = '1'; }   // never hide a required field that is still empty
   return el;
 };
 /** A list cell. {title, subtitle, detail, icon, iconColor, iconPlain, leading, trailing, chevron, onTap, tint, destructive, center, disabled, badge} */
@@ -325,6 +333,16 @@ ui.segmented = (options, value, onChange) => h('div.segmented', options.map(x =>
   h('button' + (x.value === value ? '.on' : ''), { onclick: e => { [...e.currentTarget.parentNode.children].forEach(b => b.classList.remove('on')); e.currentTarget.classList.add('on'); onChange && onChange(x.value); } }, x.label)));
 /** ui.button('Save', {kind: 'filled'|'tinted'|'gray'|'plain'|'destructive'|'dark', icon, onTap(e, el), block, small, disabled}) */
 ui.button = (label, o = {}) => { const el = h('button.btn.' + (o.kind || 'filled') + (o.block === false ? '' : '.block') + (o.small ? '.small' : ''), { disabled: !!o.disabled, style: o.style, onclick: e => o.onTap && o.onTap(e, el) }, o.icon && WD.icon(o.icon, o.small ? 17 : 20), label); return el; };
+/** A round icon button for the trailing edge of a row (call, text, directions), so one row can carry its own actions. */
+ui.iconBtn = (name, label, onTap) => h('button.row-act', { 'aria-label': label, title: label, onclick: e => { e.stopPropagation(); onTap && onTap(e, e.currentTarget); } }, WD.icon(name, 18));
+/** Rows shown as a strip of chips that scrolls sideways: pass rows or whole sections, and each row becomes a chip that does what the row did.
+    A count that leads the row's subtitle ("14 customers owe…") is carried onto the chip. */
+ui.chipRow = (...kids) => {
+  const rows = kids.flat(Infinity).filter(x => x instanceof Element).flatMap(x => x.matches('.row') ? [x] : [...x.querySelectorAll('.row')]); if (!rows.length) return null;
+  return h('div.chips', rows.map(r => { const t = (r.querySelector('.row-title') || r).textContent.trim(), sub = (r.querySelector('.row-sub') || {}).textContent || '', n = /^\d/.test(t) ? null : (/^\s*(\d[\d,]*)/.exec(sub) || [])[1], ic = r.querySelector('.row-icon .ic');
+    const c = (r.querySelector('.row-icon') || { style: {} }).style.background || (r.querySelector('.row-icon') || { style: {} }).style.color;
+    return h('button.chip', { title: sub.trim() || null, style: { '--c': c || null }, onclick: () => r.click() }, ic && ic.cloneNode(true), n && h('b', n), t); }));
+};
 /** {placeholder, value, onInput(value), autofocus, cancel: fn} */
 ui.searchField = o => {
   const input = h('input', { type: 'text', placeholder: o.placeholder || 'Search', value: o.value || '', autocomplete: 'off', spellcheck: 'false', autocapitalize: 'off', oninput: () => { box.classList.toggle('filled', !!input.value); o.onInput && o.onInput(input.value); } });
@@ -376,6 +394,35 @@ ui.menu = (anchor, items, o = {}) => {
   el.style.transformOrigin = (rightSide ? '90%' : '10%') + ' ' + (below ? '0%' : '100%');
   openSoon(el);
   return { close };
+};
+/** A small explanation bubble anchored to an element (the ⓘ on a section header). content: text or a node. */
+ui.popover = (anchor, content) => ui.menu(anchor, [{ node: h('div.pop-text', content) }]);
+/** A long page of sections shown as a short hub: one row per section (its name and what's inside), a search field over every row,
+    and the section itself one tap away. build(page) → the sections, called again whenever a sub-page or the search needs them fresh.
+    Sections without a header show as they are; a section with a single row shows that row. o: {placeholder, icons: {header: [icon, color]}} */
+ui.hub = (page, build, o = {}) => {
+  const secs = () => [build(page)].flat(Infinity).filter(x => x instanceof Element), icons = o.icons || {};
+  const rowsOf = s => [...s.querySelectorAll(':scope > .cells > .row')];
+  const open = s => { const hd = s.querySelector(':scope > .section-header'); if (hd) hd.remove(); delete s.dataset.fold; s.classList.remove('folded'); const f = s.querySelector(':scope > .section-footer'); if (f) f.classList.remove('tucked', 'clamp'); return s; };
+  const normal = h('div'), results = h('div'); let cells = null;
+  const flush = () => { if (cells) normal.appendChild(h('div.section', cells)); cells = null; };
+  secs().forEach(s => {
+    const title = s.dataset.title, rows = rowsOf(s);
+    if (!title) { flush(); return normal.appendChild(s); }
+    cells = cells || h('div.cells');
+    if (rows.length === 1) return cells.appendChild(rows[0]);
+    const names = rows.map(r => (r.querySelector('.row-title') || r).textContent.trim()).filter(Boolean), badge = s.querySelector('.cells .badge'), ic = icons[title];
+    const lead = ic ? null : (rows.map(r => r.querySelector(':scope > .row-icon')).find(Boolean) || h('span')).cloneNode(true);
+    cells.appendChild(ui.row({ class: 'hub-row', icon: ic && ic[0], iconColor: ic && ic[1], leading: lead, title, subtitle: names.slice(0, 4).join(', ') + (names.length > 4 ? '…' : ''), badge: badge && badge.cloneNode(true), detail: String(rows.length), chevron: true,
+      onTap: () => page.push({ title, render: () => { const s2 = secs().find(x => x.dataset.title === title); return s2 ? ui.list(open(s2)) : ui.empty({ icon: 'gearshape', title }); } }) }));
+  });
+  flush();
+  const find = text => { page.hubQ = text; const t = text.trim().toLowerCase(); normal.style.display = t ? 'none' : ''; results.replaceChildren(); if (!t) return;
+    const hits = []; secs().forEach(s => { const title = (s.dataset.title || '').toLowerCase(); rowsOf(s).forEach(r => { if (s.dataset.title && (r.textContent.toLowerCase().includes(t) || title.includes(t))) hits.push(r); }); });
+    results.appendChild(hits.length ? h('div.section', h('div.cells', hits)) : ui.empty({ icon: 'magnifyingglass', title: 'No matches', text: 'Nothing here is called “' + text.trim() + '”.' })); };
+  const el = h('div.list.hub', h('div.hub-search', ui.searchField({ placeholder: o.placeholder || 'Search', value: page.hubQ || '', onInput: find })), normal, results);
+  if (page.hubQ) find(page.hubQ);
+  return el;
 };
 /** Blocking progress HUD. icon: 'spinner' or any icon name. Returns {set(text, icon), close()}. */
 ui.hud = (text, o = {}) => {

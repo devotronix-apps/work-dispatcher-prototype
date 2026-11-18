@@ -60,9 +60,10 @@ const org = () => S.org || data.orgs[0];
 
 /* ---------- Root ---------- */
 function root() {
-  return { title: 'Settings', large: true, render: page => {
+  /* The root is a hub: one row per group with a search over every setting. Each group's rows are built here and shown one tap away. */
+  return { title: 'Settings', large: true, render: page => ui.hub(page, () => {
     const me = S.me, o = org(), n = S.pending.length, issues = S.pending.filter(x => x.status === 'conflict' || x.status === 'failed').length, push = s => page.push(s);
-    return ui.list(
+    return [
       ui.section(ui.row({ class: 'st-profile', leading: ui.avatar(me.name, { size: 58 }), title: me.name, subtitle: h('span', me.email, h('span.st-meta', roleBadge(me.role), o.name)), chevron: true, onTap: () => push(accountSpec()) })),
       WD.rc && WD.rc.displaySection(push),
       ui.section('Company',
@@ -100,9 +101,17 @@ function root() {
         ui.row({ icon: 'hand.raised', iconColor: 'var(--indigo)', title: 'Privacy policy', trailing: icon('arrow.up.right', 17, 'var(--label3)'), onTap: safari }),
         ui.row({ icon: 'questionmark.circle', iconColor: 'var(--teal)', title: 'Support', trailing: icon('arrow.up.right', 17, 'var(--label3)'), onTap: safari }),
         ui.row({ icon: 'trash', iconColor: 'var(--red)', title: 'Request account deletion', onTap: requestDeletion })),
+      ui.section({ header: 'About', showFooter: true, footer: 'The prototype checks for a newer version each time it opens and offers to update. The tutorial shows once after each update.' }, ui.row({ title: 'Version', detail: WD.version + ' (prototype)' }), ui.row({ icon: 'arrow.clockwise', iconPlain: true, title: 'Check for updates', subtitle: 'Loads the newest published version if this one is behind', tint: true, onTap: () => WD.app.checkForUpdates() }), ui.row({ icon: 'sparkles', iconPlain: true, title: 'Show the tutorial', subtitle: 'What’s new in version ' + WD.version, tint: true, onTap: () => WD.x.tutorial() }), ui.row({ title: 'Acknowledgements', chevron: true, onTap: () => push(ackSpec()) })),
       ui.section(ui.row({ title: 'Sign out', destructive: true, center: true, onTap: signOut })),
-      ui.section({ header: 'About', footer: 'The prototype checks for a newer version each time it opens and offers to update. The tutorial shows once after each update.' }, ui.row({ title: 'Version', detail: WD.version + ' (prototype)' }), ui.row({ icon: 'arrow.clockwise', iconPlain: true, title: 'Check for updates', subtitle: 'Loads the newest published version if this one is behind', tint: true, onTap: () => WD.app.checkForUpdates() }), ui.row({ icon: 'sparkles', iconPlain: true, title: 'Show the tutorial', subtitle: 'What’s new in version ' + WD.version, tint: true, onTap: () => WD.x.tutorial() }), ui.row({ title: 'Acknowledgements', chevron: true, onTap: () => push(ackSpec()) })));
-  } };
+      h('div.st-ver', 'RouteClerk ' + WD.version + ' (prototype)', (WD.olderVersions || []).length ? [' · ', h('button', { onclick: e => olderVersions(e.currentTarget) }, 'Older versions')] : null)];
+  }, { placeholder: 'Search settings', icons: { Display: ['sun', 'var(--indigo)'], Company: ['building', 'var(--indigo)'], 'Routes and board': ['route', 'var(--blue)'], Sync: ['sync', 'var(--teal)'], 'Company settings': ['gearshape', 'var(--blue)'], 'Add-ons': ['square.grid', 'var(--purple)'], Administration: ['person.2', 'var(--green)'], Privacy: ['hand.raised', 'var(--indigo)'], About: ['info.circle', 'var(--gray)'] } }) };
+}
+/* Each earlier release is kept on the published site under v/<version>/, with a link back to the newest. */
+function olderVersions(anchor) {
+  ui.menu(anchor, [{ header: 'Run an earlier version of the prototype' }, ...WD.olderVersions.map(v => ({ label: 'Version ' + v, icon: 'clock', onTap: async () => {
+    let ok = false; try { ok = (await fetch('v/' + v + '/index.html', { method: 'HEAD', cache: 'no-store' })).ok; } catch (e) { /* offline or opened as a file */ }
+    if (!ok) return ui.alert({ title: 'Version ' + v + ' isn’t available here', message: 'Earlier versions are kept on the published site and need a connection.' });
+    location.href = 'v/' + v + '/?skip'; } }))]);
 }
 function plan(o) {
   if (o.plan === 'Internal') return { detail: 'Internal', subtitle: 'Internal — not billed' };

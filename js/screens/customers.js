@@ -266,9 +266,9 @@ function customersView() {
   list.forEach(c => { const k = R.filter === 'route' ? q.routeName(c.route) : (c.name[0] || '#').toUpperCase(); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(c); });
   const keys = [...groups.keys()]; if (R.filter === 'route') keys.sort((a, b) => (q.routes().findIndex(r => q.routeName(r) === a) + 99) % 99 - (q.routes().findIndex(r => q.routeName(r) === b) + 99) % 99);
   return ui.list(
-    R.filter === 'all' && WD.r11 && WD.can('billing.view') && WD.r11.unpaidSection(),
-    R.filter === 'all' && WD.x.customerNotices(),
-    dupes && WD.can('crm.edit') ? ui.section(null, ui.row({ icon: 'arrow.triangle.merge', iconColor: 'var(--orange)', title: dupes + (dupes === 1 ? ' possible duplicate' : ' possible duplicates'), subtitle: 'Review and merge matching records', chevron: true, onTap: () => WD.nav.push(mergesPage()) })) : null,
+    ui.chipRow(R.filter === 'all' && WD.r11 && WD.can('billing.view') && WD.r11.unpaidSection(),
+      R.filter === 'all' && WD.x.customerNotices(),
+      dupes && WD.can('crm.edit') ? ui.section(null, ui.row({ icon: 'arrow.triangle.merge', iconColor: 'var(--orange)', title: dupes + (dupes === 1 ? ' possible duplicate' : ' possible duplicates'), subtitle: 'Review and merge matching records', chevron: true, onTap: () => WD.nav.push(mergesPage()) })) : null),
     R.filter !== 'all' ? h('div.cu-filter', 'Showing ' + FILTER_TEXT[R.filter] + (R.min && (R.filter === 'balance' || R.filter === 'overdue') ? ' over ' + fmt.money(R.min) : ''), h('button.cu-link', { onclick: () => { R.filter = 'all'; R.min = 0; R.page && R.page.refresh(); } }, 'Show all')) : null,
     (R.filter === 'balance' || R.filter === 'overdue') && list.length && WD.rc && WD.rc.batchStatements && WD.can('billing.view') ? ui.section(null, ui.row({ icon: 'envelope', iconColor: 'var(--teal)', title: 'Send statements to ' + (list.length === 1 ? 'this customer' : 'these ' + list.length + ' customers') + '…', subtitle: 'One statement each, with or without the unpaid invoices', chevron: true, onTap: () => WD.rc.batchStatements(list) })) : null,
     list.length ? keys.map(k => ui.section({ header: k, fold: R.filter === 'route' }, groups.get(k).map(custRow))) : ui.empty({ icon: 'person.2', title: 'No customers', text: 'Nothing matches this filter.' }),
@@ -381,23 +381,28 @@ function openDetail(id) {
   return WD.nav.push(detailSpec(id));
 }
 function detailSpec(id) {
-  const st = { filter: 'all', showAll: false };
+  const st = { filter: 'all', showAll: false, tab: 'overview' };
   return { title: () => (q.customer(id) || {}).name || 'Customer',
     trailing: () => WD.can('crm.edit') && q.customer(id) ? [{ label: 'Edit', onTap: () => editCustomer(id) }] : [],
     render: page => {
       const c = q.customer(id); if (!c) return ui.empty({ icon: 'arrow.triangle.merge', title: 'Record merged', text: 'This customer was merged into another record.' });
       const edit = WD.can('crm.edit');
-      return [header(c), ui.list(statsSection(c), contactsSection(c, edit), locationsSection(c), WD.x.pricingSection(c), WD.x.historySection(c), WD.x.agreementSection(c), WD.biz && WD.biz.customerSections(c, edit), jobsSections(c), WD.can('billing.view') && billingSection(c), WD.workflow && WD.workflow.customerSections(c), tasksSection(c, edit),
-        timelineSection(c, st, page, edit), attributionSection(c), detailsSection(c),
-        edit && ui.section(null, ui.row({ title: 'Merge with another customer…', destructive: true, onTap: () => pickCustomer(WD.nav.current().top(), 'Merge with', other => setTimeout(() => WD.nav.push(comparePage(c.id, other, null)), 450), c.id) })))];
+      /* The record is split across tabs so each one fits in a screen or two: who and where, what we do for them, money, and the conversation. */
+      const bill = WD.can('billing.view'), tabs = [['overview', 'Overview'], ['service', 'Service'], bill && ['billing', 'Billing'], ['activity', 'Activity']].filter(Boolean);
+      if (!tabs.some(t => t[0] === st.tab)) st.tab = 'overview';
+      const body = { overview: () => [statsSection(c), contactsSection(c, edit), locationsSection(c), tasksSection(c, edit), detailsSection(c), attributionSection(c),
+          edit && ui.section(null, ui.row({ title: 'Merge with another customer…', destructive: true, onTap: () => pickCustomer(WD.nav.current().top(), 'Merge with', other => setTimeout(() => WD.nav.push(comparePage(c.id, other, null)), 450), c.id) }))],
+        service: () => [WD.x.pricingSection(c), jobsSections(c), WD.x.agreementSection(c), WD.biz && WD.biz.customerSections(c, edit), WD.x.historySection(c), !bill && WD.workflow && WD.workflow.customerSections(c)],
+        billing: () => [billingSection(c), WD.workflow && WD.workflow.customerSections(c)],
+        activity: () => [timelineSection(c, st, page, edit)] }[st.tab]();
+      return [header(c), h('div.cu-tabs', ui.segmented(tabs.map(([value, label]) => ({ value, label })), st.tab, v => { st.tab = v; page.refresh(); page.body.scrollTop = Math.min(page.body.scrollTop, (page.body.querySelector('.cu-tabs') || {}).offsetTop || 0); })), ui.list(body)];
     } };
 }
 function header(c) {
   const p = c.contacts[0], loc = c.locations[0];
   const qa = (ic, label, fn, disabled) => h('button.cu-qa', { disabled, onclick: fn }, icon(ic, 22), h('span', label));
-  return h('div.cu-head', avatar(c, 76), h('div.cu-title', c.name), h('div.cu-meta', h('span', WD.custType(c.custType).title), lcBadge(c)),
-    c.successful && h('div.cu-success', icon('star.fill', 14, 'var(--yellow)'), 'Successful customer since ' + longDate(c.stats.firstInvoice)),
-    h('div.cu-chip', icon('flag', 13), 'Came from ' + c.channel),
+  return h('div.cu-head.compact', h('div.cu-id', avatar(c, 52), h('div.cu-idt', h('div.cu-title', c.name), h('div.cu-meta', h('span', WD.custType(c.custType).title), lcBadge(c)),
+      h('div.cu-sub', c.successful && [icon('star.fill', 12, 'var(--yellow)'), ' Since ' + longDate(c.stats.firstInvoice) + ' · '], 'From ' + c.channel))),
     h('div.cu-qas', qa('phone.fill', 'Call', () => startCall(c, p), !p || !p.phone), qa('message', 'Text', () => WD.nav.push(threadPage(c.id, latestThread(c.id))), !p || !p.phone),
       qa('envelope', 'Email', () => ui.toast('New email to ' + p.email + ' in Gmail', 'envelope'), !p || !p.email), qa('arrow.triangle.turn.up.right', 'Directions', () => WD.workflow.openDirections({ title: c.name }), !loc),
       qa('plus', 'New job', () => newJob(c.id), !WD.can('jobs.edit'))));
