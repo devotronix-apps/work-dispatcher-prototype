@@ -1,4 +1,4 @@
-/* Work Dispatcher prototype — Customers: quick lookup, customer record and timeline, leads pipeline, follow-ups,
+/* RouteClerk prototype — Customers: quick lookup, customer record and timeline, leads pipeline, follow-ups,
    billing mirror (Invoice Ninja), merge suggestions and the incoming-call card. Registers WD.screens.customers. */
 (function () {
 'use strict';
@@ -127,7 +127,7 @@ function gen(c) {
   else if (lead) { if (LINES[c.channel]) call(born, 'in', TPL.leadIn, { line: lineFor(c.channel), dur: ri(60, 150) });
     addI({ customerId: c.id, type: 'sheet', at: c.createdAt + 9 * 60000, row: 180 + ri(0, 60), fields: fields.concat([['Source', c.channel], ['Notes', c.channel === 'Referral' ? 'Referred by an existing customer.' : 'Called from the ' + c.channel + ' listing.']]) }); }
   if (lead) {
-    addI({ customerId: c.id, type: 'note', at: c.createdAt + 15 * 60000, text: 'Assigned to ' + s + ' from the ' + c.channel + ' lead.', by: 'Work Dispatcher' });
+    addI({ customerId: c.id, type: 'note', at: c.createdAt + 15 * 60000, text: 'Assigned to ' + s + ' from the ' + c.channel + ' lead.', by: 'RouteClerk' });
     if (c.lifecycle === 'lead' && rnd() < 0.5) addI({ customerId: c.id, type: 'voicemail', at: at(Math.max(0, born - 1), ri(12 * 60, 16 * 60)), duration: ri(18, 45), contact: p.name, number: p.phone, line: lineFor(c.channel), summary: 'Caller asked for a call back.', transcript: [[p.name, fill(pick(TPL.vm))]] });
     if (c.lifecycle !== 'lead') { call(Math.max(0, born - 1), 'out', TPL.leadOut[0]); text(Math.max(0, born - 1), [['out', 'Hi {first}, this is {staff} with Discount Shred following up on your request. Is now a good time for a quick call?'], ['in', 'Yes, after 2 today works.']]); }
     if (c.lifecycle === 'quoted' || c.lifecycle === 'scheduled') { email(Math.max(0, born - 2), { dir: 'out', subject: 'Your shredding quote', snippet: house ? 'For about ' + (loc.containers || 'your boxes') + ' the price is {price}, picked up and shredded on site.' : 'Thanks for talking with us. For ' + n + ' consoles every 4 weeks the price is {price} per visit, no contract.' }); call(Math.max(0, born - 4), 'out', TPL.leadOut[1]); }
@@ -213,7 +213,7 @@ function openEntry(i) {
 }
 
 /* ================= Customers tab root ================= */
-const R = { seg: 'customers', filter: 'all', query: '', results: null, loading: false, lostOpen: false, busy: null, justDone: null, page: null };
+const R = { min: 0, seg: 'customers', filter: 'all', query: '', results: null, loading: false, lostOpen: false, busy: null, justDone: null, page: null };
 let searchToken = 0;
 function root() {
   return { title: 'Customers', large: true,
@@ -239,7 +239,10 @@ const ownerView = () => ['owner', 'admin'].includes((WD.state.me || {}).role);
 function filterMenu(el, page) {
   const bill = WD.can('billing.view');
   ui.menu(el, [{ header: 'Show' }, ...[['all', 'All customers', 'person.2'], bill && ['balance', 'Balance due', 'dollarsign.circle'], bill && ['overdue', 'Overdue invoices', 'exclamationmark.circle'], ['recurring', 'Recurring', 'repeat'], ['onetime', 'One time', 'circle'], ['route', 'By route', 'route'], ['household', 'Residential', 'house'], ['hidden', 'Hidden', 'eye.slash']].filter(Boolean)
-    .map(([v, label, ic]) => ({ label, icon: ic, checked: R.filter === v, onTap: () => { R.filter = v; page.refresh(); } }))], { compact: true });
+    .map(([v, label, ic]) => ({ label, icon: ic, checked: R.filter === v && !R.min, onTap: () => { R.filter = v; R.min = 0; page.refresh(); } })),
+    ...(bill ? ['divider', { header: 'Over an amount' }, ...[['balance', 'Balance due over…'], ['overdue', 'Overdue over…']].map(([v, label]) => ({ label: label + (R.filter === v && R.min ? ' ' + fmt.money(R.min) : ''), icon: 'dollarsign.circle', checked: R.filter === v && R.min > 0, onTap: async () => {
+      const r = await ui.alert({ title: v === 'balance' ? 'Balance due over' : 'Overdue over', message: 'Show customers who owe more than this amount.', input: { placeholder: 'e.g. 250', value: R.min ? String(R.min) : '', type: 'number' }, buttons: [{ label: 'Cancel', value: null }, { label: 'Show', value: true, bold: true }] });
+      if (!r || !r.value) return; R.filter = v; R.min = Math.max(0, parseFloat(r.text) || 0); page.refresh(); } }))] : [])], { compact: true });
 }
 function searchView() {
   if (R.loading) return h('div.cu-loading', ui.spinner(18), 'Searching…');
@@ -256,8 +259,9 @@ const custRow = c => { const bill = WD.can('billing.view'), owed = bill ? owedBy
     badge: owed > 0 || late > 0 ? h('span.cu-marks', owed > 0 && mark(owed, 'Balance due'), late > 0 && mark(late, 'Overdue', true)) : null, chevron: true, onTap: () => openDetail(c.id) }); };
 function customersView() {
   let list = data.customers.filter(c => (!PIPE.includes(c.lifecycle) || c.lifecycle === 'scheduled') && (R.filter === 'hidden' ? c.hidden : !c.hidden)).sort((a, b) => a.name.localeCompare(b.name));
-  if (R.filter === 'balance') list = list.filter(c => owedBy(c) > 0); if (R.filter === 'household') list = list.filter(c => c.kind === 'household');
-  if (R.filter === 'overdue') list = list.filter(c => overdueOf(c).length > 0); if (R.filter === 'recurring') list = list.filter(isRecurring); if (R.filter === 'onetime') list = list.filter(c => !isRecurring(c));
+  const lateSum = c => overdueOf(c).reduce((s, i) => s + i.amount, 0);
+  if (R.filter === 'balance') list = list.filter(c => owedBy(c) > R.min); if (R.filter === 'household') list = list.filter(c => c.kind === 'household');
+  if (R.filter === 'overdue') list = list.filter(c => overdueOf(c).length > 0 && lateSum(c) > R.min); if (R.filter === 'recurring') list = list.filter(isRecurring); if (R.filter === 'onetime') list = list.filter(c => !isRecurring(c));
   const dupes = data.mergeSuggestions.filter(s => s.status === 'open').length, groups = new Map();
   list.forEach(c => { const k = R.filter === 'route' ? q.routeName(c.route) : (c.name[0] || '#').toUpperCase(); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(c); });
   const keys = [...groups.keys()]; if (R.filter === 'route') keys.sort((a, b) => (q.routes().findIndex(r => q.routeName(r) === a) + 99) % 99 - (q.routes().findIndex(r => q.routeName(r) === b) + 99) % 99);
@@ -265,7 +269,8 @@ function customersView() {
     R.filter === 'all' && WD.r11 && WD.can('billing.view') && WD.r11.unpaidSection(),
     R.filter === 'all' && WD.x.customerNotices(),
     dupes && WD.can('crm.edit') ? ui.section(null, ui.row({ icon: 'arrow.triangle.merge', iconColor: 'var(--orange)', title: dupes + (dupes === 1 ? ' possible duplicate' : ' possible duplicates'), subtitle: 'Review and merge matching records', chevron: true, onTap: () => WD.nav.push(mergesPage()) })) : null,
-    R.filter !== 'all' ? h('div.cu-filter', 'Showing ' + FILTER_TEXT[R.filter], h('button.cu-link', { onclick: () => { R.filter = 'all'; R.page && R.page.refresh(); } }, 'Show all')) : null,
+    R.filter !== 'all' ? h('div.cu-filter', 'Showing ' + FILTER_TEXT[R.filter] + (R.min && (R.filter === 'balance' || R.filter === 'overdue') ? ' over ' + fmt.money(R.min) : ''), h('button.cu-link', { onclick: () => { R.filter = 'all'; R.min = 0; R.page && R.page.refresh(); } }, 'Show all')) : null,
+    (R.filter === 'balance' || R.filter === 'overdue') && list.length && WD.rc && WD.rc.batchStatements && WD.can('billing.view') ? ui.section(null, ui.row({ icon: 'envelope', iconColor: 'var(--teal)', title: 'Send statements to ' + (list.length === 1 ? 'this customer' : 'these ' + list.length + ' customers') + '…', subtitle: 'One statement each, with or without the unpaid invoices', chevron: true, onTap: () => WD.rc.batchStatements(list) })) : null,
     list.length ? keys.map(k => ui.section({ header: k, fold: R.filter === 'route' }, groups.get(k).map(custRow))) : ui.empty({ icon: 'person.2', title: 'No customers', text: 'Nothing matches this filter.' }),
     list.length ? h('div.cu-count', list.length + (list.length === 1 ? ' customer' : ' customers')) : null);
 }
@@ -471,7 +476,8 @@ const allJobsPage = cid => ({ title: 'All jobs', render: () => { const jobs = q.
 
 /* ---------- Billing ---------- */
 const INV_COLOR = { Paid: 'var(--green)', Sent: 'var(--blue)', Overdue: 'var(--red)' };
-const invRow = inv => ui.row({ icon: 'doc.text', iconColor: 'var(--brown)', title: inv.number, subtitle: fmt.day(inv.day, 'md') + (inv.auto ? ' · Auto-charged' : ''), badge: ui.badge(inv.status, INV_COLOR[inv.status]), detail: fmt.money(inv.amount), chevron: true, onTap: () => WD.nav.push(invoicePage(inv.id)) });
+const invStatus = inv => WD.rc && WD.rc.invStatus ? WD.rc.invStatus(inv) : inv.status;
+const invRow = inv => ui.row({ icon: 'doc.text', iconColor: 'var(--brown)', title: fmt.day(inv.day, 'md') + ', ' + inv.day.slice(0, 4), subtitle: inv.number + (inv.auto ? ' · Auto-charged' : ''), badge: ui.badge(invStatus(inv), INV_COLOR[invStatus(inv)] || 'var(--orange)'), detail: fmt.money(inv.amount), chevron: true, onTap: () => WD.nav.push(invoicePage(inv.id)) });
 /** A customer's invoices, all of them or only the unpaid ones. */
 function custInvoices(cid, unpaid) {
   const st = { unpaid: !!unpaid };
@@ -483,7 +489,9 @@ function custInvoices(cid, unpaid) {
 function billingSection(c) {
   const invs = invoicesFor(c.id), open = invs.filter(i => i.status !== 'Paid').reduce((s, i) => s + i.amount, 0);
   return ui.section({ header: 'Invoices', footer: (open ? fmt.money(open) + ' open · ' : '') + 'Synced from Invoice Ninja' }, invs.length ? invs.slice(0, 4).map(invRow) : ui.row({ title: 'No invoices yet', subtitle: 'The first invoice marks this customer successful.' }),
-    invs.length > 4 && ui.row({ title: 'All invoices', detail: String(invs.length), chevron: true, onTap: () => WD.nav.push(custInvoices(c.id, false)) }));
+    invs.length > 4 && ui.row({ title: 'All invoices', detail: String(invs.length), chevron: true, onTap: () => WD.nav.push(custInvoices(c.id, false)) }),
+    WD.rc && WD.rc.openStatement && ui.row({ icon: 'envelope', iconPlain: true, title: 'Create statement…', subtitle: open ? 'Every unpaid invoice on one page, with the invoices attached if you like' : 'Nothing is unpaid right now', tint: true, onTap: () => WD.rc.openStatement(c) }),
+    WD.rc && WD.rc.newInvoice && WD.can('billing.manage') && ui.row({ icon: 'plus.circle.fill', iconPlain: true, iconColor: 'var(--green)', title: 'New invoice', tint: true, onTap: () => WD.rc.newInvoice(c.id) }));
 }
 function pay(inv, method) {
   const c = q.customer(inv.customerId), j = inv.jobId && q.job(inv.jobId);
@@ -492,11 +500,11 @@ function pay(inv, method) {
   addPayment(inv, +WD.now(), method);
 }
 function invoicePage(invId) {
-  return { title: () => { const i = data.invoices.find(x => x.id === invId); return i ? i.number : 'Invoice'; },
+  return { title: 'Invoice',
     render: () => {
       const inv = data.invoices.find(x => x.id === invId); if (!inv || !(WD.can('billing.view') || WD.can('billing.field'))) return ui.empty({ icon: 'lock', title: 'Billing is hidden', text: 'You need billing access to see invoices.' });
       const c = q.customer(inv.customerId), lines = linesFor(inv), pays = data.payments.filter(p => p.invoiceId === inv.id);
-      return [h('div.cu-head', h('div.cu-amount', fmt.money(inv.amount, true)), ui.badge(inv.status, INV_COLOR[inv.status]), h('div.footnote', (c ? c.name + ' · ' : '') + 'Issued ' + longDate(inv.day) + (inv.status !== 'Paid' ? ' · Due ' + fmt.day(D.add(inv.day, 30), 'md') : ''))),
+      return [h('div.cu-head', c && h('div.title3', { style: 'font-weight:700' }, c.name), h('div.headline', { style: 'margin:2px 0 6px' }, longDate(inv.day)), h('div.cu-amount', fmt.money(inv.amount, true)), ui.badge(invStatus(inv), INV_COLOR[invStatus(inv)] || 'var(--orange)'), h('div.footnote', inv.number + (inv.status !== 'Paid' ? ' · Due ' + fmt.day(D.add(inv.day, 30), 'md') : ''))),
         ui.list(ui.section({ header: 'Lines', footer: 'Prices from the price book.' }, lines.map(l => ui.row({ title: l.name, subtitle: l.qty + ' × ' + fmt.money(l.rate, true), detail: fmt.money(l.qty * l.rate, true) })), ui.row({ title: h('b', 'Total'), detail: h('b', fmt.money(inv.amount, true)) })),
           ui.section('Payments', pays.length ? pays.map(p => ui.row({ icon: 'creditcard', iconColor: 'var(--pink)', title: p.method, subtitle: whenFull(p.at), detail: fmt.money(p.amount, true) })) : ui.row({ title: 'No payments yet' })),
           WD.r9 && WD.r9.revisionSection(inv),
@@ -717,7 +725,7 @@ function create(f) {
     stats: { jobs: 0, invoiced: 0, paid: 0, balance: 0, lastService: null, firstInvoice: null, rate: 85 }, successful: false };
   data.customers.push(c);
   data.touches.push({ customerId: id, at: +WD.now(), channel: ch, campaign: (CAMPAIGN[ch] || CAMPAIGN.Other)[0], landing: '—', kind: 'Entered by staff' });
-  addI({ customerId: id, type: 'note', at: +WD.now(), text: 'Created by ' + me() + ' in Work Dispatcher.', by: me() });
+  addI({ customerId: id, type: 'note', at: +WD.now(), text: 'Created by ' + me() + ' in RouteClerk.', by: me() });
   addTask(id, 'Call back new lead', today, { lead: true });
   return id;
 }

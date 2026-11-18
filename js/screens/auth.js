@@ -1,4 +1,4 @@
-/* Work Dispatcher prototype — signing in: welcome, email and password, magic link, Sign in with Apple, company picker,
+/* RouteClerk prototype — signing in: welcome, email and password, magic link, Sign in with Apple, company picker,
    invitations (with the driver location-tracking notice) and self-serve company creation. Any input is accepted. */
 (function () {
 'use strict';
@@ -45,7 +45,7 @@ const hudWait = async (text, then) => { const hud = ui.hud(text); await WD.delay
 let rootPage = null;
 function show() {
   rootPage = WD.app.showRoot({ title: '', navbar: false, render: page => h('div.au-welcome',
-    h('img.au-icon', { src: 'img/app-icon.png', alt: '' }), h('div.au-name', 'Work Dispatcher'),
+    h('img.au-icon', { src: 'img/app-icon.png', alt: '' }), h('div.au-name', 'RouteClerk'),
     h('div.au-tag', 'Plan routes, dispatch trucks and keep every stop on time.'),
     h('div.au-actions',
       ui.button('Sign in with Apple', { kind: 'dark', icon: 'apple', onTap: () => appleSheet(page) }),
@@ -95,7 +95,7 @@ function appleSheet(from) {
   const me = S.me || data.users[0]; let share = true, phase = 'choose', alive = true;
   const sheet = ui.sheet({ title: 'Apple ID', leading: () => phase === 'choose' ? { label: 'Cancel', onTap: p => p.dismiss() } : null,
     render: page => phase !== 'choose' ? h('div.au-face' + (phase === 'done' ? '.done' : ''), icon(phase === 'done' ? 'checkmark.circle.fill' : 'faceid', 66), h('div.headline', phase === 'done' ? 'Done' : 'Face ID')) : h('div',
-      h('div.au-apple', icon('apple', 30), h('div.footnote', 'Create an account for Work Dispatcher using your Apple ID.')),
+      h('div.au-apple', icon('apple', 30), h('div.footnote', 'Create an account for RouteClerk using your Apple ID.')),
       ui.list(ui.section(
         ui.row({ icon: 'person.crop.circle', iconPlain: true, iconColor: 'var(--gray)', title: me.name }),
         ui.row({ ...check(share), title: 'Share my email', subtitle: me.email, onTap: () => { share = true; page.refresh(); } }),

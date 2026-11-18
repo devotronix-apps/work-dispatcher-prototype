@@ -1,4 +1,4 @@
-/* Work Dispatcher prototype — round 11 (owner feedback of 2026-11-16), part 1: the add-ons and their settings. Registers WD.r11.
+/* RouteClerk prototype — round 11 (owner feedback of 2026-11-16), part 1: the add-ons and their settings. Registers WD.r11.
    Skills, licenses and clearances matched to jobs (block or flag), truck capabilities (hard drives), non-paper materials, disposal sites and
    the unload stop in AutoRoute, truck and warehouse inventory, compliance reminders, country / currency / units, how trucks are tracked,
    exact-time jobs, window and time-on-site overrides, pickup-and-delivery pairs. Part 2 (round11b.js) holds the Admin tab, unpaid invoices,

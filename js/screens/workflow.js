@@ -159,7 +159,7 @@ function createMaster(c, notes) {
 }
 function masterSection(c) {
   const notes = openNotes(c.id), total = notes.reduce((s, n) => s + n.amount, 0), sent = data.masterInvoices.filter(m => m.customerId === c.id).sort((a, b) => b.at - a.at);
-  return ui.section({ header: 'Master invoice', footer: 'Each signed service note is saved to the Work Dispatcher database and added here. Create the master invoice when you’re ready to submit it; it’s built from these saved notes.' },
+  return ui.section({ header: 'Master invoice', footer: 'Each signed service note is saved to the RouteClerk database and added here. Create the master invoice when you’re ready to submit it; it’s built from these saved notes.' },
     ui.row({ icon: 'tray', iconColor: 'var(--brown)', title: 'Building · ' + notes.length + (notes.length === 1 ? ' service note' : ' service notes'), subtitle: notes.length ? 'Since ' + fmt.day(notes[0].day, 'md') : 'Nothing waiting', detail: fmt.money(total, true), chevron: true, onTap: () => WD.nav.push(masterSpec(c.id)) }),
     sent.slice(0, 2).map(m => ui.row({ icon: 'doc.text', iconColor: 'var(--green)', title: m.number + ' · ' + monthName(m.month), subtitle: m.noteIds.length + ' service notes', detail: fmt.money(m.amount), chevron: true, onTap: () => openInvoiceRec(data.invoices.find(x => x.id === 'inv-' + m.id)) })));
 }
@@ -187,7 +187,8 @@ function noteSpec(n) {
     ui.section('Items', n.lines.map(l => ui.row({ title: l.name, subtitle: l.qty + ' × ' + fmt.money(l.rate, true), detail: fmt.money(l.qty * l.rate, true) })), ui.row({ title: h('b', 'Total'), detail: h('b', fmt.money(n.amount, true)) })),
     ui.section('Signature', n.sig && billing().sigView ? h('div.bi-sig', h('div.bi-ink', billing().sigView(n.sig)), h('div.bi-cap', 'Customer Signature · ' + n.signer)) : ui.row({ title: n.signer ? 'Signed by ' + n.signer : 'Signed on paper' })),
     ui.section(null, ui.row({ title: n.masterId ? 'On master invoice ' + (data.masterInvoices.find(m => m.id === n.masterId) || {}).number : 'Waiting for the master invoice', icon: 'tray', iconPlain: true }),
-      n.jobId && q.job(n.jobId) && ui.row({ title: 'Open job', tint: true, onTap: () => guard('jobs', 'openDetails', n.jobId) }))) };
+      n.jobId && q.job(n.jobId) && ui.row({ title: 'Open job', tint: true, onTap: () => guard('jobs', 'openDetails', n.jobId) })),
+    WD.rc && WD.rc.noteActions && WD.rc.noteActions(n)) };
 }
 
 /* ================= Invoice actions (job view, customer record and the Invoices list) ================= */
@@ -242,28 +243,32 @@ const recRoute = rec => { const j = rec.jobId && q.job(rec.jobId); if (j) return
 function notesList(page, s) {
   const route = myRoute(); let list = data.serviceNotes.slice().sort((a, b) => b.at - a.at);
   if (IV.scope === 'mine') list = list.filter(n => recRoute(n) === route);
+  if (WD.rc && WD.rc.noteMatch) list = list.filter(WD.rc.noteMatch);
   if (s) list = list.filter(n => { const c = q.customer(n.customerId); return n.number.toLowerCase().replace(/\s+/g, '').includes(s) || (c && c.name.toLowerCase().includes(IV.query.toLowerCase())) || (n.location || '').toLowerCase().includes(IV.query.toLowerCase()); });
   const waiting = list.filter(n => !n.masterId).length;
   return list.length ? ui.section({ header: (s ? list.length + (list.length === 1 ? ' match' : ' matches') : 'Newest first') + (waiting ? ' · ' + waiting + ' waiting for a master invoice' : ''), footer: 'Signed service notes from each visit. Each month they’re combined into the customer’s master invoice.' },
     list.slice(0, IV.limit).map(n => { const c = q.customer(n.customerId), mi = n.masterId && (data.masterInvoices || []).find(m => m.id === n.masterId);
-      return ui.row({ icon: 'signature', iconColor: 'var(--brown)', title: n.number + ' · ' + (n.location || ''), subtitle: (c ? c.name : '') + ' · ' + fmt.day(n.day, 'md') + (n.signer ? ' · signed by ' + n.signer : ''), badge: ui.badge(mi ? mi.number : 'Waiting', mi ? 'var(--green)' : 'var(--orange)'), detail: fmt.money(n.amount), chevron: true, onTap: () => page.push(noteSpec(n)) }); }),
+      return ui.row({ icon: 'signature', iconColor: 'var(--brown)', title: (c ? c.name : n.number) + (n.location ? ' · ' + n.location : ''), subtitle: h('span', h('b.rc-date', fmt.day(n.day, 'md') + ', ' + n.day.slice(0, 4)), h('span.rc-num', ' · ' + n.number + (n.signer ? ' · signed by ' + n.signer : ''))), badge: ui.badge(mi ? mi.number : 'Waiting', mi ? 'var(--green)' : 'var(--orange)'), detail: fmt.money(n.amount), chevron: true, onTap: () => page.push(noteSpec(n)) }); }),
     list.length > IV.limit && ui.row({ title: 'Show more', tint: true, center: true, onTap: () => { IV.limit += 60; page.refresh(); } }))
     : ui.empty({ icon: 'signature', title: s ? 'No service notes match' : 'No service notes', text: IV.scope === 'mine' ? 'None on this route. Try All routes.' : 'Service notes appear here as drivers collect them.' });
 }
 function invoicesSpec() {
   IV.limit = 40;
   return { title: 'Invoices', large: true,
+    trailing: page => WD.rc && WD.rc.newMenu && canInvoice() ? [{ icon: 'plus', label: 'New', onTap: (p, el) => WD.rc.newMenu(el, p, IV.kind) }] : [],
     search: { placeholder: 'Number, customer or location', onInput: (v, p) => { IV.query = v.trim(); IV.limit = 40; p.refresh(); } },
     render: page => {
       if (!canSeeBilling()) return ui.empty({ icon: 'lock', title: 'Billing is hidden', text: 'You need billing access to see invoices.' });
       const route = myRoute(), s = IV.query.toLowerCase().replace(/\s+/g, ''), digits = s.replace(/\D/g, '');
       let list = (data.invoices || []).slice().sort((a, b) => b.at - a.at);
       if (IV.scope === 'mine') list = list.filter(r => recRoute(r) === route);
+      if (WD.rc && WD.rc.invMatch) list = list.filter(WD.rc.invMatch);
       if (s) list = list.filter(r => { const num = r.number.toLowerCase().replace(/\s+/g, ''), c = q.customer(r.customerId); return num.includes(s) || (digits.length >= 2 && num.replace(/\D/g, '').includes(digits)) || (c && c.name.toLowerCase().includes(IV.query.toLowerCase())); });
       const open = list.filter(r => r.status !== 'Paid').reduce((t, r) => t + r.amount, 0), alerts = WD.can('billing.view') && !s ? poAlerts() : [];
       const ownRoute = S.shift || q.routes().some(r => r.driverId === (S.me && S.me.id));
       return [h('div.wf-inv-seg', ui.segmented([{ value: 'invoices', label: 'Invoices' }, { value: 'notes', label: 'Service notes' }], IV.kind, v => { IV.kind = v; IV.limit = 40; page.refresh(); })),
         h('div.wf-inv-seg', ui.segmented([{ value: 'mine', label: ownRoute ? 'My route' : 'One route' }, { value: 'all', label: 'All routes' }], IV.scope, v => { IV.scope = v; IV.limit = 40; page.refresh(); })),
+        WD.rc && WD.rc.filterBar && WD.rc.filterBar(WD.rc.invFilter, () => { IV.limit = 40; page.refresh(); }, { status: true }),
         ui.list(
           IV.scope === 'mine' && ui.section(null, ownRoute ? ui.row({ leading: ui.dot(q.routeColor(route)), title: q.routeName(route), subtitle: S.shift ? 'The route you’re clocked in on' : 'Your route' })
             : ui.pickerRow({ title: 'Route', icon: 'route', iconColor: q.routeColor(route), value: route, options: q.routes().map(r => ({ value: r.id, label: q.routeName(r) })), onChange: v => { IV.routeId = v; page.refresh(); } })),
@@ -272,10 +277,10 @@ function invoicesSpec() {
           IV.kind === 'invoices' && alerts.length > 0 && ui.section('Purchase orders', alerts.map(x => h('div', h('div.footnote', { style: 'padding:10px 16px 0;font-weight:600' }, x.c.name), alertRow(x.a, () => guard('customers', 'openDetail', x.c.id))))),
           IV.kind !== 'invoices' ? null : list.length ? ui.section({ header: (s ? list.length + (list.length === 1 ? ' match' : ' matches') : 'Newest first') + (open ? ' · ' + fmt.money(open) + ' open' : ''), footer: 'Every invoice created' + (books() ? ', from ' + books() : '') + ', newest first. Invoices paid there are marked paid here automatically. Search by invoice number (“2417” finds INV-2417) or customer.' },
             list.slice(0, IV.limit).map(r => { const c = q.customer(r.customerId), rt = recRoute(r);
-              return ui.row({ icon: r.master ? 'tray' : 'doc.text', iconColor: r.master ? 'var(--brown)' : 'var(--indigo)', title: r.number, subtitle: h('span', (c ? c.name : '') + ' · ' + fmt.day(r.day, 'md') + (IV.scope === 'all' && rt ? ' · ' : ''), IV.scope === 'all' && rt ? h('span.cu-route', ui.dot(q.routeColor(rt)), q.routeName(rt)) : null),
-                badge: ui.badge(r.status, INV_COLOR[r.status] || 'var(--orange)'), detail: fmt.money(r.amount), chevron: true, onTap: () => openInvoiceRec(r) }); }),
+              return ui.row({ icon: r.master ? 'tray' : 'doc.text', iconColor: r.master ? 'var(--brown)' : 'var(--indigo)', title: c ? c.name : r.number, subtitle: h('span', h('b.rc-date', fmt.day(r.day, 'md') + ', ' + r.day.slice(0, 4)), h('span.rc-num', ' · ' + r.number + (IV.scope === 'all' && rt ? ' · ' : '')), IV.scope === 'all' && rt ? h('span.cu-route', ui.dot(q.routeColor(rt)), q.routeName(rt)) : null),
+                badge: (st => ui.badge(st, INV_COLOR[st] || 'var(--orange)'))(WD.rc && WD.rc.invStatus ? WD.rc.invStatus(r) : r.status), detail: fmt.money(r.amount), chevron: true, onTap: () => openInvoiceRec(r) }); }),
             list.length > IV.limit && ui.row({ title: 'Show more', tint: true, center: true, onTap: () => { IV.limit += 60; page.refresh(); } }))
-          : ui.empty({ icon: 'doc.text', title: s ? 'No invoices match' : 'No invoices', text: s ? 'Nothing matches “' + IV.query + '”' + (IV.scope === 'mine' ? ' on this route. Try All routes.' : '.') : 'Invoices appear here as they’re created.' }))];
+          : ui.empty({ icon: 'doc.text', title: s ? 'No invoices match' : 'No invoices', text: s ? 'Nothing matches “' + IV.query + '”' + (IV.scope === 'mine' ? ' on this route. Try All routes.' : '.') : WD.rc && WD.rc.invFilterOn && WD.rc.invFilterOn() ? 'Nothing matches the date and status filters' + (IV.scope === 'mine' ? ' on this route.' : '.') : 'Invoices appear here as they’re created.' }))];
     } };
 }
 
@@ -293,7 +298,8 @@ async function completeStop(job) {
   if (job.status !== 'completed') { const inferred = job.arrivedAt == null && W.arrival !== 'button'; api.setStatus(job.id, 'completed', inferred ? 'arrival time from GPS' : null); WD.emit('stopCompleted', job.id); }
   const auto = WD.cardJob(job);
   if (mode === 'complete' || !canInvoice() || auto || job.type === 'meet') { ui.toast(auto ? 'Completed · card on file is charged automatically' : 'Stop completed', 'checkmark', 2200); if (mode !== 'complete' || auto) afterBilling(job); return; }
-  setTimeout(() => billing().openEditor && billing().openEditor(job.id, { flow: true, onDone: () => afterBilling(job) }), 250);
+  /* Open the billing details from the job as it is now (looked up again by id), and say so if they can't be opened, rather than leaving the driver on the list. */
+  setTimeout(() => { try { if (!q.job(job.id)) throw new Error('job'); billing().openEditor(job.id, { flow: true, onDone: () => afterBilling(job) }); } catch (e) { console.error(e); ui.alert({ title: 'Billing details didn’t open', message: 'The stop is marked complete. Open it from the “completed stop isn’t billed” line on the Shift tab to create the invoice.' }); } }, 250);
 }
 /** After billing: show the next customer, and optionally start directions there (not when it's at the same address). */
 function afterBilling(job) {

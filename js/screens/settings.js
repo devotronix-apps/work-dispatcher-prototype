@@ -1,4 +1,4 @@
-/* Work Dispatcher prototype — Settings tab: profile and company, personal route preferences, board options, pending changes,
+/* RouteClerk prototype — Settings tab: profile and company, personal route preferences, board options, pending changes,
    Google Calendar mirror, team and roles, vehicles, location-tracking consent, integrations, privacy and account.
    Rule for permissions: rows the signed-in role can't use stay visible but disabled with "Ask an admin";
    pages reached anyway (control-panel jumps) show the same message. */
@@ -64,12 +64,14 @@ function root() {
     const me = S.me, o = org(), n = S.pending.length, issues = S.pending.filter(x => x.status === 'conflict' || x.status === 'failed').length, push = s => page.push(s);
     return ui.list(
       ui.section(ui.row({ class: 'st-profile', leading: ui.avatar(me.name, { size: 58 }), title: me.name, subtitle: h('span', me.email, h('span.st-meta', roleBadge(me.role), o.name)), chevron: true, onTap: () => push(accountSpec()) })),
+      WD.rc && WD.rc.displaySection(push),
       ui.section('Company',
-        ui.row({ icon: 'building', iconColor: 'var(--indigo)', title: 'Company', detail: o.name, chevron: true, onTap: () => push(orgsSpec()) }),
-        ui.row(gated('billing.view', { icon: 'creditcard', iconColor: 'var(--green)', title: 'Subscription', ...plan(o) })),
+        ui.row({ icon: 'building', iconColor: 'var(--indigo)', title: 'Company', subtitle: 'Switch between your companies', detail: o.name, chevron: true, onTap: () => push(orgsSpec()) }),
+        WD.rc && WD.rc.companyRows(push, gated, () => push(integrationsSpec()), INTEG.filter(connected).length),
         ui.row({ icon: 'lock', iconColor: 'var(--gray)', title: 'Sign-in and security', detail: (WD.signInPolicies.find(x => x.value === S.signInPolicy) || {}).label, chevron: true, onTap: () => WD.admin && push(WD.admin.signInSpec()) }),
         WD.r8 && ui.row(gated('settings.manage', { icon: 'share', iconColor: 'var(--teal)', title: 'Export and backup', subtitle: 'Customers, jobs, invoices, CRM and settings as files you keep', chevron: true, onTap: () => push(WD.r8.exportSpec()) })),
-        ui.row({ icon: 'globe', iconColor: 'var(--blue)', title: 'Open web dashboard', trailing: icon('arrow.up.right', 17, 'var(--label3)'), onTap: () => ui.toast('Analytics and billing reports are on the web', 'globe', 2600) })),
+        ui.row({ icon: 'chart.bar', iconColor: 'var(--blue)', title: 'Reports', subtitle: 'Invoices, sales by month and year, revenue by service', chevron: true, onTap: () => WD.nav.switchTab('reports') })),
+      WD.rc && WD.rc.commsSection(push, gated),
       ui.section({ header: 'Routes and board', footer: 'Single-route portrait view shows 1 or 3 days from the active day. Landscape always shows 7.' },
         ui.row({ icon: 'route', iconColor: 'var(--blue)', title: 'Routes', detail: q.visibleRoutes().length + ' of ' + data.routes.length + ' shown', chevron: true, onTap: () => push(routesSpec()) }),
         ui.pickerRow({ icon: 'arrow.triangle.turn.up.right', iconColor: 'var(--green)', title: 'Directions app', subtitle: 'Opens for Navigate and Directions', value: S.prefs.mapsApp, options: WD.MAPS_APPS, onChange: v => { S.prefs.mapsApp = v; WD.changed(); ui.toast('Directions open in ' + WD.workflow.mapsName(), 'checkmark'); } }),
@@ -80,7 +82,6 @@ function root() {
       WD.co && ui.section({ header: 'Company settings', footer: 'Every assumption the app makes can be changed: start time, time to get rolling, pay period and payday, time-off approval, on-my-way notices, barcodes, bookkeeping, reviews and the CRM.' },
         ui.row(gated('settings.manage', { icon: 'gearshape', iconColor: 'var(--blue)', title: 'Settings and assumptions', subtitle: 'Routing, time on site, holidays, confirmations, calls and texts, items and fees, invoicing, payroll', chevron: true, onTap: () => push(WD.co.hubSpec()) })),
         WD.biz && ui.row(gated('settings.manage', { icon: 'briefcase', iconColor: 'var(--indigo)', title: 'Business type and wording', subtitle: WD.biz.industryName() + ' · checklists, custom fields, fleet, load and reports', chevron: true, onTap: () => push(WD.biz.homeSpec()) })),
-        ui.row(gated('settings.manage', { icon: 'doc.text', iconColor: 'var(--teal)', title: 'Templates', subtitle: 'Wording of every text, email, letter and the service agreement', chevron: true, onTap: () => push(WD.co.templatesSpec()) })),
         ui.row(gated('settings.manage', { icon: 'star', iconColor: 'var(--orange)', title: 'Reviews and feedback', subtitle: 'Follow-up text, review sites, QR code', chevron: true, onTap: () => push(WD.co.reviewsSpec()) })),
         ui.row(gated('settings.manage', { icon: 'funnel', iconColor: 'var(--purple)', title: 'CRM and leads', subtitle: 'Features, lead sources, territories', chevron: true, onTap: () => push(WD.co.crmSpec()) }))),
       WD.r11 && WD.r11.settingsSection(push, gated),
@@ -90,7 +91,6 @@ function root() {
         ui.row(gated('contracts.manage', { icon: 'signature', iconColor: 'var(--indigo)', title: 'Service agreements', detail: (n => n ? n + ' unsigned' : '')(data.agreements.filter(a => a.status === 'sent' || a.status === 'viewed').length), chevron: true, onTap: () => push(WD.x.agreementsSpec()) })),
         WD.can('hr.manage') && ui.row({ icon: 'calendar', iconColor: 'var(--red)', title: 'Time off', detail: (n => n ? n + ' to approve' : '')(data.timeOff.filter(t => t.status === 'pending').length), chevron: true, onTap: () => push(WD.x.timeOffSpec()) }),
         ui.row({ icon: 'truck', iconColor: 'var(--orange)', title: 'Vehicles', subtitle: 'Capacity, what each truck can do, GPS, registration and inspections', detail: String(data.vehicles.filter(v => v.active !== false).length), chevron: true, onTap: () => push(vehiclesSpec()) }),
-        ui.row(gated('settings.manage', { icon: 'link', iconColor: 'var(--purple)', title: 'Integrations', detail: INTEG.filter(connected).length + ' connected', chevron: true, onTap: () => push(integrationsSpec()) })),
         ui.row({ icon: 'checklist', iconColor: 'var(--indigo)', title: 'Field workflow', subtitle: 'Arrival, Complete stop, invoices, job titles, shift limit', chevron: true, onTap: () => push(WD.workflow.workflowSpec()) }),
         ui.row({ icon: 'tag', iconColor: 'var(--pink)', title: 'Job types and fields', subtitle: 'Fields asked and required, by job type and customer type', chevron: true, onTap: () => WD.admin && push(WD.admin.typesSpec()) }),
         ui.row(gated('settings.manage', { icon: 'square.and.pencil', iconColor: 'var(--teal)', title: 'Import jobs', subtitle: 'Calendar file (.ics), Excel or CSV', chevron: true, onTap: () => WD.admin && push(WD.admin.importSpec()) })),
@@ -190,7 +190,7 @@ function opCell(op) {
       btn('Cancel change', () => cancelOp(op), 'destructive')));
 }
 async function cancelOp(op) {
-  if (!await confirm('Cancel this change?', 'Work Dispatcher stops retrying “' + op.title + '”. Anything already saved on the server is not undone, and a record is kept under Abandoned changes.', 'Cancel change', 'Keep trying')) return;
+  if (!await confirm('Cancel this change?', 'RouteClerk stops retrying “' + op.title + '”. Anything already saved on the server is not undone, and a record is kept under Abandoned changes.', 'Cancel change', 'Keep trying')) return;
   if (!S.pending.includes(op)) return ui.toast('Already synced', 'checkmark');
   if (op.status === 'syncing') return ui.alert({ title: 'Sync in progress', message: 'Wait for this attempt to finish, then try again.' });
   api.cancel(op.id); ui.toast('Change cancelled', 'xmark');
@@ -239,22 +239,22 @@ async function toggleMirror(on) {
 }
 function mirrorSpec() {
   return { title: 'Google Calendar', render: page => { if (!WD.can('settings.manage')) return locked(); const M = S.googleMirror; return ui.list(
-    ui.section({ footer: 'One-way copy: changes made in Work Dispatcher are sent to Google Calendar. Nobody edits Google directly; edits made there are overwritten.' },
+    ui.section({ footer: 'One-way copy: changes made in RouteClerk are sent to Google Calendar. Nobody edits Google directly; edits made there are overwritten.' },
       ui.toggleRow({ icon: 'calendar', iconColor: 'var(--blue)', title: 'Mirror to Google Calendar', value: M.enabled, onChange: toggleMirror }),
       M.enabled && ui.row({ title: 'Last sync', detail: fmt.rel(M.lastSync) }),
       ui.row({ title: 'Errors', detail: String(M.errors), chevron: M.errors > 0, onTap: M.errors ? () => page.push(errorsSpec()) : null })),
     ui.section({ header: 'Order and times', footer: 'Jobs here are an ordered list with no clock times, but Google Calendar sorts by time. “Keep the board’s order” gives each event an estimated time so Google shows the stops in the same order as the board. When jobs are first brought in from Google Calendar, each day’s order comes from the events’ current start times, so nothing is reshuffled.' },
       ui.pickerRow({ title: 'Times in Google Calendar', value: M.times || 'order', options: [{ value: 'order', label: 'Keep the board’s order' }, { value: 'allday', label: 'All-day until routed' }], onChange: v => { M.times = v; WD.changed(); page.refresh(); } }),
       ui.row({ title: 'Order when importing', detail: 'By current start time' })),
-    ui.section({ header: 'Route calendars', footer: 'Each calendar must be shared with the Work Dispatcher service account with “Make changes to events”.' },
+    ui.section({ header: 'Route calendars', footer: 'Each calendar must be shared with the RouteClerk service account with “Make changes to events”.' },
       q.routes().map(r => ui.row({ leading: ui.dot(q.routeColor(r)), title: q.routeName(r), subtitle: r.googleCalendar || 'No calendar',
         trailing: !r.googleCalendar ? ui.badge('None', 'var(--gray)') : mirrorErrors.some(e => e.routeId === r.id) ? ui.badge('Not shared', 'var(--orange)') : ui.badge('Shared', 'var(--green)') })))); } };
 }
 const errorsSpec = () => ({ title: 'Mirror errors', trailing: () => mirrorErrors.length > 1 ? { label: 'Retry all', onTap: () => online() && mirrorErrors.slice().forEach(retryError) } : null,
-  render: () => mirrorErrors.length ? ui.list(ui.section({ footer: 'Mirror errors never block anyone. Jobs are saved in Work Dispatcher; only the copy in Google is behind.' },
+  render: () => mirrorErrors.length ? ui.list(ui.section({ footer: 'Mirror errors never block anyone. Jobs are saved in RouteClerk; only the copy in Google is behind.' },
     mirrorErrors.map(e => ui.row({ icon: 'exclamationmark.triangle', iconColor: 'var(--orange)', title: e.title, subtitle: e.text + ' · ' + fmt.rel(e.at),
       trailing: retrying.has(e.id) ? ui.spinner() : ui.button('Retry', { kind: 'gray', small: true, block: false, onTap: () => retryError(e) }) }))))
-    : ui.empty({ icon: 'checkmark.circle', title: 'No mirror errors', text: 'Google Calendar matches Work Dispatcher.' }) });
+    : ui.empty({ icon: 'checkmark.circle', title: 'No mirror errors', text: 'Google Calendar matches RouteClerk.' }) });
 
 /* ---------- Team and roles ---------- */
 /** Does this person's permission set differ from their role's defaults? */
@@ -449,7 +449,7 @@ const ACK = [['Supabase Swift', 'MIT License'], ['Google Sign-In for iOS', 'Apac
 const ackSpec = () => ({ title: 'Acknowledgements', render: () => ui.list(ui.section({ footer: 'Maps and directions by Apple Maps.' }, ACK.map(([title, sub]) => ui.row({ title, subtitle: sub })))) });
 
 /* ---------- Registration ---------- */
-WD.screens.settings = { root, openPending, integrationSpec, openTeam: () => openIn(teamSpec()), openMirror: () => openIn(mirrorSpec()), openTracking: () => openIn(trackingSpec()) };
+WD.screens.settings = { root, openPending, integrationSpec, integrationsSpec, openTeam: () => openIn(teamSpec()), openMirror: () => openIn(mirrorSpec()), openTracking: () => openIn(trackingSpec()) };
 const tab = WD.app.tabs.find(t => t.id === 'settings'); if (tab) tab.badge = () => S.pending.length;
 WD.panel.addJump('Pending changes', openPending);
 WD.panel.addJump('Team & roles', WD.screens.settings.openTeam);

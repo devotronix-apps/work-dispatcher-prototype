@@ -1,6 +1,8 @@
-# Work Dispatcher — iPhone prototype
+# RouteClerk — iPhone prototype
 
-A clickable, web-based mock of the migrated app described in `../MIGRATION.md`. There is no backend: every action pretends to succeed, with realistic waits where the real app would talk to the server. Nothing is saved; reload the page to reset.
+A clickable, web-based mock of RouteClerk, the standalone product described in `../MIGRATION.md`. There is no backend: every action pretends to succeed, with realistic waits where the real app would talk to the server. Nothing is saved; reload the page to reset.
+
+What each screen must do is in `../Docs/FunctionalSpec.md`. Suggested additions and changes that have not been built or accepted yet are in `../Docs/PrototypeRecommendations.md`.
 
 ## Open it
 
@@ -15,6 +17,7 @@ Then open <http://localhost:8765>. Add `?skip` to the address to start past the 
 The panel beside the phone (a **Controls** button on narrower windows) drives the prototype:
 
 - **Preview as** switches the signed-in role (owner, dispatcher, office, driver) so you can see what each permission set shows.
+- **Service plan** switches between Starter, Pro and Premium to show which AI features each includes.
 - **Appearance** and **Network** switch light/dark and online/offline. Offline job changes queue up and sync when you go back online.
 - **Next job change hits a conflict** makes the next saved change come back as a conflict to resolve under Settings → Pending changes.
 - **Simulate** triggers things that would come from elsewhere: a dispatcher moving a job, an incoming call, a driver arriving at a stop.
@@ -56,6 +59,9 @@ Settings → About → Version shows the prototype version, `WD.version` in `js/
 | `js/screens/biz.js` | `WD.biz`: features for any route business. Business type and invoice wording (`data.biz`, industry presets with starter items), service checklists and required photos by job type (`data.checklists`, `job.checks`; Complete stop asks for unfinished required items), custom fields on customers and jobs (`data.customFields`, `obj.custom`), pausing a customer’s service (`customer.hold`), fleet and compliance (`data.fleet`: pre-trip inspections, maintenance by odometer, expiring documents), the load sheet and truck capacity (`data.load`), mileage and expenses (`data.mileage`, `data.expenses`), route performance |
 | `js/screens/round11.js` | `WD.r11` add-ons and their settings (`data.addons`, `WD.r11.cfg`): skills, licenses and clearances matched to jobs (`issues(job)`, `checkAssign(jobs, routeId, day)`, flag or block), truck capabilities, non-paper purge sub-categories, disposal sites and the AutoRoute unload stop (`autoRoute(ctx)`), inventory, compliance reminders, country / currency / units (`WD.locale`, `fmt.money/dist/weight`), tracking source, exact-time jobs, window and time-on-site overrides, pickup-and-delivery pairs, and the job editor and job details hooks |
 | `js/screens/round11b.js` | The Admin tab (`WD.screens.office`; CRM, Customers and Invoices behind one selector, `WD.app.officeSegs()`), unpaid invoices (`owed`, `overdue`, `overLimit`), board warning lines, route notes (`data.routeNotes`), postponed jobs and price approvals for the Tasks pipeline, Change Route on the planning map, the driver's own-route default |
+| `js/screens/rc.js` | `WD.rc` (4.0): service plan and AI features by tier (`data.plan`, `RC.ai(id)`, `RC.aiBlock(id, build)`, `RC.startPromo`), Settings → Display (theme, text size via `WD.app.setTextSize`, menu sections in `S.prefs.hidden`), Company rows (business details, invoicing and payments in `data.pay`, plan), Settings → Client communications (templates and the reminder schedule in `data.comms`), the Services and Products menu sections (`data.priceBook`, `data.products`) |
+| `js/screens/rc-ops.js` | Maintenance section (`WD.screens.maintenance`; GPS readings in `data.telemetry`, repairs in `data.fleet.repairs`, alert settings in `data.maint`, `RC.maintCheck()` pop-ups), the pre-trip inspection (`RC.inspect`, also `WD.biz.inspect`), the clock-in sequence (`RC.afterClockIn`), the Checklist button before Complete stop (`RC.checklistButton`, `job.checkSubmitted`), the past-due flag at a stop (`RC.pastDueFlag`), day assignments of driver and truck (`data.routeAssign`, `RC.driverOn/vehicleOn(routeId, day)`, `RC.assignSheet`) |
+| `js/screens/rc-money.js` | Date and status filters (`RC.invFilter`, `RC.filterBar`, `RC.invStatus`), creating, viewing, sending and deleting invoices and service notes (`RC.newInvoice`, `RC.editNote`), statements (`RC.openStatement(customer, {job})`, `RC.batchStatements(list)`), the Reports section (`WD.screens.reports`; months before the current one come from a generated history), Price Calc (`WD.screens.calc`, assumptions in `data.calc`) |
 | `sw.js` | Service worker: keeps a copy of the prototype for offline use (network first, saved copy as fallback) |
 | `js/screens/admin.js` | Sign-in policy, job types and the fields each asks for, import from .ics or Excel/CSV, new-company “connect your tools” step |
 
@@ -93,7 +99,7 @@ A page is a spec object:
 - `ui.sheet(spec, {detent: 'large'|'medium'|'small'})` presents a modal sheet with its own stack → `{close(result), push(spec), closed: Promise}`. Inside it, `page.dismiss(result)` closes the sheet; give sheets a `Cancel`/`Done` nav button.
 - `page.refresh()`, `page.setTitle()`, `page.push(spec)`, `page.pop()`, `page.body`, `page.el`.
 - After changing `WD.state` or `WD.data`, call `WD.changed()`; visible pages re-render (a page with a focused text field is skipped so typing is not interrupted — keep form values in closure variables, not in the DOM).
-- Tabs are fixed in `WD.app.tabs` (`board map office shift settings`; `customers`, `crm` and `invoices` are hidden entries shown inside the Admin tab, and `WD.nav.switchTab('customers')` opens Admin on that view; `can` is a permission flag or a function); a module supplies `WD.screens.<id>.root()` returning the tab's root page spec. `tab.badge = () => number` adds a badge.
+- Tabs are fixed in `WD.app.tabs` (`board map office shift more`; `office` is the CRM tab). The last tab, `more`, is a menu rather than a screen: it lists `WD.app.menu` (`services products customers invoices reports calc maintenance settings`) and opens the chosen section's `WD.screens.<id>.root()` in its own stack. `WD.nav.switchTab('<section id>')` opens a section from code. `can` is a permission flag or a function; `tab.badge` / `menuItem.badge = () => number` adds a badge.
 
 ### Feedback and fake network
 

@@ -315,7 +315,7 @@ OP.confirmJob = job => {
   let pricing = OP.pricingText(job, 'rates') ? CF.pricing : 'none';
   const base = { text: CO.fill(CO.tpl('confirm').body, ctx), email: CO.fill(CO.tpl('confirmEmail').body, ctx) }, body = {}, build = () => { const t = OP.pricingText(job, pricing); body.text = base.text + (t ? '\n\n' + t : ''); body.email = base.email + (t ? '\n\n' + t : ''); }; build();
   const from = OP.senderFor(c, S.me, 'text'), who = first(p.name) || 'the customer';
-  const send = () => { job.events.push({ at: +WD.now(), actor: CF.mode === 'auto' ? 'Work Dispatcher' : me(), text: 'Confirmation sent by ' + use.join(' and ') + ' to ' + (p.name || 'the customer') + (use.includes('text') ? ' · from ' + from.text : '') + (pricing === 'rates' ? ' · with pricing rates' : pricing === 'total' ? ' · with the estimated total' : '') }); WD.changed(); };
+  const send = () => { job.events.push({ at: +WD.now(), actor: CF.mode === 'auto' ? 'RouteClerk' : me(), text: 'Confirmation sent by ' + use.join(' and ') + ' to ' + (p.name || 'the customer') + (use.includes('text') ? ' · from ' + from.text : '') + (pricing === 'rates' ? ' · with pricing rates' : pricing === 'total' ? ' · with the estimated total' : '') }); WD.changed(); };
   if (CF.mode === 'auto') { send(); return ui.toast('Confirmation ' + use.join(' and ') + ' sent to ' + who, use[0] === 'email' ? 'envelope' : 'message', 3000); }
   let tab = use[0];
   ui.sheet({ title: 'Confirm with the customer', leading: [{ label: 'Skip', onTap: pg => pg.dismiss() }],

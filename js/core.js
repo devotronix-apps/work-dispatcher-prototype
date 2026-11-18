@@ -1,10 +1,10 @@
-/* Work Dispatcher prototype — core: DOM helper, icons, iOS components, navigation, fake network, app shell.
+/* RouteClerk prototype — core: DOM helper, icons, iOS components, navigation, fake network, app shell.
    Everything hangs off the global `WD`. Screen modules live in js/screens/*.js and register on WD.screens. */
 (function () {
 'use strict';
 const WD = window.WD = { screens: {}, data: {} };
 /** Prototype version (Settings → About). Bump on every publish; the “what’s new” tutorial shows once per version. */
-WD.version = '3.1';
+WD.version = '4.0';
 const $ = (s, r) => (r || document).querySelector(s);
 
 /* ================= DOM helper ================= */
@@ -175,7 +175,7 @@ const I = WD.icons = {
   share: '<path d="M12 15V3.500M8 7l4-4 4 4M6 11H5a1.500 1.500 0 0 0-1.500 1.500v7A1.500 1.500 0 0 0 5 21h14a1.500 1.500 0 0 0 1.500-1.500v-7A1.500 1.500 0 0 0 19 11h-1"/>',
   link: '<path d="M10 14a4.500 4.500 0 0 0 6.400 0l3-3a4.500 4.500 0 0 0-6.400-6.400l-1 1M14 10a4.500 4.500 0 0 0-6.400 0l-3 3a4.500 4.500 0 0 0 6.400 6.400l1-1"/>',
   cloud: '<path d="M7 18.500a4.500 4.500 0 0 1-.500-9 6 6 0 0 1 11.600 1.500 3.800 3.800 0 0 1-.600 7.500H7z"/>', globe: '<circle cx="12" cy="12" r="9.500"/><path d="M2.500 12h19M12 2.500c3 3 3 16 0 19M12 2.500c-3 3-3 16 0 19"/>',
-  filter: '<path d="M4 7h16M7 12h10M10 17h4"/>', sparkles: '<path d="M11 3.500l1.800 5.200L18 10.500l-5.200 1.800L11 17.500l-1.800-5.200L4 10.500l5.200-1.800L11 3.500zM18.500 15l.800 2.200 2.200.800-2.200.800-.800 2.200-.800-2.200-2.200-.800 2.200-.800.800-2.200z"/>',
+  filter: '<path d="M4 7h16M7 12h10M10 17h4"/>', 'line.3.horizontal': '<path d="M4 6.5h16M4 12h16M4 17.5h16"/>', wrench: '<path d="M14.5 6.5a4 4 0 0 0 5 5L11 20a2.100 2.100 0 0 1-3-3l8.500-8.500a4 4 0 0 0-5-5l2.500 2.500-1 2-2 1L8.500 6.500"/>', sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2.500v2.500M12 19v2.500M2.500 12H5M19 12h2.500M5.300 5.300L7 7M17 17l1.700 1.700M5.300 18.700L7 17M17 7l1.700-1.700"/>', textformat: '<path d="M3 18.500L7.500 6l4.500 12.500M4.600 14.500h5.800M14.500 18.500l3-8 3 8M15.500 16h4"/>', calculator: '<rect x="5" y="3" width="14" height="18" rx="2.500"/><path d="M8.500 7.500h7M8.500 12h.01M12 12h.01M15.500 12h.01M8.500 16h.01M12 16h.01M15.500 16h.01"/>', fuelpump: '<path d="M5 20V6a2 2 0 0 1 2-2h5a2 2 0 0 1 2 2v14M3.500 20h12M7.500 8h4M14 11h1.500a1.500 1.500 0 0 1 1.500 1.500V16a1.500 1.500 0 0 0 3 0V9l-2.500-2.500"/>', sparkles: '<path d="M11 3.500l1.800 5.200L18 10.500l-5.200 1.800L11 17.500l-1.800-5.200L4 10.500l5.200-1.800L11 3.500zM18.500 15l.800 2.200 2.200.800-2.200.800-.800 2.200-.800-2.200-2.200-.800 2.200-.800.800-2.200z"/>',
   shippingbox: '<path d="M12 3l8.500 4.500v9L12 21l-8.500-4.500v-9L12 3zM3.500 7.500L12 12l8.500-4.500M12 12v9M7.700 5.300l8.600 4.500"/>',
   route: '<circle cx="6" cy="18" r="2.500"/><circle cx="18" cy="6" r="2.500"/><path d="M8.500 18H15a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h6.500"/>',
   'chart.bar': '<path d="M4 20V11M9.300 20V4M14.700 20v-7M20 20V8"/>', gauge: '<path d="M4.500 17a8.500 8.500 0 1 1 15 0M12 13l4-5"/><circle cx="12" cy="13.500" r="1.300" fill="currentColor"/>',
@@ -195,7 +195,7 @@ WD.addIcons = map => Object.assign(I, map);
 WD.textOn = hex => { const m = /^#?([0-9a-f]{6})$/i.exec(hex || ''); if (!m) return '#fff'; const n = parseInt(m[1], 16), c = [n >> 16, n >> 8 & 255, n & 255].map(v => { v /= 255; return v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); }); return .2126 * c[0] + .7152 * c[1] + .0722 * c[2] > .4 ? '#1C1C1E' : '#fff'; };
 
 /* ================= State and permissions ================= */
-const ALL = ['analytics.view', 'tracking.view_live', 'team.locations', 'crm.view', 'crm.edit', 'billing.view', 'billing.field', 'billing.manage', 'jobs.edit', 'users.manage', 'hr.manage', 'settings.manage', 'contracts.manage', 'comms.view', 'leads.view', 'leads.all'];
+const ALL = ['analytics.view', 'tracking.view_live', 'team.locations', 'crm.view', 'crm.edit', 'billing.view', 'billing.field', 'billing.manage', 'jobs.edit', 'users.manage', 'hr.manage', 'settings.manage', 'contracts.manage', 'comms.view', 'leads.view', 'leads.all', 'maintenance.view'];
 WD.roles = {
   owner: { title: 'Owner', perms: ALL }, admin: { title: 'Admin', perms: ALL },
   dispatcher: { title: 'Dispatcher', perms: ['jobs.edit', 'tracking.view_live', 'team.locations', 'crm.view', 'crm.edit', 'analytics.view', 'billing.field', 'comms.view', 'leads.view'] },
@@ -210,12 +210,13 @@ WD.permissionList = [
   ['analytics.view', 'Analytics', 'Driver, stop and route reports'], ['billing.view', 'View billing', 'Invoices and payments'],
   ['billing.field', 'Field invoicing', 'Edit job charges, collect signatures and payment on site'], ['billing.manage', 'Manage billing', 'Create invoices and charge cards'], ['users.manage', 'Manage team', 'Invite people and change roles'], ['hr.manage', 'HR authority', 'Approve time off; see everyone’s hours, overtime, federal overtime, time cards and reports for any dates; fix clock-in/out times and add missed shifts. Owners and admins have it; it can be granted to anyone'], ['settings.manage', 'Company settings', 'Integrations and the Google mirror'],
   ['contracts.manage', 'Service agreements', 'Create, send and track service agreements to signature'], ['comms.view', 'Call and message history', 'Call transcripts and summaries of past calls, texts and emails when a customer calls'],
+  ['maintenance.view', 'Maintenance', 'The Maintenance section: trucks, pre-trip inspection reports, GPS readings, engine codes, repairs and service due. Owners and admins have it; it can be granted to anyone'],
   ['leads.view', 'CRM: leads and pipeline', 'The CRM tab: leads, follow-ups, quotes, referrals and customer feedback'], ['leads.all', 'CRM: all territories', 'See every lead. Off = only leads in the regions, ZIP codes or area codes assigned to this person'],
 ];
 const S = WD.state = {
   signedIn: false, role: 'owner', me: null, org: null,
   offline: false, sim: { conflictNext: false },
-  theme: (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light',
+  theme: (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light', textSize: 1,
   pending: [], abandoned: [], folded: {},        // folded: which collapsible sections are closed, by page title | section header
   board: { day: null, mode: 'routes', routeId: null, dayCount: 3 },
   shift: null,                                   // set by the Shift screen while clocked in
@@ -228,7 +229,8 @@ WD.can = flag => { const u = S.me; if (!u) return false; return (u.perms || WD.r
 /* ================= iOS components ================= */
 const ui = WD.ui = {};
 const screen = () => $('#screen'), overlays = () => $('#overlays');
-WD.scale = () => { const s = screen(); return s.getBoundingClientRect().width / s.offsetWidth || 1; };
+/* Measured on the overlay layer, which carries the Display → Text size zoom, so pointer math stays right at every text size. */
+WD.scale = () => { const s = overlays(); return s.getBoundingClientRect().width / s.offsetWidth || 1; };
 /** Pointer event → {x, y} in `el`'s own unscaled CSS pixels (the phone is scaled to fit the window). */
 ui.localPoint = (evt, el) => { const r = el.getBoundingClientRect(), k = WD.scale(); return { x: (evt.clientX - r.left) / k, y: (evt.clientY - r.top) / k }; };
 
@@ -366,7 +368,7 @@ ui.menu = (anchor, items, o = {}) => {
       anyCheck && h('span.mi-check', it.checked ? WD.icon('checkmark', 16) : null), h('span.mi-label', it.label, it.subtitle && h('span.mi-sub', it.subtitle)), it.icon && WD.icon(it.icon, 20)));
   });
   add(overlays(), [dim, el]);
-  const sc = screen(), sr = sc.getBoundingClientRect(), k = WD.scale(), a = anchor.getBoundingClientRect();
+  const sc = overlays(), sr = sc.getBoundingClientRect(), k = WD.scale(), a = anchor.getBoundingClientRect();
   const ax = (a.left - sr.left) / k, ay = (a.top - sr.top) / k, aw = a.width / k, ah = a.height / k, W = sc.offsetWidth, H = sc.offsetHeight, mw = 250, mh = Math.min(el.offsetHeight, 560);
   const rightSide = ax + aw / 2 > W / 2, below = ay + ah + 8 + mh < H - 30;
   el.style.left = Math.max(8, Math.min(W - mw - 8, rightSide ? ax + aw - mw : ax)) + 'px';
@@ -500,11 +502,26 @@ const app = WD.app = { tabs: [
   { id: 'board', title: 'Dispatch', icon: 'calendar' }, { id: 'map', title: 'Map', icon: 'map' },
   /* Customers, CRM and Invoices are one Admin tab with a selector (CRM first). The three keep their own entries, hidden, so their badges and screens still register. */
   { id: 'office', get title() { const s = app.officeSegs(); return s.length === 1 ? OFFICE[s[0]][0] : 'Admin'; }, get icon() { const s = app.officeSegs(); return s.length === 1 ? OFFICE[s[0]][1] : 'briefcase'; }, can: () => app.officeSegs().length > 0, badge: () => app.officeSegs().reduce((n, id) => { const t = app.tabs.find(x => x.id === id); return n + (t && t.badge ? t.badge() : 0); }, 0) },
-  { id: 'customers', title: 'Customers', icon: 'person.2', can: 'crm.view', hidden: true }, { id: 'crm', title: 'CRM', icon: 'funnel', can: 'leads.view', hidden: true }, { id: 'invoices', title: 'Invoices', icon: 'doc.text', can: () => WD.can('billing.view') || WD.can('billing.field'), hidden: true }, { id: 'shift', title: 'Shift', icon: 'truck' }, { id: 'settings', title: 'Settings', icon: 'gearshape' },
+  { id: 'customers', title: 'Customers', icon: 'person.2', can: 'crm.view', hidden: true }, { id: 'crm', title: 'CRM', icon: 'funnel', can: 'leads.view', hidden: true }, { id: 'invoices', title: 'Invoices', icon: 'doc.text', can: () => WD.can('billing.view') || WD.can('billing.field'), hidden: true }, { id: 'shift', title: 'Shift', icon: 'truck' }, { id: 'settings', title: 'Settings', icon: 'gearshape', hidden: true },
+  /* The last tab is a menu (three lines), not a screen: it lists the sections in app.menu and opens the chosen one in its own stack. */
+  { id: 'more', title: 'Menu', icon: 'line.3.horizontal', menu: true, badge: () => app.menuItems().reduce((n, m) => n + app.menuBadge(m), 0) },
 ] };
+/** Sections in the menu, top to bottom. Each opens WD.screens[id].root(). A person can hide any of them except Settings (Settings → Display → Menu sections). */
+app.menu = [
+  { id: 'services', title: 'Services', icon: 'repeat', can: () => WD.can('billing.view') || WD.can('jobs.edit') || WD.can('settings.manage') },
+  { id: 'products', title: 'Products', icon: 'shippingbox', can: () => WD.can('billing.view') || WD.can('jobs.edit') || WD.can('settings.manage') },
+  { id: 'customers', title: 'Customers', icon: 'person.2', can: () => WD.can('crm.view') },
+  { id: 'invoices', title: 'Invoices', icon: 'doc.text', can: () => WD.can('billing.view') || WD.can('billing.field') },
+  { id: 'reports', title: 'Reports', icon: 'chart.bar', can: () => WD.can('analytics.view') || WD.can('billing.view') },
+  { id: 'calc', title: 'Price Calc', icon: 'calculator', can: () => WD.can('jobs.edit') || WD.can('billing.manage') || WD.can('crm.edit') },
+  { id: 'maintenance', title: 'Maintenance', icon: 'wrench', can: () => WD.can('maintenance.view') },
+  { id: 'settings', title: 'Settings', icon: 'gearshape', fixed: true },
+];
+app.menuItems = () => app.menu.filter(m => (!m.can || m.can()) && (m.fixed || !((S.prefs && S.prefs.hidden) || {})[m.id]));
+app.menuBadge = m => { const t = m.id !== 'customers' && app.tabs.find(x => x.id === m.id && x.hidden); return (m.badge ? m.badge() : 0) + (t && t.badge ? t.badge() : 0); };
 const OFFICE = { crm: ['CRM', 'funnel'], customers: ['Customers', 'person.2'], invoices: ['Invoices', 'doc.text'] };
 /** The Admin tab's views this person may see, in order: CRM, Customers, Invoices. */
-app.officeSegs = () => [WD.can('leads.view') && 'crm', WD.can('crm.view') && 'customers', (WD.can('billing.view') || WD.can('billing.field')) && 'invoices'].filter(Boolean);
+app.officeSegs = () => [WD.can('leads.view') && 'crm'].filter(Boolean);   // Customers and Invoices moved to the menu in 4.0
 app.officeSeg = null; app.officeNames = OFFICE;
 let tabState = null, rootStack = null;
 const nav = WD.nav = {
@@ -512,8 +529,8 @@ const nav = WD.nav = {
   current: () => sheets.length ? sheets[sheets.length - 1].stack : tabState ? tabState.stacks[tabState.active] : rootStack,
   push: spec => nav.current().push(spec),
   pop: () => nav.current().pop(),
-  /** 'customers', 'crm' and 'invoices' open the Admin tab on that view. */
-  switchTab: id => { if (!tabState) return; if (OFFICE[id]) { app.officeSeg = id; id = 'office'; WD.emit('officeSeg'); } tabState.select(id); },
+  /** A menu section's id ('customers', 'invoices', 'settings', 'reports'…) opens that section; 'crm' opens the CRM tab. */
+  switchTab: id => { if (!tabState) return; if (app.menu.some(m => m.id === id)) return tabState.go(id); if (OFFICE[id]) { app.officeSeg = id; id = 'office'; WD.emit('officeSeg'); } tabState.select(id); },
   activeTab: () => tabState && tabState.active,
 };
 function clearRoot() { stacks.forEach(st => { if (!st.sheet) stacks.delete(st); }); tabState = null; rootStack = null; $('#root').replaceChildren(); }
@@ -523,12 +540,18 @@ app.showRoot = spec => { ui.closeAllSheets(); clearRoot(); rootStack = makeStack
 app.showMain = tabId => {
   ui.closeAllSheets(); clearRoot();
   const tabs = app.tabs.filter(t => !t.hidden && (!t.can || (typeof t.can === 'function' ? t.can() : WD.can(t.can)))), panes = h('div.tabpanes'), bar = h('div.tabbar'), state = tabState = { stacks: {}, active: null, buttons: {} };
-  tabs.forEach(t => { const b = state.buttons[t.id] = h('button.tab', { onclick: () => state.select(t.id) }, WD.icon(t.icon, 27), h('span', t.title)); bar.appendChild(b); });
+  tabs.forEach(t => { const b = state.buttons[t.id] = h('button.tab', { 'aria-label': t.title, onclick: () => t.menu ? state.openMenu(b) : state.select(t.id) }, WD.icon(t.icon, 27), h('span', t.title)); bar.appendChild(b); });
+  state.cur = 'settings';
+  state.openMenu = anchor => ui.menu(anchor, app.menuItems().map(m => { const n = app.menuBadge(m); return { label: m.title + (n ? '  (' + n + ')' : ''), icon: m.icon, onTap: () => state.go(m.id) }; }));
+  /** Open a menu section in the Menu tab's stack (a different section replaces the stack). */
+  state.go = id => { const m = app.menuItems().find(x => x.id === id) || app.menu.find(x => x.id === 'settings'), old = state.stacks.more;
+    if (old && state.cur !== m.id) { old.el.remove(); stacks.delete(old); delete state.stacks.more; if (state.active === 'more') state.active = null; }
+    state.cur = m.id; state.select('more'); };
   state.select = id => {
     const t = tabs.find(x => x.id === id) || tabs[0]; id = t.id;
     if (state.active === id) { state.stacks[id].popToRoot(); return; }
     if (!state.stacks[id]) {
-      const mod = WD.screens[id], st = state.stacks[id] = makeStack(); st.el.dataset.tab = id; panes.appendChild(st.el);
+      const mod = WD.screens[t.menu ? state.cur : id], st = state.stacks[id] = makeStack(); st.el.dataset.tab = id; panes.appendChild(st.el);
       st.push(mod && mod.root ? mod.root() : { title: t.title, large: true, render: () => ui.empty({ icon: t.icon, title: t.title, text: 'This screen is not part of the prototype yet.' }) }, false);
     }
     Object.entries(state.stacks).forEach(([k, st]) => st.el.classList.toggle('active', k === id));
@@ -552,7 +575,10 @@ const stillSignedIn = () => { const last = +store.get('wd.lastSignIn'), pol = WD
 app.signIn = () => { S.signedIn = true; store.set('wd.lastSignIn', String(Date.now())); store.set('wd.signedOut', '0'); app.showMain(); syncPanel(); };
 app.signOut = () => { store.set('wd.signedOut', '1'); S.signedIn = false; S.shift = null; ui.closeAllSheets(); if (WD.screens.auth && WD.screens.auth.show) WD.screens.auth.show(); else app.showMain(); syncPanel(); };
 app.setRole = role => { S.role = role; S.me = (WD.data.users || []).find(u => u.role === role && u.status !== 'invited') || S.me; if (S.signedIn) app.showMain(); syncPanel(); WD.emit('role', role); };
-app.setTheme = t => { S.theme = t; screen().dataset.theme = t; syncPanel(); };
+app.setTheme = t => { S.theme = t; screen().dataset.theme = t; store.set('wd.theme', t); syncPanel(); WD.changed(); };
+/** Display → Text size. The whole interface is scaled, the way Dynamic Type enlarges an iPhone app. */
+WD.textSizes = [{ value: 0.9, label: 'Small' }, { value: 1, label: 'Default' }, { value: 1.12, label: 'Large' }, { value: 1.25, label: 'Extra large' }, { value: 1.4, label: 'Largest' }];
+app.setTextSize = z => { S.textSize = z = +z || 1; [$('#root'), overlays()].forEach(el => { el.style.zoom = z === 1 ? '' : z; }); store.set('wd.textSize', String(z)); WD.changed(); };
 app.setOffline = off => { S.offline = off; $('.statusbar').classList.toggle('offline', off); S.pending.forEach(op => { if (op.status === 'queued') op.message = off ? 'Waiting for a connection' : 'Waiting to sync'; }); syncPanel(); WD.changed(); if (!off) WD.api.flush(); WD.emit('network', !off); };
 
 /* ================= Fake backend: the offline queue (PendingOperation) ================= */
@@ -614,7 +640,9 @@ const api = WD.api = {
 };
 
 /* ================= Prototype control panel (outside the phone) ================= */
-const panel = WD.panel = { actions: [], jumps: [],
+const panel = WD.panel = { actions: [], jumps: [], segs: [],
+  /** Add a labelled selector to the panel: options() → [[value, label]], get() → current value, set(value). */
+  addSeg(title, options, get, set) { panel.segs.push({ title, options, get, set }); syncPanel(); },
   /** Add a button under “Simulate”. */
   addAction(label, fn) { panel.actions.push({ label, fn }); syncPanel(); },
   /** Add a “Jump to” shortcut. fn runs with the tab interface showing and no sheets open. */
@@ -625,11 +653,12 @@ function syncPanel() {
   const seg = (opts, cur, fn) => h('div.pseg', opts.map(([v, l]) => h('button' + (v === cur ? '.on' : ''), { onclick: () => fn(v) }, l)));
   const ready = fn => () => { if (!S.signedIn) { S.signedIn = true; } ui.closeAllSheets(); if (!tabState) app.showMain(); syncPanel(); setTimeout(fn, 60); };
   el.replaceChildren(); add(el, [
-    h('h1', 'Work Dispatcher'), h('p.sub', 'Clickable iPhone prototype of the migrated app. Nothing is saved; reload to reset.'),
+    h('h1', 'RouteClerk'), h('p.sub', 'Clickable iPhone prototype of the route business app. Nothing is saved; reload to reset.'),
     h('h2', 'Preview as'), seg([['owner', 'Owner'], ['dispatcher', 'Dispatch'], ['office', 'Office'], ['driver', 'Driver']], S.role, r => app.setRole(r)),
     h('p.sub', { style: 'margin:6px 0 0' }, S.me ? S.me.name + ' · ' + WD.roles[S.role].title : ''),
     h('h2', 'Appearance'), seg([['light', 'Light'], ['dark', 'Dark']], S.theme, t => app.setTheme(t)),
     h('h2', 'Network'), seg([[false, 'Online'], [true, 'Offline']], S.offline, v => app.setOffline(v)),
+    panel.segs.map(x => [h('h2', x.title), seg(x.options(), x.get(), v => { x.set(v); syncPanel(); })]),
     h('label.pcheck', h('input', { type: 'checkbox', checked: S.sim.conflictNext, onchange: e => { S.sim.conflictNext = e.target.checked; } }), 'Next job change hits a conflict'),
     h('h2', 'Simulate'), panel.actions.map(a => h('button.pbtn', { onclick: ready(a.fn) }, a.label)),
     h('h2', 'Jump to'), h('div.jumps', h('button', { onclick: () => app.signOut() }, 'Sign-in'), panel.jumps.map(j => h('button', { onclick: ready(j.fn) }, j.label))),
@@ -644,7 +673,7 @@ function fit() {
 }
 function tick() { const t = $('.sb-time'); if (t) t.textContent = F.time(WD.nowMins(), true); }
 app.start = () => {
-  screen().dataset.theme = S.theme;
+  if (store.get('wd.theme')) S.theme = store.get('wd.theme'); screen().dataset.theme = S.theme; if (+store.get('wd.textSize')) app.setTextSize(+store.get('wd.textSize'));
   S.me = (WD.data.users || []).find(u => u.role === S.role) || { id: 'u0', name: 'You', role: 'owner' };
   S.org = (WD.data.orgs || [])[0] || { id: 'o1', name: 'Company' };
   S.board.day = D.today();

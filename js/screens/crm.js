@@ -35,7 +35,7 @@ const P = (name, role, phone, email) => ({ name, role, phone, email });
   .forEach(([id, name, source, channel, lifecycle, next, x, y, address, contact, note, age, owner]) => { if (q.customer(id)) return;
     const c = K.mk({ id, name, channel, lifecycle, next, x, y, address, contacts: [contact], owner, cnotes: note, containers: id === 'c42' ? '25 boxes' : id === 'c44' ? '14 consoles' : '2 consoles', type: id === 'c42' ? 'purge' : 'regular', freq: id === 'c42' ? 'One time' : id === 'c43' ? 'Weekly' : 'Every 4 weeks' });
     Object.assign(c, { source, createdAt: +WD.now() - age * 864e5, changes: [] }); c.locations.forEach(l => { l.items = WD.parseItems(l.containers); });
-    K.addI({ customerId: id, type: 'note', at: c.createdAt, text: note, by: source === 'referral' ? 'Colleen Abbott' : 'Work Dispatcher · ' + SRC[source].title.toLowerCase() });
+    K.addI({ customerId: id, type: 'note', at: c.createdAt, text: note, by: source === 'referral' ? 'Colleen Abbott' : 'RouteClerk · ' + SRC[source].title.toLowerCase() });
     if (lifecycle !== 'lead') K.addI({ customerId: id, type: 'note', at: c.createdAt + 5 * 36e5, text: 'Follow-up sent (“New lead — first reply”, text).', by: (q.user(owner) || {}).name || 'Office' }); });
 /* Priority (low, medium, high) is set by the office on each lead; new leads start at medium. */
 const PRI = { high: ['High', 'var(--red)', 0], medium: ['Medium', 'var(--orange)', 1], low: ['Low', 'var(--gray)', 2] }, PRIS = ['high', 'medium', 'low'], priOf = c => PRI[c.priority] ? c.priority : 'medium';
@@ -85,7 +85,7 @@ const quiet = c => { const t = lastTouch(c); return t ? Math.max(0, Math.floor((
 const isDue = c => c.lifecycle !== 'scheduled' && c.lifecycle !== 'lost' && ((c.nextAction && c.nextAction <= today) || (F.reminders && c.lifecycle !== 'lead' && quiet(c) >= ST.remindDays && !(c.nextAction && c.nextAction > today)));
 /** Who on the team last reached out (call, text, email, follow-up, quote, Yelp reply) and when. → {at, by, how} or null */
 function lastContact(c) {
-  let best = null; const take = (at, by, how) => { if (by && !/^Work Dispatcher/.test(by) && (!best || at > best.at)) best = { at, by, how }; };
+  let best = null; const take = (at, by, how) => { if (by && !/^RouteClerk/.test(by) && (!best || at > best.at)) best = { at, by, how }; };
   data.interactions.forEach(i => { if (i.customerId !== c.id) return;
     if (i.type === 'call') take(i.at, i.by, i.dir === 'in' ? 'took their call' : 'called');
     else if (i.type === 'text') (i.messages || []).forEach(m => { if (m.dir === 'out') take(m.at, m.by || K.staff(c.owner), 'texted'); });
@@ -335,11 +335,11 @@ WD.panel.addJump('CRM tasks', () => show('tasks'));
 WD.panel.addAction('New lead from Yelp', () => { const id = 'c' + Date.now().toString(36), names = [['Juniper Family Dental', 'Rosa Whitlock', '88 Juniper St', '“Looking for a quote to shred about 30 boxes of old patient charts.”'], ['Mesa Tax & Accounting', 'Gil Barrera', '412 Mesa Blvd', '“Do you offer a monthly console service? Two-person office.”']], n = names[data.customers.length % 2];
   if (!ST.sources.yelp) return ui.toast('Yelp leads are switched off in Settings → CRM and leads', 'info.circle', 3200);
   const c = K.mk({ id, name: n[0], channel: 'Yelp', contacts: [{ name: n[1], role: '', phone: '', email: '' }], address: n[2], x: 280 + (data.customers.length * 83) % 420, y: 220 + (data.customers.length * 61) % 480, next: 0, cnotes: 'Yelp request: ' + n[3] });
-  Object.assign(c, { source: 'yelp', createdAt: +WD.now(), changes: [] }); c.locations.forEach(l => { l.items = []; }); K.addI({ customerId: id, type: 'note', at: +WD.now(), text: c.notes + ' Yelp does not share their phone or email until they reply, so answer in Yelp.', by: 'Work Dispatcher · Yelp' }); K.addTask(id, 'Reply to the Yelp request', 0, { lead: true }); WD.changed();
+  Object.assign(c, { source: 'yelp', createdAt: +WD.now(), changes: [] }); c.locations.forEach(l => { l.items = []; }); K.addI({ customerId: id, type: 'note', at: +WD.now(), text: c.notes + ' Yelp does not share their phone or email until they reply, so answer in Yelp.', by: 'RouteClerk · Yelp' }); K.addTask(id, 'Reply to the Yelp request', 0, { lead: true }); WD.changed();
   ui.banner({ title: 'New lead · Yelp', text: n[0] + ' — ' + n[1] + ' sent a request. Reply in Yelp.', icon: 'star.fill', color: 'var(--red)', duration: 7000, onTap: () => { if (WD.can('leads.view')) { WD.nav.switchTab('crm'); openLead(id); } } }); });
 WD.panel.addAction('New lead from the website form', () => { const id = 'c' + Date.now().toString(36), names = [['Birchwood Pediatrics', 'Nina Alvarado', 'nina@birchwoodpeds.example', '31 Birchwood Ln'], ['Keystone Title Co.', 'Owen Marsh', 'owen@keystonetitle.example', '500 Keystone Ave']], n = names[data.customers.length % 2];
   if (!ST.sources.form) return ui.toast('Website form leads are switched off in Settings → CRM and leads', 'info.circle', 3200);
   const c = K.mk({ id, name: n[0], channel: 'Website', contacts: [{ name: n[1], role: '', phone: '+1512555' + String(1000 + data.customers.length * 7).slice(-4), email: n[2] }], address: n[3], x: 300 + (data.customers.length * 97) % 400, y: 200 + (data.customers.length * 53) % 500, next: 0, cnotes: 'Website form: “We need a console for patient records. What does it cost?”' });
-  Object.assign(c, { source: 'form', createdAt: +WD.now(), changes: [] }); c.locations.forEach(l => { l.items = []; }); K.addI({ customerId: id, type: 'note', at: +WD.now(), text: c.notes, by: 'Work Dispatcher · website form' }); WD.changed();
+  Object.assign(c, { source: 'form', createdAt: +WD.now(), changes: [] }); c.locations.forEach(l => { l.items = []; }); K.addI({ customerId: id, type: 'note', at: +WD.now(), text: c.notes, by: 'RouteClerk · website form' }); WD.changed();
   ui.banner({ title: 'New lead · website form', text: n[0] + ' — ' + n[1] + ' asked for a price.', icon: 'funnel', color: 'var(--purple)', duration: 7000, onTap: () => { if (WD.can('leads.view')) { WD.nav.switchTab('crm'); openLead(id); } } }); });
 })();

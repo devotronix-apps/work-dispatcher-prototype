@@ -1,4 +1,4 @@
-/* Work Dispatcher prototype — round 11, part 2. Adds to WD.r11 and registers WD.screens.office.
+/* RouteClerk prototype — round 11, part 2. Adds to WD.r11 and registers WD.screens.office.
    The Admin tab (CRM, Customers and Invoices behind one selector), unpaid-invoice warnings, hiding a customer and card on file,
    route notes for the driver or office, postponed jobs and price approvals in the Tasks pipeline, Change Route on the planning map,
    the driver's own-route default, and the driver's inventory and route note on the Shift tab. */
@@ -44,9 +44,9 @@ X.unpaidSection = () => { const list = debtors(); if (!list.length) return null;
 const openUnpaid = () => { if (WD.can('crm.view')) { WD.nav.switchTab('customers'); setTimeout(() => WD.nav.push(X.unpaidSpec()), 80); } else WD.nav.push(X.unpaidSpec()); };
 
 /* ================= Warning lines on the Dispatch tab ================= */
-X.boardStrips = () => { const out = [], strip = (color, ic, text, fn) => out.push(h('div.bd-strip', { style: { '--c': color }, onclick: fn }, icon(ic, 16), text, h('span.spacer'), 'Review', icon('chevron.right', 13)));
-  if (WD.can('billing.view') || WD.can('jobs.edit')) { const n = data.customers.filter(X.overLimit).length; if (n) strip('var(--red)', 'dollarsign.circle', n + (n === 1 ? ' customer has' : ' customers have') + ' more than ' + plural(C.unpaid.limit, 'unpaid invoice'), WD.can('billing.view') ? openUnpaid : () => ui.toast('Ask the office: billing access is needed to see invoices', 'lock', 2800)); }
-  if (WD.can('jobs.edit')) { const n = X.flagged().length; if (n) strip('var(--orange)', 'person.2', n + (n === 1 ? ' job needs' : ' jobs need') + ' a qualified driver or truck', () => WD.nav.push(X.issuesSpec()));
+X.boardStrips = inView => { const seen = j => !inView || inView(j), out = [], strip = (color, ic, text, fn) => out.push(h('div.bd-strip', { style: { '--c': color }, onclick: fn }, icon(ic, 16), text, h('span.spacer'), 'Review', icon('chevron.right', 13)));
+  if (WD.can('billing.view') || WD.can('jobs.edit')) { const n = data.customers.filter(c => X.overLimit(c) && (!inView || data.jobs.some(j => j.customerId === c.id && !WD.closed[j.status] && inView(j)))).length; if (n) strip('var(--red)', 'dollarsign.circle', n + (n === 1 ? ' customer here has' : ' customers here have') + ' more than ' + plural(C.unpaid.limit, 'unpaid invoice'), WD.can('billing.view') ? openUnpaid : () => ui.toast('Ask the office: billing access is needed to see invoices', 'lock', 2800)); }
+  if (WD.can('jobs.edit')) { const n = X.flagged().filter(x => seen(x.job)).length; if (n) strip('var(--orange)', 'person.2', n + (n === 1 ? ' job here needs' : ' jobs here need') + ' a qualified driver or truck', () => WD.nav.push(X.issuesSpec()));
   }
   return out; };
 

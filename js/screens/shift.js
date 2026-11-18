@@ -131,7 +131,7 @@ function shiftDetail(s) {
 function openNotice() {
   ui.sheet({ title: 'Location tracking', leading: [{ label: 'Not now', onTap: p => p.dismiss() }], render: p => ui.list(
     h('div.sh-card.sh-notice',
-      h('p', h('b', 'When. '), 'Work Dispatcher records this iPhone’s location only while you’re clocked in to a shift. It stops when you clock out, or automatically ' + cutoff() + ' hours after clock-in.'),
+      h('p', h('b', 'When. '), 'RouteClerk records this iPhone’s location only while you’re clocked in to a shift. It stops when you clock out, or automatically ' + cutoff() + ' hours after clock-in.'),
       h('p', h('b', 'What. '), 'Position, speed and heading about every 30 seconds while moving, a check-in every 5 minutes while parked, stop arrival and departure times, and phone battery level.'),
       h('p', h('b', 'Who sees it. '), 'Owners, admins, dispatchers and office staff. They see where you are and the places you stayed longer than ' + data.timeRules.stayMinutes + ' minutes. It is used for routing, customer arrival windows, timesheets and service records.'),
       h('p', h('b', 'How long. '), 'Raw points are kept for 24 months and then thinned. Stop visits stay with the job history.'),
@@ -140,7 +140,7 @@ function openNotice() {
 }
 async function askLocation() {
   if (locationAuth) return locationAuth;
-  const v = await ui.alert({ title: 'Allow “Work Dispatcher” to use your location?', message: 'Your location is shared with dispatch only while you’re clocked in, so they can see your truck and record stop arrivals.',
+  const v = await ui.alert({ title: 'Allow “RouteClerk” to use your location?', message: 'Your location is shared with dispatch only while you’re clocked in, so they can see your truck and record stop arrivals.',
     buttons: [{ label: 'Allow While Using App', value: 'whenInUse' }, { label: 'Allow Always', value: 'always' }, { label: 'Don’t Allow', value: 'denied' }] });
   return (locationAuth = v);
 }
@@ -152,6 +152,8 @@ async function clockIn(routeId, vehicleId, m) {
       location: loc, lowPower: false, battery: 78, driveSec: 0, serviceSec: 0, idleSec: 0, tick: 0, lx: null, ly: null };
   }, { offlineOK: true, done: 'On shift' });
   if (ok && S.offline) ui.toast('Clock-in syncs when you’re back online', 'wifi.slash', 2600);
+  /* Route shifts: the load warning (hard drives, containers), then the pre-trip inspection, before the route can begin. */
+  if (ok && WD.rc && WD.rc.afterClockIn) WD.rc.afterClockIn();
 }
 async function clockOut() {
   const sh = S.shift, r = routeOf(), miss = data.workflow.missedCheck ? wf().missed(sh.routeId, D.today()) : [];
@@ -178,7 +180,7 @@ const setStatus = (id, s, note) => WD.api.setStatus(id, s, note);
 function armGeofence(job) {
   clearTimeout(geofenceTimer); if (!S.shift || S.shift.location === 'denied' || data.workflow.arrival === 'button') return;
   geofenceTimer = setTimeout(() => { const j = q.job(job.id); if (!S.shift || !j || j.status !== 'enroute') return;
-    setStatus(j.id, 'arrived', 'from GPS · ' + data.workflow.dwellMin + ' min at the stop'); ui.banner({ title: 'Work Dispatcher', text: 'Arrived at ' + j.title + ' — recorded from GPS, no need to tap', icon: 'mappin', color: 'var(--orange)' }); }, 6000);
+    setStatus(j.id, 'arrived', 'from GPS · ' + data.workflow.dwellMin + ' min at the stop'); ui.banner({ title: 'RouteClerk', text: 'Arrived at ' + j.title + ' — recorded from GPS, no need to tap', icon: 'mappin', color: 'var(--orange)' }); }, 6000);
 }
 /** Skip with three choices: no charge, charge the customer, or reschedule (jobs.js). */
 async function skip(job) { if (WD.screens.jobs && WD.screens.jobs.skipFlow && await WD.screens.jobs.skipFlow(job)) clearTimeout(geofenceTimer); }
@@ -223,7 +225,7 @@ function offShift(m) {
     consent ? ui.section({ footer: 'You agreed to the location tracking notice on ' + fmt.day(D.key(new Date(S.tracking.consentAt || +WD.now())), 'md') + '.' }, ui.row({ title: 'Location tracking notice', icon: 'checkmark.circle.fill', iconPlain: true, iconColor: 'var(--green)', chevron: true, onTap: openNotice }))
       : ui.section({ footer: 'You need to agree before your first shift.' }, ui.row({ title: 'Location tracking notice', subtitle: 'Review and agree', icon: 'hand.raised', iconColor: 'var(--orange)', chevron: true, onTap: openNotice })),
     h('div.sh-cta', ui.button('Clock in', { icon: 'play.fill', disabled: !consent, onTap: () => clockIn(r && r.id, veh, m) })),
-    locationAuth === 'denied' && h('div', { style: { marginTop: '10px' } }, ui.note('Location is off for Work Dispatcher. You can still clock in and report stops with the buttons; geofence arrivals and the live map won’t work.')),
+    locationAuth === 'denied' && h('div', { style: { marginTop: '10px' } }, ui.note('Location is off for RouteClerk. You can still clock in and report stops with the buttons; geofence arrivals and the live map won’t work.')),
     weekSection(), WD.x.timeOffSection(), WD.co && WD.co.qrSection(), teamSection(),
     !general && ui.section('Recent shifts', history().map(s => ui.row({ title: fmt.day(s.day, 'rel'), subtitle: q.routeName(s.routeId) + ' · ' + s.completed + ' stops · ' + s.miles.toFixed(1) + ' mi', detail: hm(s.end - s.start), chevron: true, onTap: () => nav.push(shiftDetail(s)) }))));
 }
@@ -231,17 +233,19 @@ function nextCard(r) {
   const stop = q.stops(r.id, D.today()).find(s => !DONE[s.job.status]);
   if (!stop) return h('div.sh-card.sh-done', icon('checkmark.circle.fill', 34, 'var(--green)'), h('div', h('div.headline', remaining(r.id).length ? 'No more mapped stops' : 'All stops done'), h('div.footnote', remaining(r.id).length ? 'The jobs left need an address or are meet-the-truck jobs.' : 'Head back to the shop and clock out.')));
   const job = stop.job, sx = WD.jobStatuses[job.status], b = (label, kind, fn, ic) => ui.button(label, { kind, icon: ic, block: false, onTap: fn }), btnArrive = data.workflow.arrival !== 'auto';
-  const complete = b('Complete stop', 'filled', () => { clearTimeout(geofenceTimer); wf().completeStop(job); }, 'checkmark');
+  /* A job with a checklist shows Checklist here first; Complete stop takes its place once the checklist is finished or submitted unfinished. */
+  const complete = (WD.rc && WD.rc.checklistButton && WD.rc.checklistButton(job, b)) || b('Complete stop', 'filled', () => { clearTimeout(geofenceTimer); wf().completeStop(job); }, 'checkmark');
   /* Complete works from any status: drivers who know the way, or several customers at one address, skip Start driving and arrival. */
   const flow = { scheduled: [b('Start driving', 'tinted', () => { setStatus(job.id, 'enroute'); armGeofence(job); if (data.workflow.afterBilling === 'navigate') wf().openDirections(job); WD.co && WD.co.onMyWay(job); }, 'truck'), complete],
     enroute: [btnArrive && b('I’ve arrived', 'tinted', () => { clearTimeout(geofenceTimer); setStatus(job.id, 'arrived'); }, 'mappin'), complete],
-    arrived: [complete] }[job.status] || [];
+    arrived: [complete] }[job.status] || [], gate = WD.rc && WD.rc.pretripGate && WD.rc.pretripGate(b);
   return h('div.sh-card.sh-next',
     h('div.hstack', h('span.sh-kicker', 'Next stop'), h('span.spacer'), ui.badge(sx.title, sx.color), job.pending && ui.badge('Pending sync', 'var(--orange)')),
     h('div.sh-top', numFor(job, stop.number), h('div', h('div.title3', job.title), (d => d.length ? h('div.wf-chips', d.map(x => h('span.wf-chip', x))) : null)(wf().titleDetails(job)), h('div.subhead.secondary', { style: { marginTop: '4px' } }, job.address))),
     h('div.sh-lines', h('div', icon('list.bullet', 17), h('span', (p => 'Stop ' + p.n + ' of ' + p.of + ' on today’s list')(q.position(job)))),
       job.containers && h('div', icon('shippingbox', 17), h('span', job.containers)), job.notes && h('div', icon('note', 17), h('span', job.notes))),
-    h('div.sh-acts', flow),
+    WD.rc && WD.rc.pastDueFlag && WD.rc.pastDueFlag(job),
+    h('div.sh-acts', gate || flow),
     h('div.sh-acts', { style: { marginTop: '8px' } }, b('Navigate', 'gray', () => wf().openDirections(job), 'arrow.triangle.turn.up.right'), b('Details', 'plain', () => openDetails(job.id), 'info.circle'), b('Skip…', 'plain', () => skip(job), 'xmark.circle.fill')));
 }
 function onShift() {

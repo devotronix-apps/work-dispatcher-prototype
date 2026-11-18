@@ -175,7 +175,7 @@ function mirror(job) {
 function openEditor(jobId, o = {}) {
   const job = q.job(jobId); if (!job) return;
   if (!canInvoice()) return ui.toast('Your role can’t create invoices', 'lock');
-  const wf = WD.workflow || {}, cust = q.customer(job.customerId), contact = cust && cust.contacts[0], prev = job.invoice && job.invoice.status === 'Draft' ? job.invoice : null, rep = repFor(job);
+  const wf = WD.workflow || {}, cust = q.customer(job.customerId), contact = cust && (cust.contacts || [])[0], prev = job.invoice && job.invoice.status === 'Draft' ? job.invoice : null, rep = repFor(job);
   const note = !!(cust && cust.billingMode === 'serviceNote' && !o.lines), pol = note ? 'always' : WD.sigPolicy(cust), poOf = day => wf.poFor && cust && cust.poSchedule && cust.poSchedule.length ? wf.poFor(cust, day).po : null;
   /* Scans are kept on the job, so anything scanned at the stop before billing is already here. */
   const JS = WD.jobScans ? WD.jobScans(job) : { containers: [], containerNote: '', drives: [], driveNote: '' };
@@ -264,7 +264,13 @@ function openEditor(jobId, o = {}) {
     trailing: () => [{ label: 'Create', bold: true, onTap: p => submit(p, false) }],
     render(p) {
       const c = cust, po = poOf(f.serviceDate), alert = wf.poAlert && c && wf.poAlert(c, f.serviceDate);
+      const sigSec = pol !== 'never' && ui.section({ header: 'Customer signature', footer: pol === 'always' ? (note ? 'Service notes are always signed.' : c.name + ' always requires a signature.') + ' Create unlocks once they sign.' : 'Optional for this customer. Get a signature if they want to sign.' },
+          f.custSig ? [h('div.bi-sig', h('div.bi-ink', sigView(f.custSig)), h('div.bi-cap', 'Customer Signature' + (f.custName ? ' · ' + f.custName : ''))), ui.row({ title: 'Sign again', tint: true, onTap: () => getCustomerSig(p) })]
+            : ui.row({ title: pol === 'always' ? 'Signature required' : 'No signature yet', icon: 'signature', iconPlain: true, iconColor: pol === 'always' ? 'var(--orange)' : 'var(--label3)' }));
       return ui.list(
+        /* One tap brings the signature into view, without scrolling past the lines, service details and payment. */
+        sigSec && h('div.bi-jump', ui.button(f.custSig ? 'Signed' + (f.custName ? ' · ' + f.custName : '') : pol === 'always' ? 'Signature required' : 'Signature', { kind: f.custSig ? 'gray' : pol === 'always' ? 'filled' : 'tinted', small: true, block: false, icon: f.custSig ? 'checkmark' : 'signature', onTap: () => p.body.scrollTo({ top: sigSec.offsetTop - 8, behavior: 'smooth' }) }),
+          !f.custSig && ui.button('Sign now', { kind: 'gray', small: true, block: false, icon: 'pencil', onTap: () => getCustomerSig(p) })),
         note && h('div', { style: 'padding:4px 4px 0' }, ui.note((c ? c.name : 'This customer') + ' gets one master invoice a month. This visit is saved as a signed service note and added to it in the database.')),
         ui.section({ header: (c ? c.name : job.title) + (job.address ? ' · ' + job.address.split(',')[0] : ''), footer: f.note || 'Adjust quantities, rates and line items. Rates start from this customer’s pricing.' },
           f.lines.map((l, i) => lineRow(l, i, p)),
@@ -285,9 +291,7 @@ function openEditor(jobId, o = {}) {
         hddQty() > 0 && WD.ops && ui.section({ header: 'Hard drives', footer: f.driveScan ? (f.driveNote ? 'Not all scanned: ' + f.driveNote : 'The serial numbers print on the invoice as proof each drive was destroyed.') : 'Counted and destroyed without scanning. Switch on if this customer needs the serial numbers.' },
           ui.toggleRow({ title: 'Scan each drive', subtitle: 'Barcode or serial number, for this job', value: f.driveScan, onChange: v => { f.driveScan = job.hddScan = v; p.refresh(); } }),
           f.driveScan && ui.row({ icon: f.drives.length >= hddQty() ? 'checkmark.circle.fill' : 'barcode', iconPlain: true, iconColor: f.drives.length >= hddQty() ? 'var(--green)' : 'var(--orange)', title: 'Scan hard drives', subtitle: f.drives.length + ' of ' + hddQty() + ' scanned', chevron: true, onTap: () => WD.ops.scanDrives(job, f.drives, hddQty(), () => p.refresh()) })),
-        pol !== 'never' && ui.section({ header: 'Customer signature', footer: pol === 'always' ? (note ? 'Service notes are always signed.' : c.name + ' always requires a signature.') + ' Create unlocks once they sign.' : 'Optional for this customer. Get a signature if they want to sign.' },
-          f.custSig ? [h('div.bi-sig', h('div.bi-ink', sigView(f.custSig)), h('div.bi-cap', 'Customer Signature' + (f.custName ? ' · ' + f.custName : ''))), ui.row({ title: 'Sign again', tint: true, onTap: () => getCustomerSig(p) })]
-            : ui.row({ title: pol === 'always' ? 'Signature required' : 'No signature yet', icon: 'signature', iconPlain: true, iconColor: pol === 'always' ? 'var(--orange)' : 'var(--label3)' })),
+        sigSec,
         !note && ui.section({ header: 'Payment', footer: f.pay === 'none' ? 'The invoice is emailed with a pay link.' : 'Marks the invoice paid and emails a receipt. ' + (f.pay === 'card' ? 'Tap to Pay runs through Stripe.' : 'Hand the ' + (f.pay === 'other' ? 'payment' : f.pay) + ' to the office.') },
           ui.pickerRow({ title: 'Paid on site', value: f.pay, options: [{ value: 'none', label: 'Not paid — send invoice' }, { value: 'cash', label: 'Cash' }, { value: 'check', label: 'Check' }, { value: 'card', label: 'Credit card' }, { value: 'other', label: 'Other' }], onChange: v => { f.pay = v; p.refresh(); } }),
           f.pay === 'check' && ui.inputRow({ label: 'Check #', placeholder: 'Optional', inputmode: 'numeric', value: f.checkNo, onInput: v => { f.checkNo = v; } }),
@@ -316,7 +320,7 @@ function visitRows(day, location, lines, pounds) {
   let lb = pounds; return lines.filter(l => l.qty || l.rate).map(l => { const bin = WD.CONTAINERS.includes(l.id), row = { day, location, desc: descOf(l), qty: +l.qty || 0, rate: +l.rate || 0, bins: bin ? +l.qty || 0 : 0, pounds: bin && lb ? lb : null }; if (bin && lb) lb = null; return row; });
 }
 function logo() {
-  const name = (S.org || data.orgs[0]).name, [first, ...rest] = name.split(' ');
+  const org = S.org || data.orgs[0], name = org.name, [first, ...rest] = name.split(' '); if (org.logo) return h('div.bi-logo', h('img', { src: org.logo, alt: name, style: 'max-height:54px;max-width:170px' }));
   return h('div.bi-logo', icon('repeat', 40, '#3A9B3A'), h('div', h('i', first), h('b', rest.join(' ').toUpperCase() || first.toUpperCase())));
 }
 /** o: {number, date, customer, billTo, attn, serviceLocation, terms, agreement, po, rows, paid, sigs} → one element per page. */
@@ -373,7 +377,7 @@ function standardInvoice(o) {
   const org = S.org || data.orgs[0], lines = o.lines.filter(l => l.qty || l.rate), tax = +o.tax || 0, tot = total(lines) + tax, net = parseInt((String(o.terms || '').match(/\d+/) || [30])[0], 10);
   const meta = [['Invoice Number', o.number], ['Invoice Date', mdy2(o.date)], ['Due Date', mdy2(D.add(o.date, net))], o.serviceDate && o.serviceDate !== o.date && ['Service Date', mdy2(o.serviceDate)], o.po && ['PO Number', o.po], o.revised && ['Revised', o.revised]].filter(Boolean);
   return h('div.bn-doc',
-    h('div.bn-top', logo(), h('div.bn-co', [org.name].concat((org.remit || []).slice(1), org.phone || [], org.website || []).map(x => h('div', x)))),
+    h('div.bn-top', logo(), h('div.bn-co', [org.name].concat((org.remit || []).slice(1), org.phone || [], org.fax ? 'Fax ' + org.fax : [], org.email || [], org.website || [], data.tax && data.tax.on && data.tax.regNo ? 'Tax reg. # ' + data.tax.regNo : []).map(x => h('div', x)))),
     h('div.bn-mid', h('div.bn-to', (o.billTo || []).map(x => h('div', x))), h('div', h('div.bn-ttl', 'Invoice'), h('div.bn-meta', meta.map(([k, v]) => [h('span', k), h('span', v)])))),
     h('table.bn-tab', h('thead', h('tr', h('th', 'Item'), h('th', 'Description'), h('th', 'Unit', h('br'), 'Cost'), h('th', 'Quantity'), h('th.r', 'Line', h('br'), 'Total'))),
       h('tbody', lines.map(l => { const [item, desc] = itemText(l); return h('tr', h('td', item), h('td', desc), h('td.n', money2(+l.rate || 0)), h('td.n', String(+l.qty || 0)), h('td.r.n', money2((+l.qty || 0) * (+l.rate || 0)))); }))),
@@ -449,6 +453,6 @@ function billingRows(job) {
     !note && wf && ui.row({ title: 'Paid — no invoice…', subtitle: 'Paid on the spot and no invoice wanted', icon: 'dollarsign.circle', iconPlain: true, tint: true, onTap: () => { if (job.status !== 'completed') WD.api.setStatus(job.id, 'completed'); wf.paidNoInvoice(job); } })];
 }
 
-WD.screens.billing = { openEditor, openInvoice, recordPayment, billingRows, invActions, masterDocSpec, invoiceDoc, signaturePad, sigView, linesForJob, canInvoice };
+WD.screens.billing = { standardInvoice, docWrap, logo, openEditor, openInvoice, recordPayment, billingRows, invActions, masterDocSpec, invoiceDoc, signaturePad, sigView, linesForJob, canInvoice };
 WD.panel.addJump('Invoice editor', () => { WD.nav.switchTab('board'); const j = data.jobs.filter(x => x.day === D.today() && x.status === 'completed' && !x.invoice && x.customerId).sort(q.order)[0]; if (j) openEditor(j.id); else ui.toast('No completed job without an invoice today'); });
 })();

@@ -1,4 +1,4 @@
-/* Work Dispatcher prototype — mock data (fictional company, people and customers) and query helpers on WD.q. */
+/* RouteClerk prototype — mock data (fictional company, people and customers) and query helpers on WD.q. */
 (function () {
 'use strict';
 const WD = window.WD, D = WD.date, data = WD.data;

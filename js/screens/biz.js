@@ -62,7 +62,7 @@ BZ.wordingSpec = () => ({ title: 'Business type and wording', render: page => { 
 
 /* ================= Service checklists and required photos ================= */
 data.checklists = { setup: [{ id: 'k1', text: 'Containers placed where the customer wants them', req: true }, { id: 'k2', text: 'Keys or lock codes given to the site contact', req: true }, { id: 'k3', text: 'Photo of each container in place', req: true, photo: true }] };
-const checksFor = job => (!job.allDay && data.checklists[job.type]) || [], done = (job, k) => !!(job.checks && job.checks[k.id]);
+const checksFor = job => (!job.allDay && (job.checklist || data.checklists[job.type])) || [], done = (job, k) => !!(job.checks && job.checks[k.id]);
 const missing = job => checksFor(job).filter(k => k.req && !done(job, k));
 function checkSection(job, refresh) {
   const list = checksFor(job); if (!list.length) return null; const left = missing(job).length, open = !WD.struck[job.status];
@@ -75,7 +75,7 @@ function checkSection(job, refresh) {
 }
 /* Complete stop asks for unfinished required items first. */
 if (WD.workflow && WD.workflow.completeStop) { const complete = WD.workflow.completeStop;
-  WD.workflow.completeStop = async job => { const miss = job.status !== 'completed' ? missing(job) : [];
+  WD.workflow.completeStop = async job => { const miss = job.status !== 'completed' && !job.checkSubmitted ? missing(job) : [];
     if (miss.length) { const v = await ui.actionSheet({ title: plural(miss.length, 'checklist item') + ' left', message: miss.map(k => '• ' + k.text).join('\n'), buttons: [{ label: 'Complete anyway…', value: 'skip', role: 'destructive' }], cancel: 'Back to the checklist' }); if (v !== 'skip') return;
       const why = await ask('Why wasn’t it finished?', 'e.g. No one was there to take the keys'); if (!why) return; job.events.push({ at: +WD.now(), actor: me(), text: 'Completed with ' + plural(miss.length, 'checklist item') + ' unfinished — ' + why }); }
     return complete(job); }; }

@@ -111,9 +111,9 @@ const EX = { sel: Object.fromEntries(SETS.map(s => [s[0], true])), format: 'csv'
 function buildExport() {
   const tables = {}; SETS.filter(s => EX.sel[s[0]]).forEach(s => Object.assign(tables, s[5]()));
   const rows = Object.values(tables).reduce((n, t) => n + t.length, 0), org = ((S.org || {}).name || 'company').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''), base = 'work-dispatcher-' + org + '-' + today();
-  if (EX.format === 'json') return { name: base + '.json', rows, tables: Object.keys(tables).length, blob: new Blob([safeJSON({ app: 'Work Dispatcher', version: WD.version, exported: WD.now().toISOString(), exported_by: me(), company: (S.org || {}).name, ...tables }, 1)], { type: 'application/json' }) };
+  if (EX.format === 'json') return { name: base + '.json', rows, tables: Object.keys(tables).length, blob: new Blob([safeJSON({ app: 'RouteClerk', version: WD.version, exported: WD.now().toISOString(), exported_by: me(), company: (S.org || {}).name, ...tables }, 1)], { type: 'application/json' }) };
   const files = Object.entries(tables).map(([k, t]) => k === 'settings' ? { name: 'settings.json', text: safeJSON(t[0], 1) } : { name: k + '.csv', text: toCSV(t) });
-  files.push({ name: 'README.txt', text: 'Work Dispatcher export\r\nCompany: ' + ((S.org || {}).name || '') + '\r\nExported: ' + ts(+WD.now()) + ' by ' + me() + '\r\n\r\nOne CSV file per kind of record (UTF-8, comma separated, first row is the column names). They open in Excel, Numbers and Google Sheets and import into other software. settings.json holds the company settings.\r\n\r\nFiles:\r\n' + files.map(f => '  ' + f.name).join('\r\n') + '\r\n' });
+  files.push({ name: 'README.txt', text: 'RouteClerk export\r\nCompany: ' + ((S.org || {}).name || '') + '\r\nExported: ' + ts(+WD.now()) + ' by ' + me() + '\r\n\r\nOne CSV file per kind of record (UTF-8, comma separated, first row is the column names). They open in Excel, Numbers and Google Sheets and import into other software. settings.json holds the company settings.\r\n\r\nFiles:\r\n' + files.map(f => '  ' + f.name).join('\r\n') + '\r\n' });
   return { name: base + '.zip', rows, tables: Object.keys(tables).length, blob: zip(files) };
 }
 R8.exportSpec = () => ({ title: 'Export and backup', render: page => { if (!admin()) return locked();
