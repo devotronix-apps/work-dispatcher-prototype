@@ -4,7 +4,7 @@
 'use strict';
 const WD = window.WD = { screens: {}, data: {} };
 /** Prototype version (Settings → About). Bump on every publish; the “what’s new” tutorial shows once per version. */
-WD.version = '4.0';
+WD.version = '4.1';
 const $ = (s, r) => (r || document).querySelector(s);
 
 /* ================= DOM helper ================= */
@@ -572,7 +572,7 @@ WD.signInPolicies = [{ value: 'launch', label: 'Every time the app opens', ms: 0
 S.signInPolicy = store.get('wd.signInPolicy') || '30d'; S.faceId = store.get('wd.faceId') === '1';
 WD.setSignInPolicy = (v, faceId) => { if (v) { S.signInPolicy = v; store.set('wd.signInPolicy', v); } if (faceId != null) { S.faceId = faceId; store.set('wd.faceId', faceId ? '1' : '0'); } };
 const stillSignedIn = () => { const last = +store.get('wd.lastSignIn'), pol = WD.signInPolicies.find(p => p.value === S.signInPolicy) || WD.signInPolicies[3]; return !!last && store.get('wd.signedOut') !== '1' && Date.now() - last < pol.ms; };
-app.signIn = () => { S.signedIn = true; store.set('wd.lastSignIn', String(Date.now())); store.set('wd.signedOut', '0'); app.showMain(); syncPanel(); };
+app.signIn = () => { S.signedIn = true; store.set('wd.lastSignIn', String(Date.now())); store.set('wd.signedOut', '0'); app.showMain(); syncPanel(); setTimeout(() => app.autoUpdateCheck(), 2500); };
 app.signOut = () => { store.set('wd.signedOut', '1'); S.signedIn = false; S.shift = null; ui.closeAllSheets(); if (WD.screens.auth && WD.screens.auth.show) WD.screens.auth.show(); else app.showMain(); syncPanel(); };
 app.setRole = role => { S.role = role; S.me = (WD.data.users || []).find(u => u.role === role && u.status !== 'invited') || S.me; if (S.signedIn) app.showMain(); syncPanel(); WD.emit('role', role); };
 app.setTheme = t => { S.theme = t; screen().dataset.theme = t; store.set('wd.theme', t); syncPanel(); WD.changed(); };
@@ -580,6 +580,30 @@ app.setTheme = t => { S.theme = t; screen().dataset.theme = t; store.set('wd.the
 WD.textSizes = [{ value: 0.9, label: 'Small' }, { value: 1, label: 'Default' }, { value: 1.12, label: 'Large' }, { value: 1.25, label: 'Extra large' }, { value: 1.4, label: 'Largest' }];
 app.setTextSize = z => { S.textSize = z = +z || 1; [$('#root'), overlays()].forEach(el => { el.style.zoom = z === 1 ? '' : z; }); store.set('wd.textSize', String(z)); WD.changed(); };
 app.setOffline = off => { S.offline = off; $('.statusbar').classList.toggle('offline', off); S.pending.forEach(op => { if (op.status === 'queued') op.message = off ? 'Waiting for a connection' : 'Waiting to sync'; }); syncPanel(); WD.changed(); if (!off) WD.api.flush(); WD.emit('network', !off); };
+
+/* ---------- Updates ----------
+   The prototype keeps a saved copy of itself for offline use, and browsers reuse files for a while after a publish, so a phone can keep
+   showing an old version. The newest version number is read straight from the published core.js, skipping every saved copy. */
+const UP = { latest: null, at: 0, told: null };
+/** → the published version string, or null when it can't be reached (offline, or opened as a file). */
+app.latestVersion = async () => { try { const r = await fetch('js/core.js?check=' + Date.now(), { cache: 'no-store' }); if (!r.ok) return null; const m = /WD\.version = '([^']+)'/.exec(await r.text()); UP.at = Date.now(); return (UP.latest = m ? m[1] : null); } catch (e) { return null; } };
+/** Throw away every saved copy (offline cache, service worker, the browser's own cache of each file) and load the published version. */
+app.update = async () => { const hud = ui.hud('Updating…');
+  try { if (navigator.serviceWorker) await Promise.all((await navigator.serviceWorker.getRegistrations()).map(r => r.unregister()));
+    if (window.caches) await Promise.all((await caches.keys()).map(k => caches.delete(k)));
+    const urls = [location.href.split('#')[0], 'sw.js'].concat([...document.querySelectorAll('script[src]')].map(s => s.src), [...document.querySelectorAll('link[rel=stylesheet]')].map(l => l.href));
+    await Promise.all(urls.map(u => fetch(u, { cache: 'reload' }).catch(() => null)));
+  } catch (e) { console.error(e); }
+  hud.set('Restarting…', 'checkmark'); setTimeout(() => location.reload(), 500); };
+/** Quiet check when the app opens or comes back to the front: a banner offers the update. Asked at most every 5 minutes, and once per version. */
+app.autoUpdateCheck = async () => { if (!S.signedIn || Date.now() - UP.at < 5 * 60000) return; const v = await app.latestVersion(); if (!v || v === WD.version || UP.told === v) return; UP.told = v;
+  ui.banner({ title: 'Version ' + v + ' is available', text: 'You have ' + WD.version + '. Tap here to update now.', icon: 'arrow.clockwise', color: 'var(--blue)', duration: 0, onTap: () => app.update() }); };
+/** Settings → About → Check for updates. */
+app.checkForUpdates = async () => { const hud = ui.hud('Checking…'), v = await app.latestVersion(); await WD.delay(400); hud.close();
+  if (!v) return ui.alert({ title: 'Couldn’t check', message: 'The published version can’t be reached right now. Check your connection and try again.' });
+  if (v !== WD.version) { if (await ui.alert({ title: 'Version ' + v + ' is available', message: 'You have ' + WD.version + '. Updating reloads the prototype; anything you changed in it is reset.', buttons: [{ label: 'Later', value: false }, { label: 'Update', value: true, bold: true }] })) app.update(); return; }
+  if (await ui.alert({ title: 'You have the newest version', message: 'Version ' + WD.version + ' is the latest published.', buttons: [{ label: 'Reload anyway', value: true }, { label: 'OK', value: false, bold: true }] })) app.update(); };
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') app.autoUpdateCheck(); });
 
 /* ================= Fake backend: the offline queue (PendingOperation) ================= */
 let opSeq = 0;

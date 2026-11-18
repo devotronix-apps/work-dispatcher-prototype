@@ -101,7 +101,7 @@ function root() {
         ui.row({ icon: 'questionmark.circle', iconColor: 'var(--teal)', title: 'Support', trailing: icon('arrow.up.right', 17, 'var(--label3)'), onTap: safari }),
         ui.row({ icon: 'trash', iconColor: 'var(--red)', title: 'Request account deletion', onTap: requestDeletion })),
       ui.section(ui.row({ title: 'Sign out', destructive: true, center: true, onTap: signOut })),
-      ui.section({ header: 'About', footer: 'The tutorial shows once after each update.' }, ui.row({ title: 'Version', detail: WD.version + ' (prototype)' }), ui.row({ icon: 'sparkles', iconPlain: true, title: 'Show the tutorial', subtitle: 'What’s new in version ' + WD.version, tint: true, onTap: () => WD.x.tutorial() }), ui.row({ title: 'Acknowledgements', chevron: true, onTap: () => push(ackSpec()) })));
+      ui.section({ header: 'About', footer: 'The prototype checks for a newer version each time it opens and offers to update. The tutorial shows once after each update.' }, ui.row({ title: 'Version', detail: WD.version + ' (prototype)' }), ui.row({ icon: 'arrow.clockwise', iconPlain: true, title: 'Check for updates', subtitle: 'Loads the newest published version if this one is behind', tint: true, onTap: () => WD.app.checkForUpdates() }), ui.row({ icon: 'sparkles', iconPlain: true, title: 'Show the tutorial', subtitle: 'What’s new in version ' + WD.version, tint: true, onTap: () => WD.x.tutorial() }), ui.row({ title: 'Acknowledgements', chevron: true, onTap: () => push(ackSpec()) })));
   } };
 }
 function plan(o) {

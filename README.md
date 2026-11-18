@@ -33,6 +33,8 @@ Jobs have no scheduled times: each route's day is an ordered list, and stop 1 is
 
 Settings → About → Version shows the prototype version, `WD.version` in `js/core.js`. Increment it every time the prototype is republished to the public site. A short “what’s new” tutorial (the `TOUR` steps in `js/screens/extras.js`) shows once per version after sign-in; update its steps with each release. Add `?notour` to the address to suppress it, or replay it from Settings → About.
 
+A phone can hold on to an old version (the offline copy, plus the browser reusing files for about 10 minutes after a publish). The prototype reads the published version from `js/core.js` each time it opens or returns to the front (`WD.app.autoUpdateCheck`) and shows a banner when it is behind. Settings → About → **Check for updates** (`WD.app.checkForUpdates`) does the same on demand; `WD.app.update()` deletes the saved copies, refetches every file and reloads.
+
 ## Files
 
 | File | Contents |
