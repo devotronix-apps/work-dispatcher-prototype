@@ -13,11 +13,10 @@ WD.css(`
 .jb-line { display: flex; gap: 8px; align-items: center; font-size: 15px; line-height: 20px; letter-spacing: -.24px; margin-top: 7px; }
 .jb-line .ic { color: var(--label2); }
 .jb-steps { display: flex; gap: 8px; padding: 12px; }
-.jb-steps .btn { flex: 1; min-height: 44px; border-radius: 11px; font-size: 16px; padding: 0 8px; }
+.jb-steps .btn { flex: 1 1 0; min-width: 0; min-height: 46px; border-radius: 11px; font-size: 16px; padding: 0 6px; gap: 5px; white-space: nowrap; }
 .jb-done { padding: 12px 16px; display: flex; align-items: center; gap: 10px; font-size: 15px; letter-spacing: -.24px; }
 .jb-done .spacer { flex: 1; }
-.jb-done button { border: 0; background: none; color: var(--tint); font-size: 15px; cursor: pointer; padding: 0; }
-.jb-notes { padding: 11px 16px; font-size: 16px; line-height: 21px; white-space: pre-wrap; user-select: text; -webkit-user-select: text; }
+.jb-done button { border: 0; background: none; color: var(--tint); font-size: 15px; cursor: pointer; padding: 0 4px; min-width: 44px; min-height: 44px; margin: -8px -4px -8px 0; }.jb-notes { padding: 11px 16px; font-size: 16px; line-height: 21px; white-space: pre-wrap; user-select: text; -webkit-user-select: text; }
 .jb-match { margin-top: 8px; }
 .jb-match .section-header { padding-top: 8px; }
 .jb-num { width: 26px; height: 26px; border-radius: 50%; background: var(--c); color: #fff; font-size: 13px; font-weight: 700; display: grid; place-items: center; flex: none; letter-spacing: 0; }
@@ -30,25 +29,27 @@ WD.css(`
 .jb-qty { font-weight: 400; color: var(--label2); font-size: 13px; margin-left: 6px; white-space: nowrap; }
 .jb-win { font-size: 12.5px; margin-top: 2px; display: flex; gap: 4px; align-items: center; }
 .jb-win.ok { color: var(--green); } .jb-win.soft { color: var(--orange); } .jb-win.bad { color: var(--red); font-weight: 600; }
-.jb-grip { flex: none; width: 34px; height: 34px; margin-right: -8px; display: grid; place-items: center; color: var(--label3); cursor: grab; touch-action: none; }
+.jb-grip { flex: none; width: 44px; height: 44px; margin: -5px -12px -5px -4px; display: grid; place-items: center; color: var(--label3); cursor: grab; touch-action: none; }
 .jb-ar.jb-dragging { opacity: .35; }
 .jb-ins { position: absolute; left: 12px; right: 12px; height: 3px; border-radius: 2px; background: var(--tint); z-index: 5; pointer-events: none; }
-.jb-pin { font-size: 11px; font-weight: 700; color: var(--tint); margin-left: 6px; }
+.jb-pin { font-size: 12px; font-weight: 700; color: var(--tint); margin-left: 6px; }
 .jb-maps { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 10px 12px 12px; }
 .jb-maps .cap { font-size: 12px; color: var(--label2); text-align: center; margin-top: 4px; letter-spacing: 0; }
 .jb-depart { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--tint); }
 .jb-est { background: color-mix(in srgb, var(--yellow) 12%, var(--cell)); }
 .jb-ends { display: flex; gap: 8px; align-items: center; padding: 0 16px 12px; font-size: 13px; color: var(--label2); flex-wrap: wrap; }
-.jb-ends button { border: 0; background: var(--fill3); color: var(--tint); border-radius: 14px; padding: 4px 10px; font-size: 13px; cursor: pointer; }
+.jb-ends button { border: 0; background: var(--fill3); color: var(--tint); border-radius: 14px; padding: 4px 10px; font-size: 13px; cursor: pointer; position: relative; }
+.jb-ends button::after { content: ''; position: absolute; left: -6px; right: -6px; top: 50%; height: 44px; transform: translateY(-50%); }
 .row.jb-item { gap: 10px; }
 .jb-item .row-main { flex: 1; }
-.jb-rate { width: 78px; border: 0; background: var(--fill3); border-radius: 7px; padding: 6px 8px; font-size: 15px; text-align: right; color: var(--label); outline: 0; font-variant-numeric: tabular-nums; }
-.jb-count { width: 54px; border: 0; background: var(--fill3); border-radius: 7px; padding: 6px 8px; font-size: 15px; text-align: right; color: var(--label); outline: 0; }
+.jb-rate { width: 78px; min-height: 44px; border: 0; background: var(--fill3); border-radius: 7px; padding: 6px 8px; font-size: 15px; text-align: right; color: var(--label); outline: 0; font-variant-numeric: tabular-nums; }
+.jb-count { width: 58px; min-height: 44px; border: 0; background: var(--fill3); border-radius: 7px; padding: 6px 8px; font-size: 15px; text-align: right; color: var(--label); outline: 0; }
 .jb-qn { min-width: 22px; text-align: right; font-variant-numeric: tabular-nums; font-size: 16px; }
 .jb-rec .row-detail { color: var(--tint); }
-.jb-day { border: 0; width: 30px; height: 28px; border-radius: 7px; background: var(--fill3); color: var(--label); font-size: 13px; cursor: pointer; padding: 0; }
+.row.jb-days { display: block; padding-top: 10px; padding-bottom: 10px; }
+.jb-dayrow { display: flex; gap: 6px; margin-top: 8px; }
+.jb-day { border: 0; flex: 1 1 0; min-width: 44px; height: 44px; border-radius: 9px; background: var(--fill3); color: var(--label); font-size: 15px; cursor: pointer; padding: 0; }
 .jb-day.on { background: var(--red); color: #fff; font-weight: 600; }
-.jb-steps .btn { min-width: 0; }
 `);
 WD.addIcons({ 'line.3': '<path d="M5 8h14M5 12h14M5 16h14"/>' });
 
@@ -68,14 +69,10 @@ api.setStatus = (jobId, status, note) => {
 
 /* ================= Job details ================= */
 function openDetails(jobId) {
-  /* Edit, Reassign, Canceled and Delete live in one actions menu in the bar, not in a block of rows. */
+  /* Ordered for the driver: status and Complete, then where to go and who to call, then notes and the rest.
+     Edit stays in the bar; Edit, Reassign and Canceled are rows near the bottom, and Delete is the very last row. */
   const acts = p => { const job = q.job(jobId), route = job && q.route(job.routeId); if (!job || !(WD.can('jobs.edit') && route && route.writable)) return [];
-    return [{ icon: 'ellipsis.circle', label: 'Job actions', onTap: (pg, el) => ui.menu(el, [
-      { label: 'Edit job', icon: 'pencil', disabled: job.pending, onTap: () => openEditor({ jobId: job.id }) },
-      { label: 'Reassign', icon: 'arrow.left.arrow.right', disabled: job.pending, onTap: () => openReassign(job) },
-      !job.allDay && !WD.closed[job.status] && { label: 'Customer canceled or rescheduled…', icon: 'phone', disabled: job.pending, onTap: () => callOff(job) },
-      'divider', { label: 'Delete job', icon: 'trash', destructive: true, disabled: job.pending, onTap: () => deleteJob(job, pg) }]) },
-      { label: 'Edit', disabled: job.pending, onTap: () => openEditor({ jobId: job.id }) }]; };
+    return [{ label: 'Edit', disabled: job.pending, onTap: () => openEditor({ jobId: job.id }) }]; };
   ui.sheet({ title: 'Job details', leading: acts, trailing: [{ label: 'Done', bold: true, onTap: p => p.dismiss() }],
     render(p) { const job = q.job(jobId); if (!job) { setTimeout(() => p.dismiss(), 0); return null; } return details(job, p); } });
 }
@@ -85,7 +82,7 @@ function details(job, p) {
   const line = (ic, ...kids) => h('div.jb-line', icon(ic, 18), h('span', kids)), wf = WD.workflow;
   const head = h('div.jb-head',
     h('div.title2', unresolved && h('span.jb-q', '?'), h('span', { style: WD.struck[job.status] ? { textDecoration: 'line-through' } : null }, job.title)),
-    h('div.jb-badges', ui.badge(st.title, st.color), type.color && ui.badge(type.title, type.color), job.pending && ui.badge('Pending sync', 'var(--orange)'), !WD.closed[job.status] && WD.addressIssue(job) && ui.badge(WD.addressIssue(job), 'var(--red)'), job.status === 'completed' && !wf.billed(job) && ui.badge('Not billed', 'var(--orange)')),
+    h('div.jb-badges', ui.badge(st.title, st.color), type.color && ui.badge(type.title, type.color), job.pending && ui.badge('Pending sync', 'var(--orange)'), !WD.closed[job.status] && WD.addressIssue(job) && ui.badge(WD.addressIssue(job), 'var(--red)'), job.status === 'completed' && !wf.billed(job) && ui.badge('Not billed', 'var(--orange)'), job.destruction && job.destruction.status === 'pending' && ui.badge('Destruction not yet confirmed', 'var(--orange)'), job.destruction && job.destruction.status === 'confirmed' && ui.badge('Destroyed ' + fmt.day(job.destruction.day, 'md'), 'var(--green)')),
     (d => d.length ? h('div.wf-chips', d.map(x => h('span.wf-chip', x))) : null)(wf.titleDetails(job)),
     h('div.jb-line', ui.dot(q.routeColor(route)), h('span', q.routeName(route) + (driver ? ' · ' + driver.name : '') + (vehicle ? ' · ' + vehicle.name : ''))),
     line('calendar', fmt.day(job.day, 'long')),
@@ -98,27 +95,29 @@ function details(job, p) {
   let steps = null;
   if (!job.allDay) {
     const b = (label, kind, fn, ic) => ui.button(label, { kind, icon: ic, block: false, onTap: fn }), complete = b('Complete', 'filled', () => wf.completeStop(job), 'checkmark'), arriveBtn = data.workflow.arrival !== 'auto';
-    if (job.status === 'scheduled') steps = h('div.jb-steps', b('Start driving', 'tinted', () => { setStatus('enroute'); WD.co && WD.co.onMyWay(job); }, 'truck'), complete, b('Skip…', 'gray', skip));
+    /* Three equal buttons on one line each: “Start driving” is shortened to “Drive” so it never wraps beside Complete and Skip. */
+    if (job.status === 'scheduled') steps = h('div.jb-steps', (d => { d.setAttribute('aria-label', 'Start driving'); return d; })(b('Drive', 'tinted', () => { setStatus('enroute'); WD.co && WD.co.onMyWay(job); }, 'truck')), complete, b('Skip…', 'gray', skip));
     else if (job.status === 'enroute') steps = h('div.jb-steps', arriveBtn && b('Arrived', 'tinted', () => setStatus('arrived'), 'mappin'), complete, b('Skip…', 'gray', skip));
     else if (job.status === 'arrived') steps = h('div.jb-steps', complete, b('Skip…', 'gray', skip));
     else steps = h('div.jb-done', icon(st.icon, 22, st.color), h('span', job.status === 'completed' && job.arrivedAt != null ? 'Arrived ' + fmt.time(job.arrivedAt) + ' · left ' + fmt.time(job.departedAt) + ' · ' + fmt.dur(Math.max(1, job.departedAt - job.arrivedAt)) + ' on site' : st.title + (job.rescheduledTo ? ' to ' + fmt.day(job.rescheduledTo) : '') + (job.skipNote ? ' · ' + job.skipNote : '')), h('span.spacer'), h('button', { onclick: () => setStatus('scheduled') }, 'Reopen'));
   }
-  const contact = cust && cust.contacts[0];
+  const contact = cust && cust.contacts[0], hasPO = !!job.po || !!(cust && cust.poSchedule && cust.poSchedule.length), idle = !job.pending;
   return ui.list(
     ui.section(null, head, steps),
-    WD.co && WD.co.jobScanSection(job, () => p.refresh(), canEdit || WD.can('billing.field')),
-    canEdit && job.pending && ui.section({ footer: 'This job is waiting to sync. You can change it again once that finishes.', keepEmpty: true }),
+    /* Where to go and who to call sit directly under the Complete buttons. */
+    job.address && ui.section({ header: 'Location', footer: unresolved ? 'Apple Maps could not find this address, so the stop has no pin and is left out of routing. Edit the job to fix it.' : null },
+      ui.row({ title: job.address, icon: 'mappin', iconPlain: true, iconColor: unresolved ? 'var(--red)' : 'var(--label2)',
+        trailing: h('span.row-acts', ui.iconBtn('arrow.triangle.turn.up.right', 'Directions in ' + wf.mapsName(), () => wf.openDirections(job)), job.located && ui.iconBtn('map', 'Show on map', () => { p.dismiss(); setTimeout(() => guard('map', 'focusJob', job.id), 350); })) })),
+    !job.address && !job.allDay && WD.addressIssue(job) && ui.section({ header: 'Location', footer: job.addrIgnored ? 'Marked as not needing an address for now.' : 'Saved without ' + (data.addressRules[job.type] === 'cityzip' ? 'a city or ZIP' : 'an address') + '. It can’t be mapped or routed until one is added.' },
+      ui.row({ title: WD.addressIssue(job), icon: 'mappin', iconPlain: true, iconColor: 'var(--red)', detail: canEdit && !job.pending ? 'Add' : null, tint: false, onTap: canEdit && !job.pending ? () => openEditor({ jobId: job.id }) : null })),
+    !job.address && job.cityZip && ui.section('Location', ui.row({ title: job.cityZip, subtitle: 'Where the customer is coming from', icon: 'mappin', iconPlain: true, iconColor: 'var(--label2)' })),
     cust && ui.section('Customer',
       ui.row({ leading: ui.avatar(cust.name, { size: 36, icon: cust.kind === 'household' ? 'house' : 'building' }), title: cust.name, subtitle: contact ? contact.name + (contact.role ? ' · ' + contact.role : '') + ' · ' + fmt.phone(contact.phone, contact.ext) : null, onTap: WD.can('crm.view') ? () => guard('customers', 'openDetail', cust.id) : null,
         trailing: contact && h('span.row-acts', ui.iconBtn('phone', 'Call ' + contact.name, () => ui.toast('Calling ' + contact.name + ' via Quo…', 'phone')), ui.iconBtn('message', 'Send a text', () => ui.toast('Opening a text to ' + contact.name + '…', 'message'))) })),
     !cust && job.phone && ui.section('Contact', ui.row({ title: fmt.phone(job.phone, job.ext), subtitle: job.contactName || null, icon: 'phone', iconPlain: true, tint: true, onTap: () => ui.toast('Calling via Quo…', 'phone') })),
-    !job.address && !job.allDay && WD.addressIssue(job) && ui.section({ header: 'Location', footer: job.addrIgnored ? 'Marked as not needing an address for now.' : 'Saved without ' + (data.addressRules[job.type] === 'cityzip' ? 'a city or ZIP' : 'an address') + '. It can’t be mapped or routed until one is added.' },
-      ui.row({ title: WD.addressIssue(job), icon: 'mappin', iconPlain: true, iconColor: 'var(--red)', detail: canEdit && !job.pending ? 'Add' : null, tint: false, onTap: canEdit && !job.pending ? () => openEditor({ jobId: job.id }) : null })),
-    !job.address && job.cityZip && ui.section('Location', ui.row({ title: job.cityZip, subtitle: 'Where the customer is coming from', icon: 'mappin', iconPlain: true, iconColor: 'var(--label2)' })),
+    job.notes && ui.section('Notes', h('div.jb-notes', job.notes)),
+    WD.co && WD.co.jobScanSection(job, () => p.refresh(), canEdit || WD.can('billing.field')),
     WD.x.jobAgreementSection(job, s => p.push(s)),
-    job.address && ui.section({ header: 'Location', footer: unresolved ? 'Apple Maps could not find this address, so the stop has no pin and is left out of routing. Edit the job to fix it.' : null },
-      ui.row({ title: job.address, icon: 'mappin', iconPlain: true, iconColor: unresolved ? 'var(--red)' : 'var(--label2)',
-        trailing: h('span.row-acts', ui.iconBtn('arrow.triangle.turn.up.right', 'Directions in ' + wf.mapsName(), () => wf.openDirections(job)), job.located && ui.iconBtn('map', 'Show on map', () => { p.dismiss(); setTimeout(() => guard('map', 'focusJob', job.id), 350); })) })),
     ui.section('Service',
       ui.row({ title: 'Job type', trailing: h('span.hstack.secondary', type.color && ui.dot(type.color), type.title) }),
       !job.allDay && ui.row({ title: 'Customer type', detail: WD.custType(cust ? cust.custType : job.custType).title }),
@@ -130,15 +129,20 @@ function details(job, p) {
       job.needsWindow && !job.custFrom && ui.row({ title: 'Time window', subtitle: 'They want one but don’t mind when. AutoRoute gives them one when the route is finalized.', detail: h('span', { style: 'color:var(--orange);font-weight:600' }, 'Needs window') }),
       job.callAhead > 0 && ui.row({ title: 'Call ahead', detail: (job.callAhead === 60 ? '1 hour' : job.callAhead + ' min') + ' before arriving' }),
       job.type === 'purge' && job.purge && (e => e.boxes > 0 && ui.row({ title: 'Estimated time on site', subtitle: WD.PURGE_UNITS.filter(([id]) => job.purge[id]).map(([id, t]) => job.purge[id] + ' ' + t.toLowerCase()).join(', ') + (job.purge.stairs && job.purge.stairs !== 'none' ? ' · stairs ' + job.purge.stairs : '') + (job.purge.haul ? ' · haul away empties' : '') + (e.guess ? ' · rough count' : ''), detail: e.guess ? e.low + '–' + e.high + ' min' : e.minutes + ' min' }))(WD.purgeEstimate(job.purge)),
-      (job.po || (cust && cust.poSchedule && cust.poSchedule.length)) && ui.row({ title: 'PO number', subtitle: cust && cust.poSchedule && cust.poSchedule.length ? 'From the PO schedule for ' + fmt.day(job.day, 'md') : null, detail: job.po || 'None' }),
+      /* hasPO is a real boolean: `job.po || schedule.length` used to come out as the number 0, which printed as a stray “0” row. */
+      hasPO && ui.row({ title: 'PO number', subtitle: cust && cust.poSchedule && cust.poSchedule.length ? 'From the PO schedule for ' + fmt.day(job.day, 'md') : null, detail: job.po || 'None' }),
       cust && wf.poAlert(cust, job.day) && wf.alertRow(wf.poAlert(cust, job.day)), job.contract && ui.row({ title: 'Contract', detail: job.contract })),
-    job.notes && ui.section('Notes', h('div.jb-notes', job.notes)),
     WD.biz && WD.biz.jobSections(job, () => p.refresh()),
     ui.section('Attachments', job.attachments.map(a => attachmentRow(a)),
       ui.row({ title: 'Add photo or file', icon: 'paperclip', iconPlain: true, tint: true, onTap: () => addAttachment(job.attachments) })),
     (WD.can('billing.view') || WD.can('billing.field')) && !job.allDay && !WD.struck[job.status] && WD.screens.billing && ui.section({ header: 'Billing', footer: job.invoice || job.billing ? null : job.status === 'completed' ? 'This stop is completed but not billed. It stays bright on the board until it is.' : 'Nothing is sent until you review the charges.' }, WD.screens.billing.billingRows(job)),
     ui.section({ header: 'History', fold: true, folded: true, footer: 'Shows who did what. Tap an edit to see exactly what changed. ' + (S.googleMirror.enabled && route ? 'Copied to the ' + route.name + ' Google calendar a few seconds after each change syncs. ' : '') + 'Version ' + job.version + '.' },
-      job.events.slice().reverse().map(e => ui.row({ leading: ui.avatar(e.actor, { size: 28 }), title: e.text + (e.changes && e.changes.length ? ' · ' + e.changes.length + (e.changes.length === 1 ? ' change' : ' changes') : ''), subtitle: e.actor + ' · ' + fmt.rel(e.at) + (e.changes && e.changes.length ? ' · ' + e.changes.map(c => c.label).slice(0, 3).join(', ') : ''), chevron: !!(e.changes && e.changes.length), onTap: e.changes && e.changes.length ? () => WD.x.showChanges(e) : null }))));
+      job.events.slice().reverse().map(e => ui.row({ leading: ui.avatar(e.actor, { size: 28 }), title: e.text + (e.changes && e.changes.length ? ' · ' + e.changes.length + (e.changes.length === 1 ? ' change' : ' changes') : ''), subtitle: e.actor + ' · ' + fmt.rel(e.at) + (e.changes && e.changes.length ? ' · ' + e.changes.map(c => c.label).slice(0, 3).join(', ') : ''), chevron: !!(e.changes && e.changes.length), onTap: e.changes && e.changes.length ? () => WD.x.showChanges(e) : null }))),
+    canEdit && ui.section({ header: 'Change this job', footer: job.pending ? 'This job is waiting to sync. You can change it again once that finishes.' : null, fold: false },
+      ui.row({ title: 'Edit job', icon: 'pencil', iconPlain: true, tint: true, disabled: !idle, onTap: idle ? () => openEditor({ jobId: job.id }) : null }),
+      ui.row({ title: 'Reassign', icon: 'arrow.left.arrow.right', iconPlain: true, tint: true, disabled: !idle, onTap: idle ? () => openReassign(job) : null }),
+      !job.allDay && !WD.closed[job.status] && ui.row({ title: 'Customer canceled or rescheduled…', icon: 'phone', iconPlain: true, tint: true, disabled: !idle, onTap: idle ? () => callOff(job) : null })),
+    canEdit && ui.section({ fold: false }, ui.row({ title: 'Delete job', icon: 'trash', iconPlain: true, iconColor: 'var(--red)', destructive: true, disabled: !idle, onTap: idle ? () => deleteJob(job, p) : null })));
 }
 const windowText = j => (j.custFrom ? fmt.time(fmt.fromHHMM(j.custFrom)) : 'Any') + ' – ' + (j.custUntil ? fmt.time(fmt.fromHHMM(j.custUntil)) : 'Any');
 /** Copy a job onto another day (end of that route's list): used when a visit is rescheduled. */
@@ -311,6 +315,8 @@ function openEditor(o = {}) {
   }
   async function save(p) {
     if (!f.title.trim()) return;
+    /* A customer with an invoice written off as bad debt: “Schedule anyway?” before a new job is added (rc-money.js). Voided invoices never ask. */
+    if (isNew && !f.allDay && f.customerId && WD.badDebtConfirm && !(await WD.badDebtConfirm(f.customerId))) return;
     if (!f.allDay && f.phone.trim() && !fmt.phoneValid(f.phone)) return ui.alert({ title: 'Check the phone number', message: 'Phone numbers need exactly 10 digits, like 559-968-4175. Put an extension in the Ext. box.' });
     const missing = f.allDay ? [] : missingRequired();
     /* New jobs can't be saved without their required fields. A job that already exists (perhaps from before the field became required) can, after a warning. */
@@ -398,7 +404,7 @@ function openEditor(o = {}) {
     const preview = WD.workflow.titleDetails({ ...f, title: f.title, flags: f.flags });
     return ui.section({ header: 'Heads-up for the driver', footer: (preview.length ? 'Shows after the title: “' + preview.join(' · ') + '”. ' : '') + 'Lunch, closed days and call-ahead are saved with the customer’s location; the rest apply to this visit.' },
       ui.quarterRow({ title: 'Closed for lunch from', value: f.lunchFrom, onChange: v => { f.lunchFrom = v; dirty = true; p.refresh(); } }), f.lunchFrom && ui.quarterRow({ title: 'Lunch until', value: f.lunchUntil, onChange: v => { f.lunchUntil = v; dirty = true; p.refresh(); } }),
-      ui.row({ title: 'Closed on', trailing: h('div.hstack', { style: 'gap:4px' }, DAYS.map(d => h('button.jb-day' + (f.closedDays.includes(d) ? '.on' : ''), { onclick: () => { f.closedDays = f.closedDays.includes(d) ? f.closedDays.filter(x => x !== d) : DAYS.filter(x => x === d || f.closedDays.includes(x)); dirty = true; p.refresh(); } }, d[0] + (d === 'Thu' || d === 'Sat' ? d[1] : '')))) }),
+      h('div.row.jb-days', h('div.row-title', 'Closed on'), h('div.jb-dayrow', DAYS.map(d => h('button.jb-day' + (f.closedDays.includes(d) ? '.on' : ''), { 'aria-label': 'Closed on ' + d, 'aria-pressed': f.closedDays.includes(d) ? 'true' : 'false', onclick: () => { f.closedDays = f.closedDays.includes(d) ? f.closedDays.filter(x => x !== d) : DAYS.filter(x => x === d || f.closedDays.includes(x)); dirty = true; p.refresh(); } }, d)))),
       ui.pickerRow({ title: 'Call ahead', value: customCall ? 'custom' : f.callAhead, options: [{ value: 0, label: 'No' }, { value: 15, label: '15 minutes' }, { value: 30, label: '30 minutes' }, { value: 60, label: '1 hour' }, { value: 'custom', label: 'Custom…' }],
         onChange: v => { customCall = v === 'custom'; if (!customCall) f.callAhead = v; else if ([0, 15, 30, 60].includes(f.callAhead)) f.callAhead = 0; dirty = true; p.refresh(); } }),
       customCall && ui.inputRow({ label: 'Minutes', type: 'text', inputmode: 'numeric', placeholder: 'How many minutes ahead they want a call', value: f.callAhead ? String(f.callAhead) : '', autofocus: !f.callAhead, onInput: v => { f.callAhead = Math.min(600, parseInt(v.replace(/\D/g, ''), 10) || 0); dirty = true; } }),
@@ -422,6 +428,7 @@ function openEditor(o = {}) {
       const inp = (label, k, o2 = {}) => ui.inputRow({ label, value: f[k], onInput: v => { f[k] = v; dirty = true; }, ...o2 });
       setTimeout(drawRecs, 0);
       return ui.list(
+        f.customerId && WD.badDebtBanner && WD.badDebtBanner(f.customerId),
         ui.section({ header: 'Job', footer: cust ? null : 'Type a name, phone, email or address to find an existing customer.' },
           ui.pickerRow({ title: 'Job type', value: f.type, icon: 'tag', iconColor: type.color, options: WD.shownJobTypes(f.type).map(t => ({ value: t.id, label: t.title })), onChange: v => { if (v === 'purge' && !f.items.some(i => i.id === 'box')) f.items = [{ id: 'box', qty: 0, rate: 8 }]; if (v === 'purge' && !f.purge) f.purge = { std: (f.items.find(i => i.id === 'box') || {}).qty || 0, stairs: 'none', haul: false }; set('type', v, true); } }),
           !f.allDay && ui.pickerRow({ title: 'Customer type', value: custTypeOf(), icon: 'building', iconColor: 'var(--indigo)', disabled: !!cust, subtitle: cust ? 'From the customer record' : null, options: WD.custTypes.map(t => ({ value: t.id, label: t.title })), onChange: v => set('custType', v, true) }),

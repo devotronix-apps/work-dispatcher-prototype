@@ -17,6 +17,9 @@ WD.css(`
 .cr-jump button { flex: none; display: inline-flex; align-items: center; gap: 5px; border: 0; border-radius: 15px; padding: 6px 11px; background: var(--cell); color: var(--label); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
 .cr-jump button i { font-style: normal; font-weight: 500; color: var(--label2); } .cr-jump button.hi { color: var(--red); } .cr-jump button.off { background: var(--fill3); color: var(--label3); font-weight: 500; } .cr-jump button.off i { color: var(--label3); }
 .cr-sh { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; } .cr-sh .cu-link { flex: none; text-transform: none; font-size: 13px; font-weight: 600; letter-spacing: 0; }
+.cr-need { display: flex; flex-wrap: wrap; align-items: center; gap: 0 8px; padding: 2px 16px 4px; font-size: 14px; letter-spacing: -.1px; color: var(--label); }
+.cr-need-n { box-sizing: border-box; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px; background: #D70015; color: #fff; font-size: 13px; font-weight: 700; display: inline-grid; place-items: center; letter-spacing: 0; }
+.cr-need button { border: 0; background: none; font: inherit; font-weight: 600; color: var(--tint); min-height: 44px; padding: 0 4px; cursor: pointer; white-space: nowrap; text-decoration: underline; text-underline-offset: 3px; }
 .cr-seg .segmented button { font-size: 12.5px; padding-left: 2px; padding-right: 2px; white-space: nowrap; }
 .cr-try { display: flex; gap: 6px; flex-wrap: wrap; } .cr-try span { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; color: var(--label3); } .cr-try span.on { color: var(--green); font-weight: 600; }
 .cr-bar { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 13px; color: var(--label2); padding: 10px 16px 0; } .cr-bar .cu-link { font-size: 13px; }
@@ -152,6 +155,7 @@ function leadSpec(id) {
           ui.row({ title: 'Last contact', subtitle: lc ? first(lc.by) === lc.by ? null : lc.by + ' ' + lc.how : null, detail: lc ? h('span' + (quiet(c) >= ST.remindDays && !['scheduled', 'lost'].includes(c.lifecycle) ? '.cr-quiet' : ''), ago(lc.at)[0].toUpperCase() + ago(lc.at).slice(1)) : h('span.cr-hot', 'Nobody yet') })),
         ui.section({ header: 'Current situation', footer: c.situation ? 'Written by ' + (c.situationBy || 'the office') + (c.situationAt ? ' · ' + fmt.rel(c.situationAt).toLowerCase() : '') + '. Shown on the pipeline under the lead’s name.' : 'Shown on the pipeline under the lead’s name. Until someone writes one, the app fills it in from the stage, quotes and follow-ups.' },
           edit ? ui.inputRow({ multiline: true, placeholder: autoSituation(c), value: c.situation || '', onInput: v => { c.situation = v; c.situationBy = me(); c.situationAt = +WD.now(); } }) : ui.row({ title: situation(c) })),
+        WD.r13 && c.kind !== 'household' && (r => r && ui.section({ header: 'Contract', fold: false }, r))(WD.r13.agreementRow(c)),
         ui.section({ header: 'First contact: call, text, email', footer: triedAll(c) ? (c.archived ? 'Called, texted and emailed once.' : 'Called, texted and emailed once. If there is no answer, there is nothing more to do: archive the lead to clear it from the inbox.') : 'One call, one text and one email, in that order. They are ticked as you do them from here, or tap one to tick it by hand.' },
           (t => TRY.map(([k, label, ic]) => ui.row({ icon: t[k] ? 'checkmark.circle.fill' : ic, iconPlain: true, iconColor: t[k] ? 'var(--green)' : 'var(--label3)', title: label, detail: t[k] ? 'Done' : 'Not yet', onTap: edit && !t[k] ? () => { c.tried = { ...(c.tried || {}), [k]: true }; if (c.lifecycle === 'lead') c.lifecycle = 'contacted'; K.addI({ customerId: id, type: 'note', at: +WD.now(), text: label + ' once, no answer.', by: me() }); WD.changed(); page.refresh(); } : null })))(tried(c)),
           edit && !c.archived && triedAll(c) && ui.row({ icon: 'tray', iconPlain: true, title: 'Archive this lead', tint: true, onTap: () => { archive([c], 'called, texted and emailed with no answer'); page.pop(); ui.toast(c.name + ' archived', 'tray'); } })),
@@ -188,7 +192,7 @@ function quoteDoc(qt) { const c = q.customer(qt.customerId) || { name: 'Customer
   return h('div.x-doc', h('h4', (bid ? 'Bid ' : 'Quote ') + qt.number), h('small', o.name + (o.phone ? ' · ' + o.phone : '')), h('p', 'Prepared for ', h('b', c.name), (c.locations[0] || {}).address ? ', ' + c.locations[0].address : '', '.'),
     h('table', qt.items.map(i => h('tr', h('td', i.qty + ' × ' + i.name), h('td', money2(i.rate) + ' each'))), h('tr', h('td', 'Service'), h('td', qt.freq)), h('tr', h('td', qt.freq === 'One time' ? 'Total' : 'Per visit'), h('td', h('b', money2(qTotal(qt))))),
       h('tr', h('td', bid ? 'Bid due' : 'Good for'), h('td', bid && qt.due ? fmt.day(qt.due, 'md') : qt.validDays + ' days'))),
-    qt.notes && h('p', qt.notes), h('p', 'All material is shredded on site and recycled, with a certificate of destruction on every invoice.')); }
+    qt.notes && h('p', qt.notes), h('p', ((data.biz || {}).destroy === 'offsite' ? 'All material is collected in locked containers, shredded at our secure facility and recycled, with a certificate of destruction once destruction is confirmed.' : 'All material is shredded on site and recycled, with a certificate of destruction on every invoice.'))); }
 function quoteSpec(qt) {
   const FREQS = ['Weekly', 'Every 2 weeks', 'Every 4 weeks', 'Monthly', 'Quarterly', 'One time', 'On call'];
   return { title: () => qt.number, render: page => { const c = q.customer(qt.customerId), edit = canEdit() && qt.status === 'draft', p = (c && c.contacts[0]) || {}, bid = qt.kind === 'bid';
@@ -316,18 +320,28 @@ function pipelineView(page) {
     srcRows.length > 0 && R.source === 'all' && ui.section({ header: 'Leads by source', footer: 'Tap a source to see only its leads.' }, srcRows),
     ui.section({ footer: 'Any lead can be archived from its page to clean up the inbox, and brought back later.' }, ui.row({ icon: 'tray', iconColor: 'var(--gray)', title: 'Archived leads', detail: String(arch.length), chevron: true, onTap: () => page.push(archivedSpec()) })));
 }
+/** What needs attention: new leads nobody has answered, follow-ups due, and open feedback. The tab badge is `total`, and the line at the
+    top of the CRM screen shows that same total with its parts, so the badge always matches a number on the screen. */
+const attention = () => { const p = pipe(), fresh = p.filter(c => stageOf(c) === 'fresh').length, due = p.filter(c => stageOf(c) === 'due').length, fb = F.feedback ? CO.feedbackOpen() : 0; return { fresh, due, fb, total: fresh + due + fb }; };
+function attentionLine(page) {
+  const a = attention(); if (!a.total) return null;
+  const go = (text, fn) => h('button', { onclick: fn }, text), stage = k => () => { R.seg = 'pipeline'; page.refresh(); setTimeout(() => showAndJump(page, k), 30); };
+  return h('div.cr-need', { role: 'status', 'aria-label': a.total + (a.total === 1 ? ' needs' : ' need') + ' attention. This is the number on the CRM tab.' }, h('span.cr-need-n', String(a.total)), h('b', a.total === 1 ? 'needs attention' : 'need attention'),
+    a.fresh > 0 && go(a.fresh + ' new', stage('fresh')), a.due > 0 && go(a.due + ' due', stage('due')), a.fb > 0 && go(a.fb + ' feedback', () => { R.seg = 'feedback'; page.refresh(); }));
+}
 function root() {
   return { title: 'CRM', large: true, trailing: page => [R.seg === 'pipeline' && { icon: 'line.3.horizontal.decrease', label: 'Sort and filter', onTap: (p, el) => ui.menu(el, [{ header: 'Sort by' }, ...SORTS.map(([v, label]) => ({ label, checked: R.sort === v, onTap: () => { R.sort = v; page.refresh(); } })), 'divider', { label: 'Show and hide…', icon: 'eye.slash', onTap: () => R.openFilter && R.openFilter() }], { compact: true }) },
       canEdit() && (R.seg === 'tasks' ? { icon: 'plus', label: 'New follow-up', onTap: () => K.newTask() } : { icon: 'plus', label: 'New lead', onTap: () => newLead() })].filter(Boolean),
     render: page => { const due = data.tasks.filter(t => !t.done && t.due <= today).length, segs = [{ value: 'pipeline', label: 'Pipeline' }, { value: 'tasks', label: 'Tasks' + (due ? ' · ' + due : '') }, F.quotes && { value: 'quotes', label: 'Quotes' }, F.referrals && { value: 'referrals', label: 'Referrals' }, F.feedback && { value: 'feedback', label: 'Feedback' + (CO.feedbackOpen() ? ' · ' + CO.feedbackOpen() : '') }].filter(Boolean);
       if (!segs.some(s => s.value === R.seg)) R.seg = 'pipeline';
-      return [segs.length > 1 && h('div.cu-seg.cr-seg', ui.segmented(segs, R.seg, v => { R.seg = v; page.refresh(); })), R.seg === 'tasks' ? K.tasksView() : R.seg === 'quotes' ? quotesView() : R.seg === 'referrals' ? referralsView(page) : R.seg === 'feedback' ? CO.feedbackView(page) : pipelineView(page)]; } };
+      return [attentionLine(page), segs.length > 1 && h('div.cu-seg.cr-seg', ui.segmented(segs, R.seg, v => { R.seg = v; page.refresh(); })), R.seg === 'tasks' ? K.tasksView() : R.seg === 'quotes' ? quotesView() : R.seg === 'referrals' ? referralsView(page) : R.seg === 'feedback' ? CO.feedbackView(page) : pipelineView(page)]; } };
 }
 
 /* ================= Registration ================= */
 WD.screens.crm = { root, openLead, newLead };
 const tab = WD.app.tabs.find(t => t.id === 'crm');
-if (tab) tab.badge = () => { if (!WD.can('leads.view')) return 0; const p = pipe(); return p.filter(c => c.lifecycle === 'lead' && !K.contactedYet(c) && !c.followUps).length + p.filter(isDue).length + (F.feedback ? CO.feedbackOpen() : 0); };
+/* The badge used to add every due lead (including ones already counted as new), so it read 11 beside "5 new, 3 due". Now each lead counts once, by its stage. */
+if (tab) tab.badge = () => WD.can('leads.view') ? attention().total : 0;
 const show = seg => { R.seg = seg; WD.nav.switchTab('crm'); };
 WD.panel.addJump('CRM pipeline', () => show('pipeline'));
 WD.panel.addJump('Quotes and bids', () => show('quotes'));

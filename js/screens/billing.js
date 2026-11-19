@@ -12,12 +12,20 @@ WD.css(`
 .bi-nums .q { width: 58px; flex: none; } .bi-nums .r { width: 76px; flex: none; }
 .bi-line + .bi-line::before { content: ''; position: absolute; top: 0; left: 16px; right: 0; border-top: .5px solid var(--sep); }
 .bi-line input { width: 100%; min-width: 0; border: 0; background: var(--fill3); border-radius: 7px; padding: 6px 7px; font-size: 15px; color: var(--label); outline: 0; font-family: inherit; }
-.bi-line input.n { text-align: right; font-variant-numeric: tabular-nums; }
+.bi-line input.n { text-align: right; font-variant-numeric: tabular-nums; min-height: 44px; }
 .bi-line .bi-name { display: flex; gap: 8px; align-items: center; }
 .bi-line .bi-name input { background: none; padding: 2px 0; font-weight: 500; }
 .bi-line .bi-tot { flex: 1; font-size: 15px; text-align: right; font-variant-numeric: tabular-nums; color: var(--label); font-weight: 500; }
 .bi-line .bi-lab { font-size: 13px; color: var(--label2); letter-spacing: 0; }
-.bi-del { border: 0; background: none; padding: 0; color: var(--red); cursor: pointer; line-height: 0; justify-self: end; }
+.bi-del { border: 0; background: none; padding: 0; color: var(--red); cursor: pointer; line-height: 0; justify-self: end; flex: none; width: 44px; height: 44px; margin: -9px -11px -9px 0; display: grid; place-items: center; }
+.bi-jump .btn, .bi-dbar .btn, .bi-dest .btn.small { min-height: 44px; }
+.bi-ask { padding: 12px 16px 12px; }
+.bi-askq { font-size: 16px; font-weight: 600; letter-spacing: -.3px; line-height: 21px; margin-bottom: 10px; color: var(--label); }
+.bi-ask.need .bi-askq { color: var(--red); }
+.bi-first { display: flex; gap: 10px; align-items: flex-start; margin: 0 12px 12px; padding: 11px 12px; border-radius: 11px; background: color-mix(in srgb, var(--orange) 16%, var(--cell)); border: 1px solid color-mix(in srgb, var(--orange) 55%, transparent); color: var(--label); font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -.2px; }
+.bi-first .ic { color: var(--orange); flex: none; margin-top: 1px; }
+.bi-dbar { display: flex; gap: 8px; margin: 10px 0 0; } .bi-dbar .btn { flex: 1 1 0; min-width: 0; white-space: nowrap; font-size: 15px; padding: 0 8px; }
+.bi-dest .row-acts { display: flex; align-items: center; }
 .bi-total { display: flex; justify-content: space-between; padding: 12px 16px; font-size: 17px; font-weight: 600; }
 .bi-sig { padding: 10px 16px 12px; }
 .bi-sig .bi-ink { height: 64px; display: flex; align-items: flex-end; border-bottom: 1px solid var(--label3); margin-bottom: 5px; color: var(--label); }
@@ -48,7 +56,7 @@ WD.css(`
 .bi-meta b { text-align: right; } .bi-meta span { text-align: center; }
 .bi-addr { display: grid; grid-template-columns: 1fr 1fr 1.1fr; gap: 10px; margin-top: 6px; line-height: 20px; }
 .bi-sumh { font-weight: 700; font-size: 15px; margin: 12px 0 2px 10px; }
-.bi-tab { width: 100%; border-collapse: collapse; font-size: 11px; line-height: 15px; }
+.bi-tab { width: 100%; border-collapse: collapse; font-size: 12px; line-height: 15px; }
 .bi-tab th { background: #000; color: #fff; text-align: left; padding: 2px 4px; font-weight: 700; }
 .bi-tab td { padding: 0 4px; border-left: 1px solid #000; white-space: nowrap; } .bi-tab td:first-child { border-left: 1.5px solid #000; } .bi-tab td:last-child { border-right: 1.5px solid #000; }
 .bi-tab tbody tr:last-child td { border-bottom: 2px solid #000; padding-bottom: 6px; }
@@ -59,7 +67,7 @@ WD.css(`
 .bi-doc .paid { display: inline-block; border: 2px solid #34C759; color: #248A3D; font-weight: 800; border-radius: 6px; padding: 1px 8px; transform: rotate(-4deg); margin-top: 10px; }
 .bi-doc .sigs { margin-top: 18px; display: flex; flex-direction: column; gap: 14px; }
 .bi-doc .sl { border-bottom: 1px solid #1c1c1e; height: 54px; display: flex; align-items: flex-end; } .bi-doc .sl img, .bi-doc .sl svg { max-height: 52px; max-width: 210px; color: #1c1c1e; }
-.bi-doc .sc { font-size: 11px; color: #3a3a3c; margin-top: 3px; display: flex; justify-content: space-between; gap: 8px; }
+.bi-doc .sc { font-size: 12px; color: #3a3a3c; margin-top: 3px; display: flex; justify-content: space-between; gap: 8px; }
 .bi-cod { margin-top: 14px; } .bi-cod b { font-size: 19px; } .bi-cod p { margin: 6px 10px 0; text-align: center; font-style: italic; font-size: 14.5px; line-height: 20px; }
 .bi-pg { text-align: center; margin-top: 30px; font-size: 13px; }
 .bi-acts { display: flex; flex-direction: column; gap: 10px; margin: 18px 0 6px; }
@@ -77,13 +85,13 @@ WD.css(`
 .bn-bot { margin-top: 12px; }
 .bn-sig { position: relative; flex: 1; min-height: 110px; padding-top: 6px; }
 .bn-sig .bn-ink { height: 62px; display: flex; align-items: flex-end; } .bn-sig .bn-ink img, .bn-sig .bn-ink svg { max-height: 60px; max-width: 200px; color: #1c1c1e; }
-.bn-sig .bn-cap { font-size: 10.5px; line-height: 13px; color: #555; margin: 2px 0 6px; }
+.bn-sig .bn-cap { font-size: 12px; line-height: 14px; color: #555; margin: 2px 0 6px; }
 .bn-stamp { position: absolute; left: 4px; top: 10px; transform: rotate(-6deg); border: 4px double #f3b6bd; color: #f3b6bd; font: 800 42px/50px Helvetica, Arial, sans-serif; letter-spacing: 2px; padding: 12px 26px; pointer-events: none; }
 .bn-tot { width: 250px; flex: none; } .bn-tot div { display: flex; justify-content: space-between; padding: 5px 9px; font-weight: 700; } .bn-tot div.x { font-weight: 400; } .bn-tot div.due { background: #e5e5e5; padding: 8px 9px; margin-top: 3px; }
 .bn-doc .bi-scan { font-family: -apple-system, Helvetica, sans-serif; margin-top: 12px; }
 .bn-fill { flex: 1; min-height: 30px; }
 .bn-cod { border-top: 1.5px solid #000; padding-top: 8px; } .bn-cod b { font-size: 14px; display: block; }
-.bi-doc .sc { font-size: 11px; color: #3a3a3c; margin-top: 3px; display: flex; justify-content: space-between; gap: 8px; }
+.bi-doc .sc { font-size: 12px; color: #3a3a3c; margin-top: 3px; display: flex; justify-content: space-between; gap: 8px; }
 `);
 
 /* ---------- Signatures ---------- */
@@ -155,7 +163,22 @@ function linesForJob(job) {
   if (!lines.length) lines.push(job.type === 'purge' ? (data.purgePricing.method === 'bin' ? { id: 'binFlat', name: pbItem('binFlat').name, qty: 1, rate: data.purgePricing.binFlat } : { id: 'box', name: pbItem('box').name, qty: 1, rate: pbItem('box').rate }) : { id: 'console', name: pbItem('console').name, qty: 1, rate: 30 });
   return lines;   /* The certificate of destruction prints on every invoice, so it isn't a line. */
 }
-const methodLabel = f => ({ cash: 'Cash', check: 'Check' + (f.checkNo.trim() ? ' #' + f.checkNo.trim() : ''), card: 'Card (Tap to Pay on iPhone)', other: (f.other || '').trim() || 'Other' })[f.pay];
+/* First delivery to a new customer (a Setup / First Service job, or any job flagged “New setup”): the invoice itemizes every container
+   delivered at $0.00, and asks whether anything was shredded today. If it was, the normal service lines are charged as well. */
+const DELIVERABLE = ['console', 'bin64', 'bin96'], capFirst = s => s.charAt(0).toUpperCase() + s.slice(1);
+const isFirstDelivery = job => job.type === 'setup' || !!(job.flags && job.flags.setup);
+function firstLines(job, shredded) {
+  const got = (job.items || []).filter(i => DELIVERABLE.includes(i.id) && i.qty > 0).map(i => ({ name: capFirst(pbItem(i.id).unit) + ' delivered', qty: i.qty, rate: 0, first: 'delivered' }));
+  if (!got.length) got.push({ name: 'Containers delivered', qty: 1, rate: 0, first: 'delivered' });
+  return (shredded ? linesForJob(job).map(l => ({ ...l, first: 'service' })) : []).concat(got);
+}
+const FIRST_NOTE = 'Ask the customer to check that this first invoice reached them — every invoice after this arrives the same way.';
+/* Off-site destruction (Settings → Business type and wording): the truck only collects, so the certificate of destruction waits until
+   someone at the plant confirms the material was destroyed. The state lives on the job: job.destruction = {status: 'pending' | 'confirmed', day, by, pounds, at}. */
+const offsite = () => biz().industry === 'shredding' && biz().destroy === 'offsite';
+const canConfirmDestroyed = () => WD.can('billing.manage') || WD.can('jobs.edit');
+const PROOF_WAIT = 'Certificate of destruction to follow once destruction is confirmed.';
+const methodLabel = f =>({ cash: 'Cash', check: 'Check' + (f.checkNo.trim() ? ' #' + f.checkNo.trim() : ''), card: 'Card (Tap to Pay on iPhone)', other: (f.other || '').trim() || 'Other' })[f.pay];
 const canInvoice = () => WD.can('billing.field') || WD.can('billing.manage');
 
 /** Mirror an invoice into the customer billing records (Customers → Invoices). */
@@ -164,7 +187,7 @@ function mirror(job) {
   let rec = data.invoices.find(x => x.jobId === job.id);
   if (!rec) { rec = { id: 'inv-f' + inv.number, number: inv.number, customerId: job.customerId, jobId: job.id, day: job.day, payments: [], at: +WD.now(), auto: false }; data.invoices.push(rec);
     const c = q.customer(job.customerId); if (c && c.stats && inv.status !== 'Draft') { c.stats.invoiced += inv.amount; c.successful = true; if (!c.stats.firstInvoice) c.stats.firstInvoice = job.day; } }
-  Object.assign(rec, { amount: inv.amount, status: inv.status, lines: inv.lines, tax: inv.tax });
+  Object.assign(rec, { amount: inv.amount, status: inv.status, lines: inv.lines, tax: inv.tax, taxLabel: inv.taxLabel, taxes: inv.taxes });
   if (inv.status === 'Paid' && inv.paid && !rec.payments.length && data.payments) { const pay = { id: 'pay-f' + inv.number, invoiceId: rec.id, customerId: job.customerId, at: inv.paid.at, amount: inv.amount, method: inv.paid.method + ' · on site' }; data.payments.push(pay); rec.payments.push(pay.id); const c = q.customer(job.customerId); if (c && c.stats) c.stats.paid += inv.amount; }
 }
 
@@ -176,13 +199,18 @@ function openEditor(jobId, o = {}) {
   const job = q.job(jobId); if (!job) return;
   if (!canInvoice()) return ui.toast('Your role can’t create invoices', 'lock');
   const wf = WD.workflow || {}, cust = q.customer(job.customerId), contact = cust && (cust.contacts || [])[0], prev = job.invoice && job.invoice.status === 'Draft' ? job.invoice : null, rep = repFor(job);
-  const note = !!(cust && cust.billingMode === 'serviceNote' && !o.lines), pol = note ? 'always' : WD.sigPolicy(cust), poOf = day => wf.poFor && cust && cust.poSchedule && cust.poSchedule.length ? wf.poFor(cust, day).po : null;
+  const note = !!(cust && cust.billingMode === 'serviceNote' && !o.lines), firstJob = !note && !o.lines && isFirstDelivery(job), shredding = biz().industry === 'shredding' || !biz().industry, pol = note ? 'always' : WD.sigPolicy(cust), poOf = day => wf.poFor && cust && cust.poSchedule && cust.poSchedule.length ? wf.poFor(cust, day).po : null;
   /* Scans are kept on the job, so anything scanned at the stop before billing is already here. */
   const JS = WD.jobScans ? WD.jobScans(job) : { containers: [], containerNote: '', drives: [], driveNote: '' };
   if (prev) { if (!JS.containers.length) JS.containers.push(...(prev.scans || [])); if (!JS.drives.length) JS.drives.push(...(prev.drives || [])); }
-  const f = prev ? { lines: prev.lines.map(l => ({ ...l })), po: prev.po || '', contract: prev.contract || '', billTo: prev.billTo || '', includeDate: prev.includeDate !== false, serviceDate: prev.serviceDate || job.day, scans: JS.containers, scanNote: JS.containerNote || prev.scanNote || '', drives: JS.drives, driveScan: prev.driveScan != null ? prev.driveScan : !!job.hddScan, driveNote: JS.driveNote || prev.driveNote || '', custSig: prev.custSig || null, custName: prev.custName || '', pounds: prev.pounds || '', pay: 'none', checkNo: '', other: '', note: prev.note || '' }
-    : { lines: o.lines || linesForJob(job), po: poOf(job.day) != null ? poOf(job.day) : job.po || (cust && cust.po) || '', contract: job.contract || (cust && cust.contract) || '', billTo: (cust && (cust.billingEmail || (contact && contact.email))) || '', includeDate: true, serviceDate: job.day, scans: JS.containers, scanNote: JS.containerNote, drives: JS.drives, driveScan: !!job.hddScan, driveNote: JS.driveNote, custSig: null, custName: '', pounds: '', pay: o.pay || 'none', checkNo: '', other: '', note: o.note || '' };
+  const f = prev ? { lines: prev.lines.map(l => ({ ...l })), po: prev.po || '', contract: prev.contract || '', billTo: prev.billTo || '', includeDate: prev.includeDate !== false, serviceDate: prev.serviceDate || job.day, scans: JS.containers, scanNote: JS.containerNote || prev.scanNote || '', drives: JS.drives, driveScan: prev.driveScan != null ? prev.driveScan : !!job.hddScan, driveNote: JS.driveNote || prev.driveNote || '', custSig: prev.custSig || null, custName: prev.custName || '', pounds: prev.pounds || '', pay: 'none', checkNo: '', other: '', note: prev.note || '', first: prev.first || null, firstAck: !!prev.firstAck }
+    : { lines: o.lines || (firstJob ? firstLines(job, false) : linesForJob(job)), first: null, firstAck: false, po: poOf(job.day) != null ? poOf(job.day) : job.po || (cust && cust.po) || '', contract: job.contract || (cust && cust.contract) || '', billTo: (cust && (cust.billingEmail || (contact && contact.email))) || '', includeDate: true, serviceDate: job.day, scans: JS.containers, scanNote: JS.containerNote, drives: JS.drives, driveScan: !!job.hddScan, driveNote: JS.driveNote, custSig: null, custName: '', pounds: '', pay: o.pay || 'none', checkNo: '', other: '', note: o.note || '' };
   let totalEl = null, taxEl = null;
+  const FIRST_Q = shredding ? 'Did you shred today, or only drop off the containers?' : 'Did you do the service today, or only drop off the containers?', FIRST_OPTS = [{ value: 'drop', label: 'Dropped off only' }, { value: 'shred', label: shredding ? 'Shredded today' : 'Serviced today' }];
+  /** Rebuild the automatic lines for the answer; lines the driver added by hand are kept. */
+  const setFirst = (v, p) => { f.first = v; f.lines = firstLines(job, v === 'shred').concat(f.lines.filter(l => !l.first)); p.refresh(); };
+  /* Off site: whatever was collected today waits for the plant to confirm it was destroyed. Nothing is collected on a drop-off or a trip charge. */
+  const collects = () => offsite() && !o.lines && !(firstJob && f.first === 'drop');
   /* Container barcodes (Settings → Container barcodes): scan each container at the stop to prove service. */
   const tags = WD.co && WD.co.scanFor(job) ? WD.co.containers(job) : [], scanShort = () => tags.length > 0 && f.scans.length < tags.length && !f.scanNote;
   /* Hard drives: when this job asks for it, each drive's barcode or serial number is scanned before it is destroyed. */
@@ -215,6 +243,8 @@ function openEditor(jobId, o = {}) {
   async function submit(p, draft) {
     if (!f.lines.length) return ui.alert({ title: 'No charges', message: 'Add at least one line, even if it’s $0.' });
     if (!draft) {
+      if (firstJob && !f.first) { const v = await ui.actionSheet({ title: FIRST_Q, message: 'The first invoice lists every container delivered at $0.00. ' + (shredding ? 'Shredding' : 'Service') + ' done today is charged at the normal rates.', buttons: FIRST_OPTS.map(x => ({ label: x.label, value: x.value })) }); if (!v) return; setFirst(v, p); return ui.toast('Check the lines, then create the invoice', 'doc.text', 2600); }
+      if (firstJob && !f.firstAck) { const v = await ui.actionSheet({ title: 'First invoice for this customer', message: FIRST_NOTE, buttons: [{ label: 'I asked them', value: 'yes' }, { label: 'Nobody was there to ask', value: 'no' }] }); if (!v) return; f.firstAck = v === 'yes'; }
       /* A price changed on the invoice can become the customer's price for this and all future visits. */
       if (!o.lines && !(await WD.x.priceChangePrompt(job, f.lines))) return;
       if (scanShort() && WD.co.scanRequired(job)) {
@@ -240,20 +270,22 @@ function openEditor(jobId, o = {}) {
       let sn = null;
       api.op({ kind: 'edit', title: job.title, scope: 'Service note', jobIds: [job.id], apply() {
         sn = wf.addServiceNote(job, { lines: f.lines, po: f.po.trim(), signer: f.custName, sig: f.custSig, day: f.serviceDate, pounds: f.pounds || null, scans: f.scans.slice(), scanNote: f.scanNote, drives: f.driveScan ? f.drives.slice() : [], driveNote: f.driveNote });
-        job.billing = { kind: 'serviceNote', number: sn.number, amount, at: +WD.now(), by: me, signer: f.custName }; job.po = f.po.trim();
+        job.billing = { kind: 'serviceNote', number: sn.number, amount, at: +WD.now(), by: me, signer: f.custName }; job.po = f.po.trim(); if (collects() && !job.destruction) job.destruction = { status: 'pending', at: +WD.now() };
         job.events.push({ at: +WD.now(), actor: me, text: 'Service note ' + sn.number + ' signed by ' + (f.custName || 'customer') + ' · ' + fmt.money(amount, true) + ' · added to the master invoice' + (sn.emailedTo ? ' · emailed to ' + sn.emailedTo : '') }); } });
       return finish(p, (sn ? sn.number : 'Service note') + ' saved' + (sn && sn.emailedTo ? ' · emailed to ' + sn.emailedTo : '') + ' · added to the master invoice', 'tray');
     }
-    const paid = !draft && f.pay !== 'none', number = prev ? prev.number : 'INV-' + (++invSeq), method = paid ? methodLabel(f) : null;
+    const paid = !draft && f.pay !== 'none', number = prev ? prev.number : WD.nextInvoiceNumber ? WD.nextInvoiceNumber() : 'INV-' + (++invSeq), method = paid ? methodLabel(f) : null, waits = !draft && collects();
     api.op({ kind: 'edit', title: job.title, scope: draft ? 'Invoice draft' : paid ? 'Invoice paid on site' : 'Invoice created', jobIds: [job.id], apply() {
-      job.invoice = { number, status: draft ? 'Draft' : paid ? 'Paid' : 'Sent', amount, tax: tx.tax, taxRate: tx.rate, taxLabel: tx.label, auto: false, lines: f.lines.map(l => ({ ...l })), po: f.po.trim(), contract: f.contract.trim(), billTo: f.billTo.trim(), includeDate: f.includeDate, serviceDate: f.serviceDate, pounds: f.pounds || null, note: f.note, scans: f.scans.slice(), scanNote: f.scanNote, drives: f.driveScan ? f.drives.slice() : [], driveScan: f.driveScan, driveNote: f.driveNote,
-        repId: rep && rep.id, repName: rep && rep.name, repSig: rep && rep.signature, custSig: f.custSig, custName: f.custName, paid: paid ? { method, at: +WD.now() } : null, sentAt: draft ? null : +WD.now() };
+      job.invoice = { number, status: draft ? 'Draft' : paid ? 'Paid' : 'Sent', amount, tax: tx.tax, taxRate: tx.rate, taxLabel: tx.label, taxes: tx.taxes, auto: false, lines: f.lines.map(l => ({ ...l })), po: f.po.trim(), contract: f.contract.trim(), billTo: f.billTo.trim(), includeDate: f.includeDate, serviceDate: f.serviceDate, pounds: f.pounds || null, note: f.note, scans: f.scans.slice(), scanNote: f.scanNote, drives: f.driveScan ? f.drives.slice() : [], driveScan: f.driveScan, driveNote: f.driveNote,
+        repId: rep && rep.id, repName: rep && rep.name, repSig: rep && rep.signature, custSig: f.custSig, custName: f.custName, paid: paid ? { method, at: +WD.now() } : null, sentAt: draft ? null : +WD.now(), first: firstJob ? f.first : null, firstAck: firstJob ? !!f.firstAck : null };
       job.po = f.po.trim(); job.contract = f.contract.trim();
       job.events.push({ at: +WD.now(), actor: me, text: draft ? 'Invoice ' + number + ' saved as draft' : 'Invoice ' + number + ' ' + (paid ? 'paid on site · ' + method : 'created and sent to ' + (f.billTo || 'the customer')) + ' · ' + fmt.money(amount, true) });
+      if (firstJob && !draft) job.events.push({ at: +WD.now(), actor: me, text: 'First delivery — ' + (f.first === 'shred' ? (shredding ? 'shredded' : 'serviced') + ' today, charged at the normal rates' : 'containers dropped off only, no charge') + ' · containers delivered listed at $0.00 · ' + (f.firstAck ? '☑ asked the customer to check that this first invoice reached them' : '☐ customer not asked to check for the first invoice — the office should follow up') });
+      if (waits && !job.destruction) { job.destruction = { status: 'pending', at: +WD.now() }; job.events.push({ at: +WD.now(), actor: me, text: 'Material taken off site · destruction not yet confirmed · the certificate of destruction follows once it is' }); }
       if (!draft) mirror(job);
     } });
     if (draft) { p.dismiss(); return ui.toast('Draft saved', 'doc.text'); }
-    finish(p, paid ? number + ' paid · receipt sent' : number + ' created and sent');
+    finish(p, (paid ? number + ' paid · receipt sent' : number + ' created and sent') + (waits ? ' · certificate follows once destruction is confirmed' : ''));
   }
   function setDate(v, p) {
     f.serviceDate = v; const po = poOf(v);
@@ -271,6 +303,11 @@ function openEditor(jobId, o = {}) {
         /* One tap brings the signature into view, without scrolling past the lines, service details and payment. */
         sigSec && h('div.bi-jump', ui.button(f.custSig ? 'Signed' + (f.custName ? ' · ' + f.custName : '') : pol === 'always' ? 'Signature required' : 'Signature', { kind: f.custSig ? 'gray' : pol === 'always' ? 'filled' : 'tinted', small: true, block: false, icon: f.custSig ? 'checkmark' : 'signature', onTap: () => p.body.scrollTo({ top: sigSec.offsetTop - 8, behavior: 'smooth' }) }),
           !f.custSig && ui.button('Sign now', { kind: 'gray', small: true, block: false, icon: 'pencil', onTap: () => getCustomerSig(p) })),
+        firstJob && ui.section({ header: 'First delivery to this customer', fold: false, showFooter: true, footer: f.first === 'drop' ? 'Each container delivered is its own line at $0.00. Nothing is charged for today.' : f.first === 'shred' ? 'Today’s ' + (shredding ? 'shredding' : 'service') + ' is charged at this customer’s normal rates. The containers delivered are still listed at $0.00.' : 'Choose one before creating the invoice. Either way, every container delivered is listed at $0.00.' },
+          h('div.bi-ask' + (f.first ? '' : '.need'), h('div.bi-askq', FIRST_Q), ui.segmented(FIRST_OPTS, f.first, v => setFirst(v, p))),
+          h('div.bi-first', { role: 'note' }, icon('envelope', 22), h('span', FIRST_NOTE)),
+          ui.toggleRow({ title: 'I asked the customer to check for it', subtitle: 'Recorded on the job', value: !!f.firstAck, onChange: v => { f.firstAck = v; } })),
+        collects() && h('div', { style: 'padding:4px 4px 0' }, ui.note('Material is destroyed off site. This invoice prints “' + PROOF_WAIT + '” The certificate is sent when the plant confirms it.')),
         note && h('div', { style: 'padding:4px 4px 0' }, ui.note((c ? c.name : 'This customer') + ' gets one master invoice a month. This visit is saved as a signed service note and added to it in the database.')),
         ui.section({ header: (c ? c.name : job.title) + (job.address ? ' · ' + job.address.split(',')[0] : ''), footer: f.note || 'Adjust quantities, rates and line items. Rates start from this customer’s pricing.' },
           f.lines.map((l, i) => lineRow(l, i, p)),
@@ -304,7 +341,7 @@ function openEditor(jobId, o = {}) {
           h('div.bi-sig', h('div.bi-ink', rep && rep.signature ? sigView(rep.signature) : h('span.bi-empty', rep === S.me ? 'Added when you create it' : 'No signature on file')), h('div.bi-cap', repTitle() + ' Signature' + (rep ? ' · ' + rep.name : '')))));
     } });
 }
-const draftInvoice = (job, f, rep) => ({ number: (job.invoice && job.invoice.number) || 'Draft', status: 'Draft', ...(t => ({ tax: t.tax, taxLabel: t.label }))(taxInfo(f.lines, q.customer(job.customerId))), amount: total(f.lines), lines: f.lines, po: f.po, contract: f.contract, billTo: f.billTo, includeDate: f.includeDate, serviceDate: f.serviceDate, pounds: f.pounds || null, scans: f.scans, scanNote: f.scanNote, drives: f.driveScan ? f.drives : [], driveNote: f.driveNote, repName: rep && rep.name, repSig: rep && rep.signature, custSig: f.custSig, custName: f.custName, paid: null, job });
+const draftInvoice = (job, f, rep) => ({ number: (job.invoice && job.invoice.number) || 'Draft', status: 'Draft', ...(t => ({ tax: t.tax, taxLabel: t.label }))(taxInfo(f.lines, q.customer(job.customerId))), amount: total(f.lines), lines: f.lines, po: f.po, contract: f.contract, billTo: f.billTo, includeDate: f.includeDate, serviceDate: f.serviceDate, pounds: f.pounds || null, scans: f.scans, scanNote: f.scanNote, drives: f.driveScan ? f.drives : [], driveNote: f.driveNote, repName: rep && rep.name, repSig: rep && rep.signature, custSig: f.custSig, custName: f.custName, paid: null, first: f.first, job });
 
 /* ---------- Invoice document (what the customer receives) ----------
    Layout follows the company's invoice: logo and "Invoice" with Account / Invoice # / Date, Bill To (with Attn), Please Remit To,
@@ -315,6 +352,8 @@ const descOf = l => l.id && DESC[l.id] ? l.qty + ' - ' + DESC[l.id] : l.name;
 const mdy = day => { const d = D.parse(day); return (d.getMonth() + 1) + '/' + d.getDate() + '/' + d.getFullYear(); };
 const money2 = n => '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const ROWS_PER_PAGE = 30;
+/** The certificate wording for a document. d is the job's destruction record: waiting → “to follow”; confirmed → the usual certificate with the destruction date. */
+const proofLine = (d, text) => d && d.status === 'pending' ? PROOF_WAIT : text + (d && d.status === 'confirmed' ? ' Destruction confirmed ' + mdy(d.day) + (d.pounds ? ' · ' + Number(d.pounds).toLocaleString('en-US') + ' lb' : '') + (d.by ? ' · ' + d.by : '') + '.' : '');
 /** Rows for one visit: one row per line, pounds on the first container line. */
 function visitRows(day, location, lines, pounds) {
   let lb = pounds; return lines.filter(l => l.qty || l.rate).map(l => { const bin = WD.CONTAINERS.includes(l.id), row = { day, location, desc: descOf(l), qty: +l.qty || 0, rate: +l.rate || 0, bins: bin ? +l.qty || 0 : 0, pounds: bin && lb ? lb : null }; if (bin && lb) lb = null; return row; });
@@ -349,7 +388,7 @@ function invoicePages(o) {
       last && o.scans && o.scans.length > 0 && h('div.bi-scan', h('b', 'CONTAINERS SERVICED (BARCODE SCANS): '), o.scans.map(s => s.code + ' ' + fmt.clock(new Date(s.at))).join(' · ') + (o.scanNote ? ' · Note: ' + o.scanNote : '')),
       last && o.drives && o.drives.length > 0 && h('div.bi-scan', h('b', 'HARD DRIVES DESTROYED (SERIAL NUMBERS): '), o.drives.map(s => s.code).join(' · ') + (o.driveNote ? ' · Note: ' + o.driveNote : '')),
       last && o.sigs,
-      biz().proofOn !== false && h('div.bi-cod', h('b', (biz().proofTitle || 'CERTIFICATE OF DESTRUCTION') + ':'), h('p', (biz().proofText || '{company} certifies that all materials related to services included on this invoice have been shredded per the terms of the service agreement. Additionally, 100% of the shredded materials were recycled.').replace(/\{company\}/g, org.name))),
+      biz().proofOn !== false && h('div.bi-cod', h('b', (biz().proofTitle || 'CERTIFICATE OF DESTRUCTION') + ':'), h('p', proofLine(o.destruction, (biz().proofText || '{company} certifies that all materials related to services included on this invoice have been shredded per the terms of the service agreement. Additionally, 100% of the shredded materials were recycled.').replace(/\{company\}/g, org.name)))),
       h('div.bi-pg', 'Page ' + (pi + 1) + ' of ' + N));
   });
 }
@@ -367,12 +406,13 @@ function itemText(l) {
   const pb = l.id && data.priceBook.find(x => x.id === l.id);
   if (pb && (pb.item || pb.desc)) return [pb.item || pb.name, pb.desc || ''];
   if (l.id === 'binFlat' && pb && l.name === pb.name) return ['Flat Rate', 'Shredding first ' + data.purgePricing.binIncluded + ' 65 gallon ' + (data.purgePricing.binIncluded === 1 ? 'bin' : 'bins')];
-  if (pb && ITEM[l.id] && l.name === pb.name && biz().industry !== 'other') return ITEM[l.id];
+  /* A company that destroys material at its own facility doesn't shred at the customer: the wording says collected, not shredded on site. */
+  if (pb && ITEM[l.id] && l.name === pb.name && biz().industry !== 'other') return biz().destroy === 'offsite' ? [ITEM[l.id][0], ITEM[l.id][1].replace(/Shredded On-site/, 'Collected for Off-site Shredding').replace(/^Onsite hard drive destruction$/, 'Hard drives collected for off-site destruction')] : ITEM[l.id];
   return [l.name, pb && l.name !== pb.name ? pb.name : ''];
 }
 const mdy2 = day => { const d = D.parse(day), z = n => String(n).padStart(2, '0'); return z(d.getMonth() + 1) + '/' + z(d.getDate()) + '/' + d.getFullYear(); };
 const stdProof = () => { const t = biz().proofText; return !t || /per the terms of the service agreement/.test(t) ? 'This certifies that {company} has destroyed all confidential data and products received from the above mentioned company.' : t; };
-/** o: {number, date, terms, billTo, lines, tax, taxLabel, paid, po, serviceDate, revised, pounds, sigs: [{sig, cap}], scans, scanNote, drives, driveNote} */
+/** o: {number, date, terms, billTo, lines, tax, taxLabel, paid, po, serviceDate, revised, pounds, sigs: [{sig, cap}], scans, scanNote, drives, driveNote, destruction} */
 function standardInvoice(o) {
   const org = S.org || data.orgs[0], lines = o.lines.filter(l => l.qty || l.rate), tax = +o.tax || 0, tot = total(lines) + tax, net = parseInt((String(o.terms || '').match(/\d+/) || [30])[0], 10);
   const meta = [['Invoice Number', o.number], ['Invoice Date', mdy2(o.date)], ['Due Date', mdy2(D.add(o.date, net))], o.serviceDate && o.serviceDate !== o.date && ['Service Date', mdy2(o.serviceDate)], o.po && ['PO Number', o.po], o.revised && ['Revised', o.revised]].filter(Boolean);
@@ -382,22 +422,24 @@ function standardInvoice(o) {
     h('table.bn-tab', h('thead', h('tr', h('th', 'Item'), h('th', 'Description'), h('th', 'Unit', h('br'), 'Cost'), h('th', 'Quantity'), h('th.r', 'Line', h('br'), 'Total'))),
       h('tbody', lines.map(l => { const [item, desc] = itemText(l); return h('tr', h('td', item), h('td', desc), h('td.n', money2(+l.rate || 0)), h('td.n', String(+l.qty || 0)), h('td.r.n', money2((+l.qty || 0) * (+l.rate || 0)))); }))),
     h('div.bn-bot',
-      h('div.bn-sig', o.paid && h('div.bn-stamp', 'PAID'), (o.sigs || []).filter(s => s.sig || s.blank).map(s => [h('div.bn-ink', sigView(s.sig)), h('div.bn-cap', s.cap)])),
-      h('div.bn-tot', tax > 0 && h('div.x', h('span', o.taxLabel || 'Sales tax'), h('span', money2(tax))), h('div', h('span', 'Total'), h('span', money2(tot))), h('div', h('span', 'Paid to Date'), h('span', money2(o.paid ? tot : 0))), h('div.due', h('span', 'Balance Due'), h('span', money2(o.paid ? 0 : tot))))),
+      h('div.bn-sig', (o.stamp || o.paid) && h('div.bn-stamp', o.stamp || 'PAID'), (o.sigs || []).filter(s => s.sig || s.blank).map(s => [h('div.bn-ink', sigView(s.sig)), h('div.bn-cap', s.cap)])),
+      h('div.bn-tot', tax > 0 && ((o.taxes || []).filter(t => t.amount > 0).length > 1 ? o.taxes.filter(t => t.amount > 0).map(t => h('div.x', h('span', t.label || t.name), h('span', money2(t.amount)))) : h('div.x', h('span', o.taxLabel || 'Sales tax'), h('span', money2(tax)))), h('div', h('span', 'Total'), h('span', money2(tot))), h('div', h('span', 'Paid to Date'), h('span', money2(o.paid ? tot : 0))), h('div.due', h('span', 'Balance Due'), h('span', money2(o.paid || o.stamp ? 0 : tot))))),
     o.pounds && h('div.bi-scan', h('b', 'WEIGHT SHREDDED: '), Number(o.pounds).toLocaleString('en-US') + ' lb'),
     o.scans && o.scans.length > 0 && h('div.bi-scan', h('b', 'CONTAINERS SERVICED (BARCODE SCANS): '), o.scans.map(s => s.code + ' ' + fmt.clock(new Date(s.at))).join(' · ') + (o.scanNote ? ' · Note: ' + o.scanNote : '')),
     o.drives && o.drives.length > 0 && h('div.bi-scan', h('b', 'HARD DRIVES DESTROYED (SERIAL NUMBERS): '), o.drives.map(s => s.code).join(' · ') + (o.driveNote ? ' · Note: ' + o.driveNote : '')),
     h('div.bn-fill'),
-    biz().proofOn !== false && h('div.bn-cod', h('b', (biz().proofTitle || 'CERTIFICATE OF DESTRUCTION') + ':'), stdProof().replace(/\{company\}/g, org.name)));
+    biz().proofOn !== false && h('div.bn-cod', h('b', (biz().proofTitle || 'CERTIFICATE OF DESTRUCTION') + ':'), proofLine(o.destruction, stdProof().replace(/\{company\}/g, org.name))));
 }
 function invoiceDoc(inv, job) {
   const c = q.customer(job.customerId), lines = inv.lines || linesForJob(job), day = inv.serviceDate || job.day, parts = (job.address || '').split(',').map(x => x.trim()).filter(Boolean);
   const billTo = c ? [c.name].concat(c.attn ? ['Attn: ' + c.attn] : [], c.billAddress || [parts[0], parts.slice(1).join(', ')].filter(Boolean)) : [job.title].concat(parts[0] ? [parts[0], parts.slice(1).join(', ')].filter(Boolean) : []);
   const sigs = [{ sig: inv.custSig, blank: WD.sigPolicy(c) === 'always', cap: 'Customer Signature' + (inv.custName ? ' · ' + inv.custName : '') },
     { sig: inv.repSig, cap: [repTitle() + ' Signature', inv.repName].filter(Boolean).join(' · ') }];
-  return docWrap(standardInvoice({ number: inv.number, date: inv.sentAt ? D.key(new Date(inv.sentAt)) : D.today(), terms: c && c.terms, billTo, lines, tax: inv.tax, taxLabel: inv.taxLabel, paid: inv.status === 'Paid', po: inv.po,
+  return docWrap(standardInvoice({ number: inv.number, date: inv.sentAt ? D.key(new Date(inv.sentAt)) : D.today(), terms: c && c.terms, billTo, lines, tax: inv.tax, taxLabel: inv.taxLabel, taxes: inv.taxes, stamp: WD.invStamp && WD.invStamp(inv), paid: inv.status === 'Paid', po: inv.po,
     serviceDate: inv.includeDate !== false ? day : null, revised: inv.revisedAt ? mdy2(D.key(new Date(inv.revisedAt))) : null, pounds: inv.pounds, sigs,
-    scans: data.settings && data.settings.barcodes.onInvoice ? inv.scans : null, scanNote: inv.scanNote, drives: inv.drives, driveNote: inv.driveNote }));
+    scans: data.settings && data.settings.barcodes.onInvoice ? inv.scans : null, scanNote: inv.scanNote, drives: inv.drives, driveNote: inv.driveNote,
+    /* A draft being previewed for an off-site company shows the “to follow” wording it will be sent with. */
+    destruction: job.destruction || (inv.status === 'Draft' && offsite() && inv.first !== 'drop' ? { status: 'pending' } : null) }));
 }
 /** A master invoice: every service note it was built from, grouped by location (blank row between locations), paged like the paper invoice. */
 function masterDoc(mi) {
@@ -405,8 +447,9 @@ function masterDoc(mi) {
   const rows = []; let prev = null;
   notes.forEach(n => { if (prev != null && n.location !== prev) rows.push({ gap: true }); prev = n.location; rows.push(...visitRows(n.day, n.location, n.lines, n.pounds)); });
   const rec = data.invoices && data.invoices.find(x => x.id === 'inv-' + mi.id);
+  const ds = notes.map(n => (q.job(n.jobId) || {}).destruction).filter(Boolean), destruction = ds.some(d => d.status === 'pending') ? { status: 'pending' } : ds.slice().sort((a, b) => (a.day < b.day ? 1 : -1))[0] || null;
   return docWrap(invoicePages({ number: mi.number, date: D.key(new Date(mi.at)), customer: c, billTo: [c.name, 'Attn: ' + (c.attn || (c.contacts[0] || {}).name || '')].concat(c.billAddress || []), serviceLocation: new Set(notes.map(n => n.location)).size > 1 ? 'MULTIPLE LOCATIONS' : (notes[0] || {}).location,
-    terms: c.terms, agreement: c.agreement || c.contract, po: mi.po, rows, paid: rec && rec.status === 'Paid' ? {} : null }));
+    terms: c.terms, agreement: c.agreement || c.contract, po: mi.po, rows, paid: rec && rec.status === 'Paid' ? {} : null, destruction }));
 }
 const masterDocSpec = mi => ({ title: mi.number, render: () => masterDoc(mi) });
 function previewSpec(get) {
@@ -419,7 +462,7 @@ function openInvoice(jobId) {
     const inv = job.invoice, unpaid = inv.status !== 'Paid';
     return ui.list(invoiceDoc(inv, job),
       WD.r9 && WD.r9.revisionSection((WD.workflow && WD.workflow.invRecFor(job)) || inv),
-      ui.section(null, invActions(job), ui.row({ title: 'Resend to customer', icon: 'envelope', iconPlain: true, tint: true, onTap: () => ui.run('Sending…', null, { done: 'Sent' }) })));
+      ui.section(null, destructionRow(job), invActions(job), ui.row({ title: 'Resend to customer', icon: 'envelope', iconPlain: true, tint: true, onTap: () => ui.run('Sending…', null, { done: 'Sent' }) })));
   } });
 }
 async function recordPayment(job) {
@@ -444,15 +487,81 @@ function billingRows(job) {
   const inv = job.invoice, can = canInvoice(), color = { Paid: 'var(--green)', Draft: 'var(--gray)', Sent: 'var(--orange)', Overdue: 'var(--red)' }, wf = WD.workflow;
   if (job.billing) { const b = job.billing, sn = b.kind === 'serviceNote';
     return [ui.row({ title: sn ? 'Service note ' + b.number : 'Paid — no invoice', subtitle: (sn ? (b.signer ? 'Signed by ' + b.signer + ' · ' : '') + 'on the monthly master invoice' : b.method + ' · ' + (b.by || '')) , icon: sn ? 'tray' : 'dollarsign.circle', iconColor: sn ? 'var(--brown)' : 'var(--green)', detail: fmt.money(b.amount, true),
-      chevron: sn && !!wf, onTap: sn && wf ? () => WD.nav.push(wf.masterSpec(job.customerId)) : null })]; }
+      chevron: sn && !!wf, onTap: sn && wf ? () => WD.nav.push(wf.masterSpec(job.customerId)) : null }), destructionRow(job)]; }
   if (inv) return [ui.row({ title: inv.number + ' · ' + fmt.money(inv.amount, true), subtitle: inv.auto ? 'Card on file charged automatically' : inv.status === 'Draft' ? 'Draft — not sent yet' : inv.paid ? 'Paid · ' + inv.paid.method : 'Invoice Ninja', icon: 'dollarsign', iconColor: 'var(--green)', badge: ui.badge(inv.status, color[inv.status] || 'var(--orange)'), chevron: true, onTap: () => openInvoice(job.id) }),
-    inv.status !== 'Draft' && invActions(job)];
+    destructionRow(job), inv.status !== 'Draft' && invActions(job)];
   if (!can) return [ui.row({ title: 'Not billed yet' })];
   const c = q.customer(job.customerId), note = c && c.billingMode === 'serviceNote', go = () => { if (job.status !== 'completed' && WD.workflow) return WD.workflow.completeStop(job); openEditor(job.id); };
   return [ui.row({ title: note ? 'Create service note…' : 'Create invoice…', subtitle: job.status === 'completed' ? 'Billing details, signature and payment' : 'Completes the stop and opens the billing details', icon: note ? 'tray' : 'doc.text', iconPlain: true, tint: true, onTap: go }),
     !note && wf && ui.row({ title: 'Paid — no invoice…', subtitle: 'Paid on the spot and no invoice wanted', icon: 'dollarsign.circle', iconPlain: true, tint: true, onTap: () => { if (job.status !== 'completed') WD.api.setStatus(job.id, 'completed'); wf.paidNoInvoice(job); } })];
 }
 
-WD.screens.billing = { standardInvoice, docWrap, logo, openEditor, openInvoice, recordPayment, billingRows, invActions, masterDocSpec, invoiceDoc, signaturePad, sigView, linesForJob, canInvoice };
+/* ---------- Off-site destruction: awaiting confirmation ---------- */
+const awaiting = () => data.jobs.filter(j => j.destruction && j.destruction.status === 'pending').sort((a, b) => a.day.localeCompare(b.day) || q.order(a, b));
+const docNo = j => (j.invoice && j.invoice.number) || (j.billing && j.billing.number) || '';
+const sendTo = j => { const c = q.customer(j.customerId); return (j.invoice && j.invoice.billTo) || (c && (c.billingEmail || ((c.contacts || [])[0] || {}).email)) || j.email || 'the customer'; };
+/** The destruction state of a job, as a row for its invoice and its Billing section. null when the job has none (on-site companies). */
+function destructionRow(job) {
+  const d = job.destruction; if (!d) return null; const can = canConfirmDestroyed();
+  if (d.status === 'pending') return ui.row({ icon: 'clock', iconColor: 'var(--orange)', title: 'Destruction not yet confirmed', subtitle: 'The certificate of destruction is sent once it is', detail: can ? 'Confirm' : null, tint: false, chevron: can, onTap: can ? () => confirmDestroyed([job]) : null });
+  return ui.row({ icon: 'checkmark.circle.fill', iconColor: 'var(--green)', title: 'Destroyed ' + fmt.day(d.day, 'long'), subtitle: 'Confirmed by ' + (d.by || 'the plant') + (d.pounds ? ' · ' + Number(d.pounds).toLocaleString('en-US') + ' lb' : '') + ' · certificate of destruction sent' });
+}
+/** Confirm that what was collected on these jobs has been destroyed (date, who, optional weight), then send each customer the certificate of destruction. */
+function confirmDestroyed(jobs, done) {
+  jobs = jobs.filter(j => j && j.destruction && j.destruction.status === 'pending'); if (!jobs.length) return;
+  if (!canConfirmDestroyed()) return ui.toast('Your role can’t confirm destruction', 'lock');
+  const f = { day: D.today(), by: S.me.name, pounds: '' }, many = jobs.length > 1;
+  const go = async p => {
+    const by = f.by.trim(), lb = parseInt(String(f.pounds).replace(/\D/g, ''), 10) || null;
+    if (!by) return ui.alert({ title: 'Who confirmed it?', message: 'Add the name of the person who saw the material destroyed.' });
+    if (f.day > D.today()) return ui.alert({ title: 'Check the date', message: 'The destruction date can’t be in the future.' });
+    const early = jobs.filter(j => j.day > f.day); if (early.length) return ui.alert({ title: 'Check the date', message: early[0].title + ' was collected on ' + fmt.day(early[0].day) + ', after the destruction date.' });
+    const ok = await ui.run(many ? 'Sending ' + jobs.length + ' certificates of destruction…' : 'Sending the certificate of destruction…', () => {
+      jobs.forEach(j => { j.destruction = { status: 'confirmed', day: f.day, by, pounds: many ? null : lb, batchPounds: many ? lb : null, at: +WD.now(), enteredBy: S.me.name };
+        j.events.push({ at: +WD.now(), actor: S.me.name, text: 'Destruction confirmed for ' + fmt.day(f.day) + ' by ' + by + (lb ? ' · ' + lb.toLocaleString('en-US') + ' lb' + (many ? ' in a batch of ' + jobs.length : '') : '') + ' · certificate of destruction sent to ' + sendTo(j) }); });
+    }, { done: many ? 'Certificates sent' : 'Certificate sent' });
+    if (!ok) return; p.dismiss(); WD.changed(); ui.toast(many ? jobs.length + ' confirmed · certificates of destruction sent' : 'Confirmed · certificate sent to ' + sendTo(jobs[0]), 'checkmark', 2800); if (done) done();
+  };
+  ui.sheet({ title: 'Confirm destroyed', leading: [{ label: 'Cancel', onTap: p => p.dismiss() }], trailing: [{ label: 'Confirm', bold: true, onTap: go }],
+    render: p => ui.list(
+      ui.section({ header: many ? jobs.length + ' loads' : 'Load', fold: many, folded: many && jobs.length > 4 }, jobs.map(j => ui.row({ leading: ui.dot(q.routeColor(j.routeId)), title: j.title, subtitle: 'Collected ' + fmt.day(j.day) + (docNo(j) ? ' · ' + docNo(j) : '') }))),
+      ui.section({ header: 'Destruction', fold: false, showFooter: true, footer: 'Confirming marks ' + (many ? 'each job' : 'the job') + ', notes it in the job history and sends the customer the certificate of destruction with this date.' + (many ? ' The weight is for the whole batch.' : '') },
+        ui.dateRow({ title: 'Destroyed on', icon: 'calendar', iconColor: 'var(--red)', value: f.day, onChange: v => { f.day = v; } }),
+        ui.inputRow({ label: 'Confirmed by', caps: 'words', placeholder: 'Name', value: f.by, required: true, onInput: v => { f.by = v; } }),
+        ui.inputRow({ label: many ? 'Total weight' : 'Weight', placeholder: 'Pounds (optional)', inputmode: 'numeric', value: String(f.pounds || ''), onInput: v => { f.pounds = v; } })),
+      h('div.bi-acts', ui.button(many ? 'Confirm ' + jobs.length + ' and send certificates' : 'Confirm and send certificate', { icon: 'checkmark', onTap: () => go(p) }))) }, { detent: 'large' });
+}
+/** The list an office or plant user works through: every load collected whose destruction hasn't been confirmed. Confirm one by one, or tick several and confirm them together. */
+function destructionSpec() {
+  const sel = new Set();
+  return { title: 'Awaiting destruction', render: page => {
+    const list = awaiting(), can = canConfirmDestroyed(); [...sel].forEach(id => { if (!list.some(j => j.id === id)) sel.delete(id); });
+    if (!list.length) return ui.empty({ icon: 'checkmark.circle.fill', title: 'Nothing is waiting', text: offsite() ? 'Every load collected has been confirmed destroyed and its certificate of destruction sent.' : 'This list is used when material is destroyed off site (Settings → Business type and wording).' });
+    const picked = list.filter(j => sel.has(j.id)), all = picked.length === list.length;
+    return ui.list(
+      h('div', { style: 'padding:4px 4px 0' }, ui.note(can ? 'These loads were collected but not yet confirmed destroyed. Their invoices say the certificate of destruction will follow. Confirm each one, or tick several and confirm them together.' : 'These loads were collected but not yet confirmed destroyed. The office or plant confirms them; the certificate of destruction is sent then.')),
+      can && h('div.bi-dbar', ui.button(picked.length ? 'Confirm ' + picked.length + ' destroyed' : 'Confirm destroyed', { block: false, icon: 'checkmark', disabled: !picked.length, onTap: () => confirmDestroyed(picked, () => { sel.clear(); page.refresh(); }) }),
+        ui.button(all ? 'Select none' : 'Select all', { kind: 'gray', block: false, onTap: () => { if (all) sel.clear(); else list.forEach(j => sel.add(j.id)); page.refresh(); } })),
+      ui.section({ header: 'Awaiting destruction confirmation', fold: false, footer: can ? 'Tap a load to tick it.' : null },
+        list.map(j => { const on = sel.has(j.id), what = WD.itemsLabel(j.items, j.type === 'purge');
+          return ui.row({ class: 'bi-dest', leading: can ? icon(on ? 'checkmark.circle.fill' : 'circle', 24, on ? 'var(--tint)' : 'var(--label3)') : ui.dot(q.routeColor(j.routeId)), title: j.title,
+            subtitle: 'Collected ' + fmt.day(j.day) + (docNo(j) ? ' · ' + docNo(j) : '') + (what ? ' · ' + what : '') + ' · ' + q.routeName(j.routeId),
+            trailing: can ? ui.button('Confirm', { kind: 'tinted', small: true, block: false, onTap: e => { e.stopPropagation(); confirmDestroyed([j], () => page.refresh()); } }) : ui.badge('Waiting', 'var(--orange)'),
+            onTap: can ? () => { if (on) sel.delete(j.id); else sel.add(j.id); page.refresh(); } : () => WD.screens.jobs && WD.screens.jobs.openDetails && WD.screens.jobs.openDetails(j.id) }); })));
+  } };
+}
+/** A compact row for the Invoices list (and anywhere else): shown only while something is waiting. push opens a page spec. */
+function destructionEntry(push) {
+  const n = awaiting().length; if (!n || !(WD.can('billing.view') || WD.can('billing.field') || canConfirmDestroyed())) return null;
+  return ui.section({ fold: false }, ui.row({ icon: 'clock', iconColor: 'var(--orange)', title: 'Awaiting destruction confirmation', subtitle: 'Certificates of destruction go out once confirmed', badge: ui.badge(String(n), 'var(--orange)'), chevron: true, onTap: () => (push || WD.nav.push)(destructionSpec()) }));
+}
+/** When a company switches to off-site destruction: recent billed stops haven't been confirmed yet, so they start on the list. Returns how many. */
+function seedAwaiting() {
+  const from = D.add(D.today(), -1), list = data.jobs.filter(j => !j.allDay && j.status === 'completed' && j.day >= from && j.day <= D.today() && !j.destruction && (j.billing ? j.billing.kind === 'serviceNote' : j.invoice && j.invoice.status !== 'Draft' && j.invoice.first !== 'drop'));
+  list.forEach(j => { j.destruction = { status: 'pending', at: +WD.now() }; }); return list.length;
+}
+
+WD.screens.billing = { standardInvoice, docWrap, logo, openEditor, openInvoice, recordPayment, billingRows, invActions, masterDocSpec, invoiceDoc, signaturePad, sigView, linesForJob, canInvoice,
+  isFirstDelivery, firstLines, offsite, destructionSpec, destructionEntry, destructionRow, confirmDestroyed, awaitingDestruction: awaiting, seedAwaiting };
 WD.panel.addJump('Invoice editor', () => { WD.nav.switchTab('board'); const j = data.jobs.filter(x => x.day === D.today() && x.status === 'completed' && !x.invoice && x.customerId).sort(q.order)[0]; if (j) openEditor(j.id); else ui.toast('No completed job without an invoice today'); });
 })();

@@ -15,7 +15,8 @@ WD.css(`
 `);
 
 /* ================= Unpaid invoices ================= */
-X.unpaidInv = c => c ? (data.invoices || []).filter(i => i.customerId === c.id && i.status !== 'Paid' && i.status !== 'Draft') : [];
+/** Invoices that are still owed. Bad debt (written off) and void invoices are never owed, so they are left out of owed / overdue / overLimit and every warning built on them. */
+X.unpaidInv = c => c ? (data.invoices || []).filter(i => i.customerId === c.id && i.status !== 'Paid' && i.status !== 'Draft' && !(WD.invClosed && WD.invClosed(i))) : [];
 X.owed = c => X.unpaidInv(c).reduce((s, i) => s + i.amount, 0);
 /** Unpaid invoices older than the number of days in Settings → Unpaid invoices. */
 X.overdue = c => X.unpaidInv(c).filter(i => D.diff(today(), i.day) > C.unpaid.overdueDays);
@@ -149,6 +150,7 @@ function officeRoot() {
   return { title: () => { const segs = WD.app.officeSegs(); return segs.length === 1 ? WD.app.officeNames[segs[0]][0] : 'Admin'; },
     search: { placeholder: 'Search', onInput: (v, page) => { const sub = get(seg()); sub.search && sub.search.onInput && sub.search.onInput(v, page); } },
     accessory: page => { const segs = WD.app.officeSegs(); return segs.length > 1 ? ui.segmented(segs.map(id => ({ value: id, label: WD.app.officeNames[id][0] })), seg(), v => setSeg(v, page)) : null; },
+    leading: page => { const sub = get(seg()), t = typeof sub.leading === 'function' ? sub.leading(page) : sub.leading; return t || []; },   /* e.g. the Customers gear (customer settings) */
     trailing: page => { const sub = get(seg()), t = typeof sub.trailing === 'function' ? sub.trailing(page) : sub.trailing; return t || []; },
     render: page => { AD.page = page; const sub = get(seg()); tidy(page); if (sub.onAppear && !sub.appeared) { sub.appeared = true; sub.onAppear(page); } return sub.render(page); } };
 }

@@ -16,9 +16,9 @@ WD.css(`
 .tc-num { min-width: 54px; text-align: right; font-variant-numeric: tabular-nums; }
 .tc-short { color: var(--label3); }
 .tc-tile.fed b { color: var(--indigo); } .tc-edited { color: var(--indigo); }
-.tc-card table.tc-tab { font-size: 11.5px; font-variant-numeric: tabular-nums; } .tc-card .tc-tab th { text-align: left; font-weight: 600; padding: 3px 0; color: #6b6b70; } .tc-card .tc-tab td { padding: 3px 0; text-align: left; white-space: nowrap; }
+.tc-card table.tc-tab { font-size: 12px; font-variant-numeric: tabular-nums; } .tc-card .tc-tab th { text-align: left; font-weight: 600; padding: 3px 0; color: #6b6b70; } .tc-card .tc-tab td { padding: 3px 0; text-align: left; white-space: nowrap; }
 .tc-card .tc-tab td.r, .tc-card .tc-tab th.r { text-align: right; padding-left: 7px; } .tc-card .tc-tab tr.tot td { font-weight: 700; border-top: 1px solid #1c1c1e; } .tc-card .bad { color: #d70015; font-weight: 600; }
-.tc-sign { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 30px; font-size: 11px; color: #6b6b70; } .tc-sign div { border-top: 1px solid #1c1c1e; padding-top: 3px; }
+.tc-sign { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 30px; font-size: 12px; color: #6b6b70; } .tc-sign div { border-top: 1px solid #1c1c1e; padding-top: 3px; }
 `);
 
 /* ---------- Hours and overtime ---------- */

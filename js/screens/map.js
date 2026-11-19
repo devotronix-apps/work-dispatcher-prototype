@@ -33,12 +33,12 @@ WD.css(`
 .mp-svg .trail { fill: none; stroke-width: 4px; stroke-linecap: round; stroke-linejoin: round; opacity: .28; }
 .mp-ov, .mp-layer { position: absolute; inset: 0; pointer-events: none; }
 .mp-o { position: absolute; left: 0; top: 0; width: 0; height: 0; will-change: transform; }
-.mp-lbl > span { position: absolute; display: block; transform: translate(-50%,-50%); white-space: nowrap; font-size: 11px; font-weight: 600; letter-spacing: 0; color: var(--mp-label);
+.mp-lbl > span { position: absolute; display: block; transform: translate(-50%,-50%); white-space: nowrap; font-size: 12px; font-weight: 600; letter-spacing: 0; color: var(--mp-label);
   text-shadow: 0 0 2px var(--mp-halo), 0 0 3px var(--mp-halo), 0 0 4px var(--mp-halo); }
-.mp-lbl.hood > span { font-size: 10px; letter-spacing: 1.6px; color: var(--mp-hood); font-weight: 600; }
+.mp-lbl.hood > span { font-size: 12px; letter-spacing: 1.4px; color: var(--mp-hood); font-weight: 600; }
 .mp-lbl.water > span { color: var(--mp-water-label); font-style: italic; font-weight: 500; }
-.mp-lbl.park > span { color: var(--mp-park-label); font-weight: 600; font-size: 10.5px; }
-.mp-lbl.shield > span { background: #fff; color: #1F4E9C; border: 1.5px solid #1F4E9C; border-radius: 5px; padding: 0 4px; font-size: 10px; font-weight: 800; text-shadow: none; line-height: 14px; }
+.mp-lbl.park > span { color: var(--mp-park-label); font-weight: 600; font-size: 12px; }
+.mp-lbl.shield > span { background: #fff; color: #1F4E9C; border: 1.5px solid #1F4E9C; border-radius: 5px; padding: 0 4px; font-size: 12px; font-weight: 800; text-shadow: none; line-height: 15px; }
 .mp-lbl.street, .mp-lbl.park, .mp-lbl.water.small { display: none; }
 .mp.z2 .mp-lbl.street, .mp.z3 .mp-lbl.street, .mp.z2 .mp-lbl.park, .mp.z3 .mp-lbl.park { display: block; }
 .mp.z3 .mp-lbl.hood { opacity: .45; }
@@ -46,10 +46,12 @@ WD.css(`
 .mp-pv { position: absolute; left: -14px; top: -14px; width: 28px; height: 28px; border-radius: 50%; background: var(--c); border: 3px solid var(--ring); box-shadow: 0 1px 4px rgba(0,0,0,.35);
   color: var(--fg, #fff); font-size: 12px; font-weight: 700; letter-spacing: 0; display: grid; place-items: center; transition: transform .2s cubic-bezier(.3,.8,.3,1.3); }
 .mp-pin.sel { z-index: 3; } .mp-pin.sel .mp-pv { transform: scale(1.3); box-shadow: 0 3px 10px rgba(0,0,0,.4); }
-.mp-pin.done .mp-pv, .mp-pin.skip .mp-pv { opacity: .55; }
-.mp-pb { position: absolute; left: 6px; top: -18px; width: 14px; height: 14px; border-radius: 50%; display: grid; place-items: center; color: #fff; border: 1.5px solid #fff; }
+/* Finished and skipped stops: a greyed fill with full-contrast text and a check or cross badge, never a faded number. */
+.mp-pin.done .mp-pv, .mp-pin.skip .mp-pv { background: color-mix(in srgb, var(--c) 20%, color-mix(in srgb, var(--gray) 22%, var(--cell))); color: var(--label); }
+.mp-pin:focus-visible .mp-pv, .mp-truck:focus-visible .mp-ti { outline: 3px solid var(--tint); outline-offset: 2px; } .mp-pin:focus, .mp-truck:focus { outline: none; }
+.mp-pb { position: absolute; left: 6px; top: -18px; width: 16px; height: 16px; border-radius: 50%; display: grid; place-items: center; color: #fff; border: 1.5px solid #fff; }
 .mp-depot .mp-dv { position: absolute; left: -12px; top: -12px; width: 24px; height: 24px; border-radius: 7px; background: #636366; color: #fff; display: grid; place-items: center; box-shadow: 0 1px 4px rgba(0,0,0,.3); border: 1.5px solid #fff; }
-.mp-depot .mp-dl { position: absolute; top: 14px; transform: translateX(-50%); font-size: 11px; font-weight: 700; color: var(--mp-label); text-shadow: 0 0 3px var(--mp-halo); white-space: nowrap; }
+.mp-depot .mp-dl { position: absolute; top: 14px; transform: translateX(-50%); font-size: 12px; font-weight: 700; color: var(--mp-label); text-shadow: 0 0 3px var(--mp-halo); white-space: nowrap; }
 .mp-place .mp-dv { background: #8E8E93; border-radius: 50%; }
 .mp-truck { z-index: 4; }
 .mp-grip { display: grid; place-items: center; width: 36px; height: 36px; margin: -6px -8px -6px 0; color: var(--label3); touch-action: none; cursor: grab; flex: none; }
@@ -58,16 +60,16 @@ WD.css(`
 .screen[data-theme="dark"] .mm { --mp-land: #23252A; --mp-zone: #292B30; --mp-water: #1D3B59; --mp-park: #233C2B; --mp-road: #484B52; --mp-casing: #2C2E33; --mp-minor: #393C42; --mp-hwy: #806B3D; --mp-hwy-casing: #574A2B; }
 .mm svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .mm .mp-svg .acase { stroke-width: 2.5px; } .mm .mp-svg .art { stroke-width: 1.5px; } .mm .mp-svg .hcase { stroke-width: 4px; } .mm .mp-svg .hwy { stroke-width: 2.5px; } .mm .mp-svg .minor { display: none; }
-.mm-p { position: absolute; transform: translate(-50%, -50%); width: 20px; height: 20px; border-radius: 50%; background: var(--c); border: 2.5px solid var(--ring, #fff); color: var(--fg, #fff); font-size: 10px; font-weight: 800; display: grid; place-items: center; letter-spacing: 0; box-shadow: 0 1px 3px rgba(0,0,0,.35); }
-.mm-p.sq { border-radius: 5px; width: 18px; height: 18px; } .mm-p.big { width: 28px; height: 28px; font-size: 12px; } .mm-p.faded { opacity: .45; }
-.mm-cap { position: absolute; left: 8px; top: 6px; font-size: 11px; font-weight: 700; letter-spacing: 0; background: var(--material); border-radius: 7px; padding: 1px 7px; }
+.mm-p { position: absolute; transform: translate(-50%, -50%); width: 22px; height: 22px; border-radius: 50%; background: var(--c); border: 2.5px solid var(--ring, #fff); color: var(--fg, #fff); font-size: 12px; font-weight: 800; display: grid; place-items: center; letter-spacing: 0; box-shadow: 0 1px 3px rgba(0,0,0,.35); }
+.mm-p.sq { border-radius: 5px; width: 20px; height: 20px; } .mm-p.big { width: 28px; height: 28px; font-size: 13px; } .mm-p.faded { background: color-mix(in srgb, var(--c) 20%, color-mix(in srgb, var(--gray) 22%, var(--cell))); color: var(--label); }
+.mm-cap { position: absolute; left: 8px; top: 6px; font-size: 12px; font-weight: 700; letter-spacing: 0; background: var(--material); border-radius: 7px; padding: 1px 7px; }
 .mp-tv { position: absolute; left: -18px; top: -18px; width: 36px; height: 36px; }
 .mp-cone { position: absolute; left: 50%; top: 50%; width: 0; height: 0; transition: transform .9s linear; }
 .mp-cone::before { content: ""; position: absolute; left: -11px; top: -31px; border-left: 11px solid transparent; border-right: 11px solid transparent; border-bottom: 18px solid var(--c); opacity: .55; }
 .mp-truck.still .mp-cone { opacity: .4; }
 .mp-ti { position: absolute; inset: 0; border-radius: 50%; background: var(--c); border: 2.5px solid #fff; display: grid; place-items: center; box-shadow: 0 2px 8px rgba(0,0,0,.35); }
 .mp-ti .ic { --cell: var(--c); }
-.mp-tl { position: absolute; top: 21px; transform: translateX(-50%); background: var(--material); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-radius: 8px; padding: 1px 6px; font-size: 10.5px; font-weight: 700; white-space: nowrap; letter-spacing: 0; box-shadow: 0 1px 3px rgba(0,0,0,.18); }
+.mp-tl { position: absolute; top: 21px; transform: translateX(-50%); background: var(--material); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-radius: 8px; padding: 1px 6px; font-size: 12px; font-weight: 700; white-space: nowrap; letter-spacing: 0; box-shadow: 0 1px 3px rgba(0,0,0,.18); }
 .mp-me { z-index: 5; } .mp-me .mp-cone::before { border-bottom-color: var(--blue); opacity: .35; }
 .mp-me .mp-halo { position: absolute; left: -26px; top: -26px; width: 52px; height: 52px; border-radius: 50%; background: color-mix(in srgb, var(--blue) 22%, transparent); animation: mp-halo 2s ease-out infinite; }
 .mp-me .mp-dot { position: absolute; left: -10px; top: -10px; width: 20px; height: 20px; border-radius: 50%; background: var(--blue); border: 3px solid #fff; box-shadow: 0 1px 5px rgba(0,0,0,.35); }
@@ -83,9 +85,13 @@ WD.css(`
 .mp-chips::-webkit-scrollbar { display: none; }
 .mp-chip { flex: none; border: 0; height: 30px; border-radius: 15px; padding: 0 11px 0 9px; display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; letter-spacing: -.08px; color: var(--label); cursor: pointer; }
 .mp-chip .dot { width: 9px; height: 9px; } .mp-chip.off { color: var(--label3); } .mp-chip.off .dot { opacity: .3; }
-.mp-side { position: absolute; right: 10px; top: 152px; display: flex; flex-direction: column; gap: 10px; }
+.mp-side { position: absolute; right: 10px; top: 152px; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
 .mp-grp { border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; }
-.mp-btn { width: 44px; height: 44px; border: 0; background: none; color: var(--tint); display: grid; place-items: center; cursor: pointer; padding: 0; }
+.mp-btn { min-width: 44px; height: 44px; border: 0; background: none; color: var(--tint); display: flex; align-items: center; justify-content: center; gap: 9px; cursor: pointer; padding: 0; font: inherit; }
+/* The top button opens the stack out to show a name beside every tool, and closes it back to the icons. */
+.mp-btn .l { display: none; font-size: 14px; font-weight: 600; letter-spacing: -.15px; color: var(--label); white-space: nowrap; }
+.mp-side.open { align-items: stretch; } .mp-side.open .mp-btn { justify-content: flex-start; padding: 0 14px 0 11px; } .mp-side.open .mp-btn .l { display: inline; }
+.mp-btn:focus-visible { outline: 3px solid var(--tint); outline-offset: -3px; }
 .mp-btn + .mp-btn { border-top: .5px solid var(--sep); } .mp-btn.off { color: var(--label2); } .mp-btn:active { background: var(--fill3); }
 .mp-bottom { position: absolute; left: 10px; right: 10px; bottom: 10px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; pointer-events: none; }
 .mp-bottom > * { pointer-events: auto; }
@@ -106,8 +112,8 @@ button.mp-note { cursor: pointer; }
 .mp-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 8px 0 12px; font-size: 13px; color: var(--label2); }
 .mp-meta .dot { width: 8px; height: 8px; margin-right: 4px; }
 .mp-acts { display: flex; gap: 8px; } .mp-acts .btn { flex: 1; }
-.mp-mini { width: 26px; height: 26px; border-radius: 50%; background: var(--c); border: 2.5px solid var(--ring); color: var(--fg, #fff); font-size: 11.5px; font-weight: 700; display: grid; place-items: center; flex: none; letter-spacing: 0; }
-.mp-mini.done { opacity: .5; }
+.mp-mini { width: 26px; height: 26px; border-radius: 50%; background: var(--c); border: 2.5px solid var(--ring); color: var(--fg, #fff); font-size: 12px; font-weight: 700; display: grid; place-items: center; flex: none; letter-spacing: 0; }
+.mp-mini.done { background: color-mix(in srgb, var(--c) 20%, color-mix(in srgb, var(--gray) 22%, var(--cell))); color: var(--label); }
 .mp-thead { display: flex; align-items: center; gap: 12px; padding: 4px 4px 2px; }
 .mp-thead > div:not(.avatar) { flex: 1; min-width: 0; }
 .mp-tbtns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 16px; } .mp-tbtns .btn:last-child { grid-column: 1 / -1; }
@@ -247,7 +253,7 @@ const truckFor = routeId => data.trucks.find(t => t.routeId === routeId);
 const ago = ms => { const s = Math.max(0, Math.round((+WD.now() - ms) / 1000)); return s < 60 ? s + ' s ago' : Math.floor(s / 60) + ' min ago'; };
 const numberOf = job => { const s = q.stops(job.routeId, job.day).find(x => x.job === job); return s ? s.number : null; };
 /* Colors: the job type fills the pin and the route (calendar) color rims it. */
-const ringOf = job => q.routeColor(job.routeId), fillOf = job => WD.cardColor(job), pinStyle = job => ({ '--c': fillOf(job), '--ring': ringOf(job), '--fg': WD.textOn(fillOf(job)) });
+const ringOf = job => q.routeColor(job.routeId), fillOf = job => WD.cardColor(job), pinStyle = job => ({ '--c': fillOf(job), '--ring': ringOf(job), '--fg': (WD.readableOn || WD.textOn)(fillOf(job)) });   // readableOn (board.js) compares real contrast ratios
 const dayLabel = k => { const rel = fmt.day(k, 'rel'), base = fmt.day(k, 'weekday') + ' ' + fmt.day(k, 'md'); return /^(Today|Tomorrow|Yesterday)$/.test(rel) ? rel + ', ' + base : base; };
 const openDetails = id => { if (WD.screens.jobs && WD.screens.jobs.openDetails) WD.screens.jobs.openDetails(id); else ui.toast('Job details aren’t available', 'info.circle'); };
 const mini = (job, n) => h('span.mp-mini' + (DONE[job.status] ? '.done' : ''), { style: pinStyle(job) }, n);
@@ -256,7 +262,7 @@ const mini = (job, n) => h('span.mp-mini' + (DONE[job.status] ? '.done' : ''), {
 let inst = null;
 function createMap() {
   /* The day is the dispatch board's day: one shared date, so switching between Map and Board never shows two different days. */
-  const st = { get day() { return S.board.day || D.today(); }, set day(k) { S.board.day = k; }, hidden: new Set(), extra: new Set(), showTrucks: true, sel: null, follow: null };
+  const st = { get day() { return S.board.day || D.today(); }, set day(k) { S.board.day = k; }, hidden: new Set(), extra: new Set(), showTrucks: true, sel: null, follow: null, labels: false };
   /* A driver's map starts with only their own route. The other routes are one tap away on the chips. */
   { const mine = S.me && S.me.role === 'driver' && data.routes.find(r => r.driverId === S.me.id); if (mine) q.routes().forEach(r => { if (r.id !== mine.id) st.hidden.add(r.id); }); }
   let shownDay = st.day;
@@ -339,9 +345,10 @@ function createMap() {
   const unresolved = () => shownRoutes().flatMap(r => q.jobsFor(r.id, st.day).filter(j => !j.located && j.address));
   function pinEl(job, n) {
     const cls = job.status === 'completed' ? '.done' : job.status === 'skipped' ? '.skip' : '';
-    return h('div.mp-o.mp-pin.mp-hit' + cls + (st.sel === job.id ? '.sel' : ''), { onclick: () => select(job.id) },
+    const say = 'Stop ' + n + ', ' + job.title + ', ' + ((WD.jobStatuses[job.status] || {}).title || job.status).toLowerCase() + ', ' + q.routeName(job.routeId);
+    return h('div.mp-o.mp-pin.mp-hit' + cls + (st.sel === job.id ? '.sel' : ''), { role: 'button', tabindex: '0', 'aria-label': say, 'aria-pressed': String(st.sel === job.id), onclick: () => select(job.id), onkeydown: keyTap },
       h('div.mp-pv', { style: pinStyle(job) }, n,
-        cls && h('span.mp-pb', { style: { background: cls === '.done' ? 'var(--green)' : 'var(--red)' } }, icon(cls === '.done' ? 'checkmark' : 'xmark', 9))));
+        cls && h('span.mp-pb', { 'aria-hidden': 'true', style: { background: cls === '.done' ? '#1B7F3B' : '#D70015' } }, icon(cls === '.done' ? 'checkmark' : 'xmark', 10))));
   }
   function drawStops() {
     const routes = shownRoutes(); pins = [];
@@ -354,7 +361,7 @@ function createMap() {
     liveTrucks().forEach(t => {
       want.add(t.routeId);
       let e = truckEls.get(t.routeId);
-      if (!e) { e = h('div.mp-o.mp-truck.mp-hit', { onclick: () => openTruck(t.routeId) }, h('div.mp-tv', h('div.mp-cone'), h('div.mp-ti', icon('truck', 18, '#fff'))), h('div.mp-tl')); truckEls.set(t.routeId, e); truckLayer.appendChild(e); }
+      if (!e) { e = h('div.mp-o.mp-truck.mp-hit', { role: 'button', tabindex: '0', 'aria-label': 'Truck on ' + q.routeName(t.routeId) + ', live position', onclick: () => openTruck(t.routeId), onkeydown: keyTap }, h('div.mp-tv', h('div.mp-cone'), h('div.mp-ti', icon('truck', 18, '#fff'))), h('div.mp-tl')); truckEls.set(t.routeId, e); truckLayer.appendChild(e); }
       e.style.setProperty('--c', q.routeColor(t.routeId)); e.classList.toggle('still', t.state !== 'driving');
       e.querySelector('.mp-cone').style.transform = 'rotate(' + sim[t.routeId].hd.toFixed(0) + 'deg)';
       const v = q.vehicle(t.vehicleId), lbl = e.querySelector('.mp-tl'), txt = v ? v.name : 'Truck'; if (lbl.textContent !== txt) lbl.textContent = txt;
@@ -391,16 +398,21 @@ function createMap() {
     ui.toast(S.shift ? 'Location is off for this shift' : 'Your location shows during a shift', 'location'); animateTo(lookAt(depot.x, depot.y, Math.max(view.s, 1.2)));
   }
   const fill = (box, ...kids) => box.replaceChildren(...kids.filter(k => k instanceof Node));   // native replaceChildren would print null/false as text
-  const btn = (ic, label, fn, off) => h('button.mp-btn' + (off ? '.off' : ''), { 'aria-label': label, onclick: fn }, icon(ic, 21));
+  /** A tool button: the icon, and a short name that shows while the stack is opened out. `label` is always what a screen reader hears. */
+  const btn = (ic, label, fn, off, name) => h('button.mp-btn' + (off ? '.off' : ''), { 'aria-label': label, title: label, onclick: fn }, icon(ic, 21), h('span.l', { 'aria-hidden': 'true' }, name || label));
+  const keyTap = e => { if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) { e.preventDefault(); e.currentTarget.click(); } };
   function drawUI() {
     const routes = chipRoutes(), canLive = WD.can('tracking.view_live'), today = st.day === D.today();
     fill(top, 
       h('div.mp-day.mp-glass', h('button.mp-dbtn', { 'aria-label': 'Previous day', onclick: () => setDay(D.add(st.day, -1)) }, icon('chevron.left', 19)),
         h('button.mp-dlabel', { onclick: () => setDay(D.today()) }, dayLabel(st.day)), h('button.mp-dbtn', { 'aria-label': 'Next day', onclick: () => setDay(D.add(st.day, 1)) }, icon('chevron.right', 19))),
       routes.length > 1 && h('div.mp-chips', routes.map(r => h('button.mp-chip.mp-glass' + (st.hidden.has(r.id) ? '.off' : ''), { onclick: () => { st.hidden.has(r.id) ? st.hidden.delete(r.id) : st.hidden.add(r.id); st.sel = null; update(); } }, ui.dot(q.routeColor(r)), q.routeName(r)))));
+    side.classList.toggle('open', st.labels);
+    const labelBtn = btn(st.labels ? 'chevron.right' : 'questionmark.circle', st.labels ? 'Hide the names of the map tools' : 'Show the names of the map tools', () => { st.labels = !st.labels; drawUI(); const b = side.querySelector('.mp-btn'); if (b) b.focus({ preventScroll: true }); }, false, st.labels ? 'Hide names' : 'Names');
+    labelBtn.setAttribute('aria-expanded', String(st.labels));
     fill(side, 
-      h('div.mp-grp.mp-glass', btn('list.bullet', 'Stops list', openList), WD.r8 && btn('calendar', 'Planning map: jobs near an address in the coming weeks', () => WD.r8.openPlanMap()), WD.can('jobs.edit') && btn('sparkles', 'AutoRoute', autoRoute), canLive && btn('truck', st.showTrucks ? 'Hide trucks' : 'Show trucks', () => { st.showTrucks = !st.showTrucks; ui.toast(st.showTrucks ? 'Showing live trucks' : 'Trucks hidden', 'truck', 1400); update(); }, !st.showTrucks)),
-      h('div.mp-grp.mp-glass', btn(S.shift ? 'location.fill' : 'location', 'Show my location', locate), btn('mp.fit', 'Show all stops', () => { stopFollow(); fit(true); })),
+      h('div.mp-grp.mp-glass', labelBtn, btn('list.bullet', 'Stops list', openList), WD.r8 && btn('calendar', 'Planning map: jobs near an address in the coming weeks', () => WD.r8.openPlanMap(), false, 'Planning map'), WD.can('jobs.edit') && btn('sparkles', 'AutoRoute', autoRoute), canLive && btn('truck', st.showTrucks ? 'Hide trucks' : 'Show trucks', () => { st.showTrucks = !st.showTrucks; ui.toast(st.showTrucks ? 'Showing live trucks' : 'Trucks hidden', 'truck', 1400); update(); }, !st.showTrucks)),
+      h('div.mp-grp.mp-glass', btn(S.shift ? 'location.fill' : 'location', 'Show my location', locate, false, 'My location'), btn('mp.fit', 'Show all stops', () => { stopFollow(); fit(true); })),
       h('div.mp-grp.mp-glass', btn('plus', 'Zoom in', () => zoomAt({ x: W / 2, y: H / 2 }, 1.7, true)), btn('minus', 'Zoom out', () => zoomAt({ x: W / 2, y: H / 2 }, 1 / 1.7, true))));
     const fv = st.follow && truckFor(st.follow), fveh = fv && q.vehicle(fv.vehicleId);
     fill(bottom, 

@@ -15,7 +15,7 @@ const books = () => WD.co ? (WD.co.hasBooks() ? WD.co.booksName() : '') : 'Invoi
 
 WD.css(`
 .wf-td { font-weight: 500; opacity: .92; }
-.bd-job .wf-td { font-weight: 600; font-size: 11px; opacity: .95; }
+.bd-job .wf-td { font-weight: 600; font-size: 12px; opacity: .95; }
 .wf-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
 .wf-chip { font-size: 12px; line-height: 16px; padding: 2px 8px; border-radius: 10px; background: color-mix(in srgb, var(--orange) 16%, var(--cell)); color: var(--label); font-weight: 500; letter-spacing: 0; }
 .wf-alert { display: flex; gap: 10px; align-items: flex-start; padding: 11px 16px; font-size: 15px; line-height: 20px; letter-spacing: -.2px; }
@@ -223,7 +223,7 @@ async function chargeCard(rec, job) {
 /** Rows for an unpaid invoice: mark paid, send reminder, charge card on file, open in Invoice Ninja. */
 function invoiceActionRows(rec, job, o = {}) {
   if (!rec) return [];
-  const unpaid = rec.status !== 'Paid', field = canInvoice(), manage = WD.can('billing.manage'), mi = rec.masterId && data.masterInvoices.find(m => m.id === rec.masterId);
+  const unpaid = rec.status !== 'Paid' && !(WD.invClosed && WD.invClosed(rec)), field = canInvoice(), manage = WD.can('billing.manage'), mi = rec.masterId && data.masterInvoices.find(m => m.id === rec.masterId);
   const view = o.noView ? null : mi ? () => WD.nav.push(billing().masterDocSpec(mi)) : job && job.invoice ? () => billing().openInvoice(job.id) : null;
   return [view && ui.row({ title: 'View invoice', subtitle: mi ? mi.noteIds.length + ' service notes · as the customer receives it' : 'As the customer receives it', icon: 'doc.text', iconPlain: true, tint: true, chevron: true, onTap: view }),
     WD.r9 && WD.r9.editRow(rec, job),
@@ -235,7 +235,7 @@ function invoiceActionRows(rec, job, o = {}) {
 }
 
 /* ================= Invoices list ================= */
-const INV_COLOR = { Paid: 'var(--green)', Sent: 'var(--blue)', Overdue: 'var(--red)', Draft: 'var(--gray)' };
+const INV_COLOR = { Paid: 'var(--green)', Sent: 'var(--blue)', Overdue: 'var(--red)', Draft: 'var(--gray)', 'Bad debt': 'var(--purple)', Void: 'var(--gray)' };
 const IV = { scope: 'mine', routeId: null, query: '', limit: 40, kind: 'invoices' };
 const myRoute = () => (S.shift && S.shift.routeId) || ((q.routes().find(r => r.driverId === (S.me && S.me.id)) || {}).id) || IV.routeId || (q.visibleRoutes()[0] || q.routes()[0]).id;
 const recRoute = rec => { const j = rec.jobId && q.job(rec.jobId); if (j) return j.routeId; const c = q.customer(rec.customerId); return c && c.route; };
@@ -252,8 +252,8 @@ function notesList(page, s) {
     list.length > IV.limit && ui.row({ title: 'Show more', tint: true, center: true, onTap: () => { IV.limit += 60; page.refresh(); } }))
     : ui.empty({ icon: 'signature', title: s ? 'No service notes match' : 'No service notes', text: IV.scope === 'mine' ? 'None on this route. Try All routes.' : 'Service notes appear here as drivers collect them.' });
 }
-function invoicesSpec() {
-  IV.limit = 40;
+function invoicesSpec(o) {
+  IV.limit = 40; if (o && o.scope) IV.scope = o.scope;   /* Reports opens the list for every route */
   return { title: 'Invoices', large: true,
     trailing: page => WD.rc && WD.rc.newMenu && canInvoice() ? [{ icon: 'plus', label: 'New', onTap: (p, el) => WD.rc.newMenu(el, p, IV.kind) }] : [],
     search: { placeholder: 'Number, customer or location', onInput: (v, p) => { IV.query = v.trim(); IV.limit = 40; p.refresh(); } },
@@ -264,7 +264,7 @@ function invoicesSpec() {
       if (IV.scope === 'mine') list = list.filter(r => recRoute(r) === route);
       if (WD.rc && WD.rc.invMatch) list = list.filter(WD.rc.invMatch);
       if (s) list = list.filter(r => { const num = r.number.toLowerCase().replace(/\s+/g, ''), c = q.customer(r.customerId); return num.includes(s) || (digits.length >= 2 && num.replace(/\D/g, '').includes(digits)) || (c && c.name.toLowerCase().includes(IV.query.toLowerCase())); });
-      const open = list.filter(r => r.status !== 'Paid').reduce((t, r) => t + r.amount, 0), alerts = WD.can('billing.view') && !s ? poAlerts() : [];
+      const open = list.filter(r => r.status !== 'Paid' && !(WD.invClosed && WD.invClosed(r))).reduce((t, r) => t + r.amount, 0), alerts = WD.can('billing.view') && !s ? poAlerts() : [];
       const ownRoute = S.shift || q.routes().some(r => r.driverId === (S.me && S.me.id));
       return [h('div.wf-inv-seg', ui.segmented([{ value: 'invoices', label: 'Invoices' }, { value: 'notes', label: 'Service notes' }], IV.kind, v => { IV.kind = v; IV.limit = 40; page.refresh(); })),
         /* One row of filters: route, dates, status, and the payment-status check. The route used to take a second selector and a row of its own. */
@@ -276,6 +276,8 @@ function invoicesSpec() {
           if (IV.kind === 'invoices' && WD.co && WD.co.hasBooks && WD.co.hasBooks()) { const bk = h('button.rc-pill', { 'aria-label': 'Payment status', onclick: () => ui.menu(bk, [{ node: (WD.co.booksSection() || h('div')).querySelector('.row') || h('div') }]) }, icon('sync', 14), 'Payments'); bar.appendChild(bk); }
           return bar; })(WD.rc && WD.rc.filterBar && WD.rc.filterBar(WD.rc.invFilter, () => { IV.limit = 40; page.refresh(); }, { status: true })),
         ui.list(
+          /* Off-site destruction: a compact row while any load is waiting to be confirmed destroyed (billing.js). */
+          !s && billing().destructionEntry && billing().destructionEntry(sp => page.push(sp)),
           IV.kind === 'notes' && notesList(page, s),
           IV.kind === 'invoices' && alerts.length > 0 && ui.section({ header: 'Purchase orders to fix', fold: true, folded: true }, alerts.map(x => h('div', h('div.footnote', { style: 'padding:10px 16px 0;font-weight:600' }, x.c.name), alertRow(x.a, () => guard('customers', 'openDetail', x.c.id))))),
           IV.kind !== 'invoices' ? null : list.length ? ui.section({ header: (s ? list.length + (list.length === 1 ? ' match' : ' matches') : 'Newest first') + (open ? ' · ' + fmt.money(open) + ' open' : ''), footer: 'Every invoice created' + (books() ? ', from ' + books() : '') + ', newest first. Invoices paid there are marked paid here automatically. Search by invoice number (“2417” finds INV-2417) or customer.' },
@@ -288,7 +290,7 @@ function invoicesSpec() {
 }
 
 /* ================= Directions ================= */
-WD.MAPS_APPS = [{ value: 'apple', label: 'Apple Maps' }, { value: 'google', label: 'Google Maps' }, { value: 'waze', label: 'Waze' }];
+WD.MAPS_APPS = [{ value: 'apple', label: 'Apple Maps' }, { value: 'google', label: 'Google Maps' }, { value: 'waze', label: 'Waze' }, { value: 'hammer', label: 'Hammer: Truck GPS & Maps' }];
 const mapsName = () => (WD.MAPS_APPS.find(x => x.value === S.prefs.mapsApp) || WD.MAPS_APPS[0]).label;
 function openDirections(job) { ui.toast('Opening ' + mapsName() + (job && job.title ? ' · ' + job.title : '') + '…', 'arrow.triangle.turn.up.right', 2200); }
 
@@ -404,7 +406,10 @@ function workflowSpec() {
 })();
 
 const api2 = { billed, dimmed, needsAction, missed, billingLabel, titleDetails, titleNode, titleText, poFor, poAlert, poAlerts, alertRow, customerSections, docsEditor, poScheduleSpec, editPO, BILLING_MODES,
-  addServiceNote, masterSpec, invoicesSpec, invoiceActionRows, markPaid, applyPaid, invRecFor, openInvoiceRec, openDirections, mapsName, completeStop, afterBilling, paidNoInvoice, missedSheet, workflowSpec, nextStop };
+  addServiceNote, masterSpec, invoicesSpec, invoiceActionRows, markPaid, applyPaid, invRecFor, openInvoiceRec, openDirections, mapsName, completeStop, afterBilling, paidNoInvoice, missedSheet, workflowSpec, nextStop,
+  /** “Awaiting destruction confirmation” page (off-site destruction); the list itself lives in billing.js. */
+  destructionSpec: () => billing().destructionSpec ? billing().destructionSpec() : { title: 'Awaiting destruction', render: () => ui.empty({ icon: 'clock', title: 'Not available' }) },
+  awaitingDestruction: () => billing().awaitingDestruction ? billing().awaitingDestruction().length : 0 };
 WD.workflow = WD.screens.workflow = api2;
 
 WD.screens.invoices = { root: invoicesSpec };

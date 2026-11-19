@@ -21,11 +21,11 @@ WD.css(`
 .r1-sw { display: flex; flex-wrap: wrap; gap: 8px; }
 .r1-sw button { width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--sep); cursor: pointer; padding: 0; } .r1-sw button.on { border: 3px solid var(--label); }
 .r1-num { width: 74px; flex: none; text-align: right; border: 0; border-radius: 8px; background: var(--fill3); color: var(--label); font: inherit; font-size: 16px; padding: 6px 8px; }
-.r1-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 3px; } .r1-chips span { font-size: 11px; font-weight: 600; border-radius: 8px; padding: 1px 7px; background: var(--fill2); color: var(--label2); }
+.r1-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 3px; } .r1-chips span { font-size: 12px; font-weight: 600; border-radius: 8px; padding: 1px 7px; background: var(--fill2); color: var(--label2); }
 .r1-chips span.bad { background: color-mix(in srgb, var(--red) 16%, transparent); color: var(--red); } .r1-chips span.warn { background: color-mix(in srgb, var(--orange) 18%, transparent); color: var(--orange); } .r1-chips span.ok { background: color-mix(in srgb, var(--green) 16%, transparent); color: var(--green); }
 .bd-job.hd .bd-job-in { box-shadow: inset 0 0 0 2px #FFD60A; }
 .r1-banner { margin: 12px 16px 0; border-radius: 12px; background: #FFE066; color: #1C1C1E; border-left: 5px solid #E0A800; padding: 10px 12px; font-size: 15px; line-height: 20px; font-weight: 600; }
-.r1-banner small { display: block; font-size: 11px; letter-spacing: .3px; text-transform: uppercase; opacity: .7; }
+.r1-banner small { display: block; font-size: 12px; letter-spacing: .3px; text-transform: uppercase; opacity: .7; }
 `);
 
 /* ================= Settings data ================= */
@@ -176,8 +176,26 @@ X.issuesSpec = () => ({ title: 'Flagged assignments', render: page => { const li
     list.map(x => ui.row({ leading: ui.dot(q.routeColor(x.job.routeId)), title: x.job.title, subtitle: [h('div', fmt.day(x.job.day, 'rel') + ' · ' + q.routeName(x.job.routeId)), x.issues.map(i => h('div', { style: 'color:var(--red)' }, i.text))], chevron: true, onTap: () => WD.screens.jobs.openDetails(x.job.id) })),
     !list.length && ui.row({ icon: 'checkmark.circle.fill', iconPlain: true, iconColor: 'var(--green)', title: 'Every job has someone qualified' })));
 } });
-X.skillsSpec = () => ({ title: 'Skills, licenses and clearances', render: page => { if (!admin()) return locked(); const K = C.skills, re = () => { WD.changed(); page.refresh(); }, people = data.users.filter(u => u.status === 'active'), n = X.flagged().length;
-  return ui.list(note('Match the right person and truck to each job. A job can need a skill, a license or a clearance; a customer can need one for every visit (a prison’s background check); a truck can need a license to drive (CDL) and can be marked for what it is able to do (shred hard drives).'),
+/** What one truck can do and the license it takes to drive it. */
+function capSheet(v, page) { const f = { caps: (v.caps || []).slice(), needs: v.needs || '' };
+  ui.sheet({ title: v.name, leading: [{ label: 'Cancel', onTap: p => p.dismiss() }], trailing: [{ label: 'Save', bold: true, onTap: p => { v.caps = f.caps.slice(); v.needs = f.needs; WD.changed(); p.dismiss(); page.refresh(); ui.toast('Saved', 'checkmark'); } }],
+    render: p => ui.list(ui.section({ header: 'What it can do', fold: false, footer: 'A job with hard drives is flagged unless its truck can shred them or a crusher goes with the driver.', showFooter: true }, C.caps.map(c => ui.toggleRow({ title: c.name, value: f.caps.includes(c.id), onChange: on => { f.caps = on ? f.caps.concat(c.id) : f.caps.filter(i => i !== c.id); } }))),
+      ui.section({ header: 'Driving it', fold: false }, ui.pickerRow({ title: 'License needed', value: f.needs, options: [{ value: '', label: 'None' }].concat(C.skills.list.filter(s => s.kind === 'license').map(s => ({ value: s.id, label: s.name }))), onChange: val => { f.needs = val; p.refresh(); } }))) }, { detent: 'medium' }); }
+const truckChips = v => h('div.r1-chips', (v.caps || []).map(id => (c => c && h('span.ok', c.name))(C.caps.find(x => x.id === id))), v.needs && skill(v.needs) && h('span.warn', 'Needs ' + skill(v.needs).name), !(v.caps || []).length && !v.needs && h('span', 'No special capability'));
+const BUILTIN_CAPS = ['hdd', 'nonpaper', 'liftgate'];
+/** Trucks and what they can do (Maintenance → Fleet setup). */
+const truckCapsSpec = () => ({ title: 'Trucks and capabilities', render: page => { if (!admin()) return locked(); const re = () => { WD.changed(); page.refresh(); }, trucks = data.vehicles.filter(v => v.active !== false), VS = WD.screens.settings && WD.screens.settings.vehiclesSpec;
+  return ui.list(note('What each truck can do and the license it takes to drive it. Jobs are matched against this: hard drives need a truck that shreds them, non-paper material a truck marked for it.'),
+    ui.section({ header: 'Trucks', fold: false, footer: 'Tap a truck to change what it can do. Height, weight and capacity are on the truck’s page in Maintenance.', showFooter: true }, trucks.map(v => ui.row({ icon: 'truck', iconColor: 'var(--orange)', title: v.name, subtitle: truckChips(v), chevron: true, onTap: () => capSheet(v, page) }))),
+    ui.section({ header: 'Capabilities', fold: false, footer: 'Add your own, such as a pallet jack or a refrigerated box.' }, C.caps.map(c => ui.row({ title: c.name, detail: plural(trucks.filter(v => (v.caps || []).includes(c.id)).length, 'truck'), chevron: true, onTap: async () => {
+        const a = await ui.actionSheet({ title: c.name, buttons: [{ label: 'Rename…', value: 'name' }, !BUILTIN_CAPS.includes(c.id) && { label: 'Delete', value: 'del', role: 'destructive' }].filter(Boolean) });
+        if (a === 'name') { const n = await ask('Capability', 'Name', c.name); if (n) c.name = n; } else if (a === 'del') { C.caps.splice(C.caps.indexOf(c), 1); data.vehicles.forEach(v => { v.caps = (v.caps || []).filter(i => i !== c.id); }); } if (a) re(); } })),
+      ui.row({ icon: 'plus.circle.fill', iconPlain: true, iconColor: 'var(--green)', title: 'Add a capability', tint: true, onTap: async () => { const n = await ask('New capability', 'e.g. Pallet jack'); if (n) { C.caps.push({ id: uid('cap'), name: n }); re(); } } })),
+    VS && ui.section(null, ui.row({ icon: 'truck', iconColor: 'var(--gray)', title: 'Add, rename or retire a truck', subtitle: 'Name, plate, where it starts and ends the day', chevron: true, onTap: () => page.push(VS()) })));
+} });
+/** scope: 'people' (skills, licenses and clearances people hold; HR), 'trucks' (what each truck can do; Maintenance), or nothing for both. */
+X.skillsSpec = scope => scope === 'trucks' ? truckCapsSpec() : ({ title: 'Skills, licenses and clearances', render: page => { if (!admin()) return locked(); const K = C.skills, re = () => { WD.changed(); page.refresh(); }, people = data.users.filter(u => u.status === 'active'), n = X.flagged().length;
+  return ui.list(note(scope === 'people' ? 'Match the right person to each job. A job can need a skill, a license or a clearance; a customer can need one for every visit (a prison’s background check); a truck can need a license to drive (CDL). What each truck can do is under Maintenance → Fleet setup.' : 'Match the right person and truck to each job. A job can need a skill, a license or a clearance; a customer can need one for every visit (a prison’s background check); a truck can need a license to drive (CDL) and can be marked for what it is able to do (shred hard drives).'),
     ui.section({ fold: false, footer: K.on ? null : 'Off: nothing is checked and nothing is flagged for skills. Truck capability for hard drives is still shown.' }, ui.toggleRow({ icon: 'person.2', iconColor: 'var(--indigo)', title: 'Match skills, licenses and clearances', value: K.on, onChange: v => { K.on = v; re(); } })),
     K.on && ui.section({ header: 'When a job is assigned to someone who doesn’t qualify', fold: false, footer: K.mode === 'block' ? 'The app refuses the assignment and says why. Jobs already on a route are flagged.' : 'The app warns, lets you go ahead, and flags the job in red on the board until it is fixed.' },
       h('div.row', h('div', { style: 'flex:1' }, ui.segmented([{ value: 'flag', label: 'Flag the job' }, { value: 'block', label: 'Don’t allow it' }], K.mode, v => { K.mode = v; re(); })))),
@@ -185,7 +203,7 @@ X.skillsSpec = () => ({ title: 'Skills, licenses and clearances', render: page =
     K.on && ui.section({ header: 'What can be required', fold: false, footer: 'Add your own: a pesticide applicator license, a gas-fitter ticket, an airport badge.' }, K.list.map(s => ui.row({ title: s.name, subtitle: KIND[s.kind] + (s.scoped ? ' · can be limited to one site' : ''), detail: plural(people.filter(u => (u.creds || []).some(c => c.id === s.id)).length, 'person').replace('persons', 'people'), chevron: true, onTap: () => skillSheet(s, page) })),
       ui.row({ icon: 'plus.circle.fill', iconPlain: true, iconColor: 'var(--green)', title: 'Add a skill, license or clearance', tint: true, onTap: () => skillSheet(null, page) })),
     K.on && ui.section({ header: 'People', footer: 'Tap a person to add what they hold and when it expires.' }, people.map(u => ui.row({ leading: ui.avatar(u.name, { size: 34 }), title: u.name, subtitle: h('div.r1-chips', (u.creds || []).map(c => { const s = skill(c.id), d = c.expires ? daysTo(c.expires) : 999; return s && h('span' + (d < 0 ? '.bad' : d <= C.compliance.noticeDays ? '.warn' : ''), s.name + (s.scoped && c.covers && c.covers !== 'all' ? ' · 1 site' : '')); }), !(u.creds || []).length && h('span', 'Nothing on file')), chevron: true, onTap: () => page.push(personSpec(u)) }))),
-    ui.section({ header: 'Trucks', footer: 'What each truck can do and the license it takes to drive it are set on the truck (Settings → Vehicles).' }, data.vehicles.filter(v => v.active !== false).map(v => ui.row({ icon: 'truck', iconColor: 'var(--orange)', title: v.name, subtitle: h('div.r1-chips', (v.caps || []).map(id => (c => c && h('span.ok', c.name))(C.caps.find(x => x.id === id))), v.needs && skill(v.needs) && h('span.warn', 'Needs ' + skill(v.needs).name), !(v.caps || []).length && !v.needs && h('span', 'No special capability')) }))));
+    scope !== 'people' && ui.section({ header: 'Trucks', footer: 'What each truck can do and the license it takes to drive it are set in Maintenance → Fleet setup → Trucks and capabilities.' }, data.vehicles.filter(v => v.active !== false).map(v => ui.row({ icon: 'truck', iconColor: 'var(--orange)', title: v.name, subtitle: truckChips(v) }))));
 } });
 
 /* ================= Vehicles: capacity, capability, license, tracking, registration ================= */
@@ -197,7 +215,7 @@ X.vehicleSections = (v, x, page) => { const metric = WD.locale.units === 'metric
   return [ui.section({ header: 'Capacity and what it can do', fold: false, footer: 'Capacity feeds the load sheet and tells AutoRoute when to plan a trip to unload. A job with hard drives is flagged unless its truck can shred them or a crusher goes with the driver.' },
       h('div.row', h('div.row-main', h('div.row-title', 'Carries up to'), h('div.row-sub', metric ? 'Kilograms' : 'Pounds')), h('input.r1-num', { type: 'text', inputmode: 'numeric', 'aria-label': 'Capacity', value: String(shown), onchange: e => { const n = parseInt(e.target.value.replace(/\D/g, ''), 10) || 0; x.cap = metric ? Math.round(n / 0.4536) : n; } })),
       C.caps.map(c => ui.toggleRow({ title: c.name, value: x.caps.includes(c.id), onChange: on => { x.caps = on ? x.caps.concat(c.id) : x.caps.filter(i => i !== c.id); } }))),
-    ui.section({ header: 'Driving and tracking', fold: false, footer: 'Not every truck has a GPS unit, and some companies track only by the driver’s phone. “Company default” follows Settings → How trucks are tracked (' + trackLabel(C.tracking.source).toLowerCase() + ').' },
+    ui.section({ header: 'Driving and tracking', fold: false, footer: 'Not every truck has a GPS unit, and some companies track only by the driver’s phone. “Company default” follows Maintenance → How trucks are tracked (' + trackLabel(C.tracking.source).toLowerCase() + ').' },
       ui.pickerRow({ title: 'License needed to drive it', value: x.needs, options: [{ value: '', label: 'None' }].concat(C.skills.list.filter(s => s.kind === 'license').map(s => ({ value: s.id, label: s.name }))), onChange: val => { x.needs = val; page.refresh(); } }),
       ui.pickerRow({ title: 'Tracked by', value: x.track, options: TRACK, onChange: val => { x.track = val; page.refresh(); } })),
     ui.section({ header: 'Registration and inspections', fold: false, footer: 'A reminder shows ' + C.compliance.noticeDays + ' days before each date. Maintenance by miles, engine hours or time, insurance and other documents are under Fleet and compliance.' },
@@ -216,25 +234,30 @@ X.trackingSpec = () => ({ title: 'How trucks are tracked', render: page => { if 
 } });
 
 /* ================= Compliance and reminders ================= */
-/** Everything with a date or an interval: vehicle documents (registration, CARB, insurance), people's licenses and clearances, maintenance. */
-X.expiring = all => { const out = [], N = C.compliance.noticeDays, name = id => (q.vehicle(id) || q.user(id) || { name: '' }).name;
+/** Everything with a date or an interval: vehicle documents (registration, CARB, insurance), people's licenses and clearances, maintenance.
+    scope 'people' | 'trucks' keeps one side only. */
+X.expiring = (all, scope) => { const N = C.compliance.noticeDays, name = id => (q.vehicle(id) || q.user(id) || { name: '' }).name; let out = [];
   ((data.fleet && data.fleet.docs) || []).forEach(d => { if (d.carb && !C.compliance.carb) return; const n = daysTo(d.expires); if (all || n <= N) out.push({ n, icon: 'doc.text', title: name(d.owner) + ' · ' + d.name, owner: d.owner }); });
   data.users.forEach(u => (u.creds || []).forEach(c => { if (!c.expires) return; const s = skill(c.id), n = daysTo(c.expires); if (s && (all || n <= N)) out.push({ n, icon: 'person', title: u.name + ' · ' + s.name + (s.scoped && c.covers && c.covers !== 'all' ? ' (' + c.covers + ')' : ''), user: u }); }));
   if (WD.biz && WD.biz.svc) data.fleet.services.forEach(s => { const st = WD.biz.svc(s); if (st.over || st.warn) out.push({ n: st.over ? -1 : 1, icon: 'wrench', title: name(s.owner) + ' · ' + s.name, text: st.text, owner: s.owner }); });
+  if (scope) out = out.filter(x => (scope === 'people') === !!(x.user || (x.owner && !q.vehicle(x.owner))));   // people: what a person holds; trucks: everything owned by a vehicle
   return out.sort((a, b) => a.n - b.n); };
-X.complianceSpec = () => ({ title: 'Compliance and reminders', render: page => { const K = C.compliance, re = () => { WD.changed(); page.refresh(); }, list = X.expiring(false), edit = admin();
+/** scope: 'trucks' (registrations, CARB checks, inspections, maintenance; lives in Maintenance), 'people' (licenses, medical cards, clearances; lives with HR), or nothing for both. */
+X.complianceSpec = scope => ({ title: scope === 'trucks' ? 'Fleet compliance and reminders' : scope === 'people' ? 'License and clearance reminders' : 'Compliance and reminders', render: page => { const K = C.compliance, re = () => { WD.changed(); page.refresh(); }, list = X.expiring(false, scope), edit = admin(), T = scope !== 'people', P = scope !== 'trucks';
+  const MS = WD.screens.maintenance, truckPage = v => MS && MS.truckSpec && WD.can('maintenance.view') ? MS.truckSpec(v) : WD.biz.vehicleSpec(v);
   const row = x => ui.row({ icon: x.icon, iconColor: x.n < 0 ? 'var(--red)' : 'var(--orange)', title: x.title, subtitle: x.text || (x.n < 0 ? 'Expired ' + plural(-x.n, 'day') + ' ago' : x.n === 0 ? 'Expires today' : 'Expires in ' + plural(x.n, 'day')), chevron: true,
-    onTap: () => x.user ? page.push(personSpec(x.user)) : q.vehicle(x.owner) && WD.biz ? page.push(WD.biz.vehicleSpec(q.vehicle(x.owner))) : WD.biz && page.push(WD.biz.fleetSpec()) });
-  return ui.list(note('One list of everything that expires or comes due: vehicle registrations, CARB checks, insurance, drivers’ licenses, medical cards, clearances and scheduled maintenance.'),
+    onTap: () => x.user ? page.push(personSpec(x.user)) : q.vehicle(x.owner) && WD.biz ? page.push(x.icon === 'wrench' ? truckPage(q.vehicle(x.owner)) : WD.biz.vehicleSpec(q.vehicle(x.owner))) : WD.biz && page.push(WD.biz.fleetSpec(scope || 'people')) });
+  return ui.list(note(scope === 'trucks' ? 'Everything on a truck that expires or comes due: registrations, CARB checks, insurance, annual inspections and scheduled maintenance.' : scope === 'people' ? 'Everything a person holds that expires: drivers’ licenses, medical cards and clearances.' : 'One list of everything that expires or comes due: vehicle registrations, CARB checks, insurance, drivers’ licenses, medical cards, clearances and scheduled maintenance.'),
     ui.section({ header: 'Coming up · ' + list.length, fold: false }, list.map(row), !list.length && ui.row({ icon: 'checkmark.circle.fill', iconPlain: true, iconColor: 'var(--green)', title: 'Nothing expires in the next ' + K.noticeDays + ' days' })),
-    edit && ui.section({ header: 'Reminders', fold: false, footer: 'How far ahead a reminder shows, here and on the dispatch board. Used for documents, licenses, clearances and time-based maintenance.' },
+    edit && ui.section({ header: 'Reminders', fold: false, footer: 'How far ahead a reminder shows, here and on the dispatch board. One setting for documents, licenses, clearances and time-based maintenance.' },
       ui.pickerRow({ title: 'Remind me', value: K.noticeDays, options: [14, 30, 45, 60, 90, 120].map(n => ({ value: n, label: n + ' days before' })), onChange: v => { K.noticeDays = v; re(); } })),
-    edit && ui.section({ header: 'California', fold: false, footer: 'The CARB Clean Truck Check is due on a schedule for each diesel truck. Off for companies outside California.' },
+    T && edit && ui.section({ header: 'California', fold: false, footer: 'The CARB Clean Truck Check is due on a schedule for each diesel truck. Off for companies outside California.' },
       ui.toggleRow({ title: 'Track CARB compliance checks', value: K.carb, onChange: v => { K.carb = v; re(); } }),
       K.carb && ui.pickerRow({ title: 'Due every', value: K.carbMonths, options: [3, 6, 12].map(n => ({ value: n, label: n + ' months' })), onChange: v => { K.carbMonths = v; (data.fleet ? data.fleet.docs : []).forEach(d => { if (d.carb) d.renewMonths = v; }); re(); } })),
     ui.section({ header: 'Where each one is kept', fold: false },
-      WD.biz && ui.row({ icon: 'truck', iconColor: 'var(--orange)', title: 'Fleet and compliance', subtitle: 'Registration, CARB, insurance, inspections, maintenance by miles, engine hours or time', chevron: true, onTap: () => page.push(WD.biz.fleetSpec()) }),
-      edit && ui.row({ icon: 'person.2', iconColor: 'var(--indigo)', title: 'Skills, licenses and clearances', subtitle: 'Who holds what, what it covers and when it expires', chevron: true, onTap: () => page.push(X.skillsSpec()) })));
+      T && WD.biz && ui.row({ icon: 'truck', iconColor: 'var(--orange)', title: scope ? 'Truck documents and the pre-trip checklist' : 'Fleet and compliance', subtitle: 'Registration, CARB, insurance, inspections, maintenance by miles, engine hours or time', chevron: true, onTap: () => page.push(WD.biz.fleetSpec(scope)) }),
+      scope === 'people' && WD.biz && ui.row({ icon: 'doc.text', iconColor: 'var(--teal)', title: 'Driver documents', subtitle: 'Driver’s licenses, DOT medical cards and certificates', chevron: true, onTap: () => page.push(WD.biz.fleetSpec('people')) }),
+      P && edit && ui.row({ icon: 'person.2', iconColor: 'var(--indigo)', title: 'Skills, licenses and clearances', subtitle: 'Who holds what, what it covers and when it expires', chevron: true, onTap: () => page.push(X.skillsSpec(scope)) })));
 } });
 
 /* ================= Disposal sites and the unload stop ================= */
@@ -254,7 +277,7 @@ X.disposalSpec = () => ({ title: 'Disposal sites', render: page => { if (!admin(
       ui.row({ title: 'Time to unload', subtitle: 'Planned minutes at the site', detail: P.unloadMin + ' min', trailing: ui.stepper(P.unloadMin / 5, 1, 24, v => { P.unloadMin = v * 5; re(); }) })),
     ui.section({ header: 'Non-paper material (x-rays, hard drives, textiles)', fold: false, footer: P.nonPaper === 'offsite' ? 'New non-paper jobs start as a pickup: the material comes back to be shredded offsite, so the truck can carry on with paper customers.' : 'New non-paper jobs start as shred on site: the truck goes empty, shreds, unloads at a disposal site, and only then serves paper customers. AutoRoute plans it that way.' },
       h('div.row', h('div', { style: 'flex:1' }, ui.segmented([{ value: 'offsite', label: 'Pick up, shred offsite' }, { value: 'onsite', label: 'Shred on site' }], P.nonPaper, v => { P.nonPaper = v; re(); })))),
-    ui.section(null, ui.row({ title: 'Truck capacity', subtitle: 'Settings → Vehicles, or the load sheet', chevron: true, onTap: () => WD.biz && page.push(WD.biz.loadSettingsSpec()) })));
+    ui.section(null, ui.row({ title: 'Truck capacity', subtitle: 'On each truck’s page in Maintenance, or the load sheet', chevron: true, onTap: () => WD.biz && page.push(WD.biz.loadSettingsSpec()) })));
 } });
 /** Purge sub-categories for non-paper material, listed with the job types (Settings → Job types and fields). */
 X.materialsSection = page => ui.section({ header: 'Purge sub-categories (non-paper)', fold: false, footer: 'A purge that is not paper (x-rays, hard drives, textiles) is its own sub-category with its own color, so it is never mistaken for a regular purge. Tap one to rename it, change its color or delete it.' },
@@ -482,25 +505,26 @@ X.jobSections = (job, refresh) => { if (job.allDay || job.type === 'dump') retur
 if (WD.biz) { const base = WD.biz.jobSections; WD.biz.jobSections = (job, refresh) => [base(job, refresh), X.jobSections(job, refresh)]; }
 
 /* ================= Where it all lives in Settings ================= */
-const ENTRIES = () => [
+/* Disposal sites, How trucks are tracked, truck capabilities and truck compliance live in Maintenance → Fleet setup (rc-ops.js).
+   omit: titles to leave out, for a caller that shows them somewhere else (for example an HR group). */
+const ENTRIES = omit => [
   ['globe', 'var(--blue)', 'Country, currency and units', countryName() + ' · ' + WD.locale.currency + ' · ' + (WD.locale.units === 'metric' ? 'metric' : 'miles and pounds'), X.unitsSpec, 'For companies outside the United States'],
-  ['tag', 'var(--pink)', 'Job types and customer types', plural(WD.shownJobTypes().length, 'job type') + ' offered', () => WD.admin.typesSpec(), 'Add, rename, hide or delete; non-paper purge sub-categories'],
-  ['person.2', 'var(--indigo)', 'Skills, licenses and clearances', !C.skills.on ? 'Off' : C.skills.mode === 'block' ? 'Don’t allow a mismatch' : 'Flag a mismatch', X.skillsSpec, 'Match people and trucks to jobs: CDL, prison clearances, hard drives'],
-  ['bell', 'var(--red)', 'Compliance and reminders', (n => n ? plural(n, 'item') + ' coming up' : 'Up to date')(X.expiring(false).length) + ' · ' + C.compliance.noticeDays + ' days’ notice', X.complianceSpec, 'Registrations, CARB checks, licenses, clearances, maintenance'],
+  ['tag', 'var(--pink)', 'Job types and fields', plural(WD.shownJobTypes().length, 'job type') + ' offered', () => WD.admin.typesSpec(), 'Add, rename, hide or delete; non-paper purge sub-categories. Customer types are in Customers → gear'],
+  ['person.2', 'var(--indigo)', 'Skills, licenses and clearances', !C.skills.on ? 'Off' : C.skills.mode === 'block' ? 'Don’t allow a mismatch' : 'Flag a mismatch', () => X.skillsSpec('people'), 'Match people to jobs: CDL, prison clearances, hard drive destruction'],
+  ['bell', 'var(--red)', 'Compliance and reminders', (n => n ? plural(n, 'item') + ' coming up' : 'Up to date')(X.expiring(false, 'people').length) + ' · ' + C.compliance.noticeDays + ' days’ notice', () => X.complianceSpec('people'), 'Drivers’ licenses, medical cards and clearances. Truck items are in Maintenance'],
   ['shippingbox', 'var(--teal)', 'Inventory', INV.on ? 'On · warehouse and ' + plural(data.vehicles.filter(v => v.active !== false).length, 'truck') : 'Off', X.inventorySpec, 'Stock on each truck and in the warehouse, used up as jobs are completed'],
-  ['arrow.clockwise', 'var(--green)', 'Disposal sites', plural(C.disposal.sites.length, 'site'), X.disposalSpec, 'Recyclers and landfills, and the unload stop in AutoRoute'],
-  ['location.fill', 'var(--orange)', 'How trucks are tracked', trackLabel(C.tracking.source), X.trackingSpec, 'By the driver’s phone, the truck’s GPS unit, or both'],
   ['exclamationmark.circle', 'var(--red)', 'Unpaid invoices', 'Warn over ' + C.unpaid.limit + ' · overdue after ' + C.unpaid.overdueDays + ' days', X.unpaidSettingsSpec, 'When customers and their jobs are flagged'],
   ['dollarsign.circle', 'var(--green)', 'Pricing, letters and agreements', C.letters.days + ' days’ notice · ' + C.contract.term / 12 + '-year term', X.moneySpec, 'Driver price changes, price-change letters, portal fees, contract length, box sizes'],
-  ['arrow.left.arrow.right', 'var(--purple)', 'Pickup-and-delivery pairs', C.pairs.on ? 'On' : 'Off', X.pairsSpec, 'Two linked stops: pick up at one, drop off at the other']];
-X.hubSection = row => ui.section({ header: 'Add-ons', fold: false, footer: 'Switch on what your business uses. Everything here can be changed later.' }, ENTRIES().map(e => row(...e)));
-X.settingsSection = (push, gated) => ui.section({ header: 'Add-ons', footer: 'Extras a company switches on or adjusts: international settings, custom job types, skills and clearances, compliance reminders, inventory, disposal sites and more. Every other setting is under Settings and assumptions above.' },
-  ENTRIES().map(([ic, color, title, detail, spec, sub]) => ui.row(gated(title === 'Compliance and reminders' ? 'jobs.edit' : 'settings.manage', { icon: ic, iconColor: color, title, subtitle: [detail && h('div', { style: 'color:var(--label);font-weight:500' }, detail), h('div', sub)], chevron: true, onTap: () => push(spec()) }))));
+  ['arrow.left.arrow.right', 'var(--purple)', 'Pickup-and-delivery pairs', C.pairs.on ? 'On' : 'Off', X.pairsSpec, 'Two linked stops: pick up at one, drop off at the other']].filter(e => !(omit || []).includes(e[2]));
+X.hubSection = (row, omit) => ui.section({ header: 'Add-ons', fold: false, footer: 'Switch on what your business uses. Everything here can be changed later.' }, ENTRIES(omit).map(e => row(...e)));
+X.settingsSection = (push, gated, omit) => ui.section({ header: 'Add-ons', footer: 'Extras a company switches on or adjusts: international settings, custom job types, skills and clearances, license reminders, inventory and more. Trucks, disposal sites and fleet compliance are in Maintenance. Every other setting is under Settings and assumptions above.' },
+  ENTRIES(omit).map(([ic, color, title, detail, spec, sub]) => ui.row(gated(title === 'Compliance and reminders' ? 'jobs.edit' : 'settings.manage', { icon: ic, iconColor: color, title, subtitle: [detail && h('div', { style: 'color:var(--label);font-weight:500' }, detail), h('div', sub)], chevron: true, onTap: () => push(spec()) }))));
 
 const openSet = spec => { WD.nav.switchTab('settings'); WD.nav.push(spec); };
-WD.panel.addJump('Skills and clearances', () => openSet(X.skillsSpec()));
-WD.panel.addJump('Compliance', () => openSet(X.complianceSpec()));
+const openMaint = spec => { WD.nav.switchTab('maintenance'); WD.nav.push(spec); };
+WD.panel.addJump('Skills and clearances', () => openSet(X.skillsSpec('people')));
+WD.panel.addJump('Compliance', () => openSet(X.complianceSpec('people')));
 WD.panel.addJump('Inventory', () => openSet(X.inventorySpec()));
-WD.panel.addJump('Disposal sites', () => openSet(X.disposalSpec()));
+WD.panel.addJump('Disposal sites', () => openMaint(X.disposalSpec()));
 WD.panel.addJump('Country and units', () => openSet(X.unitsSpec()));
 })();

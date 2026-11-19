@@ -1,4 +1,4 @@
-/* Company administration: sign-in policy, job types and the fields each one asks for, importing jobs from a calendar file (.ics)
+/* Company administration: sign-in policy, job types and the fields each one asks for, customer types (opened from Customers → gear), importing jobs from a calendar file (.ics)
    or a spreadsheet (Excel / CSV), and the "connect your tools" step for new companies. Registers WD.admin. */
 (function () {
 'use strict';
@@ -35,13 +35,18 @@ function typesSpec() {
         const r = await ui.alert({ title: 'New job type', message: 'For example “Hard drive pickup”, “Estimate” or “Warranty visit”.', input: { placeholder: 'Name' }, buttons: [{ label: 'Cancel', value: null }, { label: 'Add', value: true, bold: true }] }); if (!r || !r.value || !r.text.trim()) return;
         const id = 't' + Date.now().toString(36), colors = ['#00897B', '#8E24AA', '#EF6C00', '#5D4037', '#1E88E5', '#C0CA33', '#D81B60'], t = { id, title: r.text.trim(), color: colors[WD.jobTypes.length % colors.length], custom: true };
         WD.jobTypes.push(t); data.fieldConfig[id] = (data.fieldConfig.regular || []).slice(); data.required.job[id] = ['phone']; data.addressRules[id] = 'address'; WD.changed(); page.push(typeSpec(t)); } })),
-    WD.r11 && WD.r11.materialsSection(page),
-    ui.section({ header: 'Customer types', footer: 'Customer type is separate from job type. Fields required here are required for every job and record of that kind of customer — for example email for government customers.' },
-      WD.custTypes.map(t => ui.row({ icon: t.id === 'residential' ? 'house' : 'building', iconColor: 'var(--indigo)', title: t.title, subtitle: reqN(data.required.cust[t.id]) ? 'Requires ' + data.required.cust[t.id].map(WD.fieldLabel).join(', ').toLowerCase() : 'Nothing extra required', chevron: true, onTap: () => page.push(custTypeSpec(t)) })),
-      WD.can('settings.manage') && ui.row({ icon: 'plus.circle.fill', iconPlain: true, iconColor: 'var(--green)', title: 'Add a customer type', tint: true, onTap: async () => {
-        const r = await ui.alert({ title: 'New customer type', message: 'For example “Medical”, “Property manager” or “Non-profit”.', input: { placeholder: 'Name' }, buttons: [{ label: 'Cancel', value: null }, { label: 'Add', value: true, bold: true }] }); if (!r || !r.value || !r.text.trim()) return;
-        const id = 'ct' + Date.now().toString(36); WD.custTypes.push({ id, title: r.text.trim(), custom: true }); data.required.cust[id] = []; WD.changed(); page.refresh(); } }))) };
+    WD.r11 && WD.r11.materialsSection(page)) };
 }
+/* ---------- Customer types (opened from Customers → gear) ---------- */
+function custTypesSection(page) {
+  const reqN = list => (list || []).length, edit = WD.can('settings.manage');
+  return ui.section({ header: 'Customer types', fold: false, footer: 'Customer type is separate from job type. Fields required here are required for every job and record of that kind of customer — for example email for government customers. A hidden type is no longer offered for new customers; customers that have it keep it.' },
+    WD.custTypes.map(t => ui.row({ icon: t.id === 'residential' ? 'house' : 'building', iconColor: 'var(--indigo)', title: t.title, badge: t.hidden ? ui.badge('Hidden', 'var(--gray)') : null, subtitle: reqN(data.required.cust[t.id]) ? 'Requires ' + data.required.cust[t.id].map(WD.fieldLabel).join(', ').toLowerCase() : 'Nothing extra required', chevron: true, onTap: () => page.push(custTypeSpec(t)) })),
+    edit && ui.row({ icon: 'plus.circle.fill', iconPlain: true, iconColor: 'var(--green)', title: 'Add a customer type', tint: true, onTap: async () => {
+      const r = await ui.alert({ title: 'New customer type', message: 'For example “Medical”, “Property manager” or “Non-profit”.', input: { placeholder: 'Name' }, buttons: [{ label: 'Cancel', value: null }, { label: 'Add', value: true, bold: true }] }); if (!r || !r.value || !r.text.trim()) return;
+      const id = 'ct' + Date.now().toString(36); WD.custTypes.push({ id, title: r.text.trim(), custom: true }); data.required.cust[id] = []; WD.changed(); page.refresh(); } }));
+}
+function custTypesSpec() { return { title: 'Customer types', render: page => ui.list(custTypesSection(page)) }; }
 const STATES = [{ value: 'off', label: 'Hide' }, { value: 'ask', label: 'Ask' }, { value: 'req', label: 'Require' }];
 function typeSpec(t) {
   return { title: t.title, render: page => { const edit = WD.can('settings.manage'), on = new Set(data.fieldConfig[t.id] || []), req = new Set(data.required.job[t.id] || []);
@@ -71,6 +76,7 @@ function custTypeSpec(t) {
     const used = data.customers.some(c => c.custType === t.id) || data.jobs.some(j => j.custType === t.id);
     return ui.list(edit && ui.section({ header: 'Name', fold: false, footer: t.id === 'business' ? 'Business customers can be marked “Credit card on file”, which charges the card when a stop is completed.' : null },
         ui.row({ title: 'Name', detail: t.title, chevron: true, onTap: async () => { const r = await ui.alert({ title: 'Customer type name', input: { value: t.title }, buttons: [{ label: 'Cancel', value: null }, { label: 'Save', value: true, bold: true }] }); if (r && r.value && r.text.trim()) { t.title = r.text.trim(); WD.changed(); page.setTitle(t.title + ' customers'); page.refresh(); } } }),
+        ui.toggleRow({ title: 'Offer for new customers', subtitle: t.hidden ? 'Hidden: customers that already have this type keep it' : null, value: !t.hidden, onChange: v => { if (!v && WD.custTypes.filter(x => !x.hidden).length < 2) { ui.toast('Keep at least one customer type', 'info.circle'); return false; } t.hidden = !v; WD.changed(); page.refresh(); } }),
         WD.custTypes.length > 1 && ui.row({ title: 'Delete this customer type', destructive: true, onTap: async () => { if (used) return ui.alert({ title: 'This type is in use', message: 'Change the customers that are “' + t.title + '” to another type first.' });
           if (await ui.actionSheet({ title: 'Delete “' + t.title + '”?', buttons: [{ label: 'Delete customer type', value: true, role: 'destructive' }] })) { WD.custTypes.splice(WD.custTypes.indexOf(t), 1); delete data.required.cust[t.id]; WD.changed(); page.pop(); } } })),
       ui.section({ header: 'Required for ' + t.title.toLowerCase() + ' customers', footer: 'These are required on top of what the job type requires, on new customers and on their jobs.' },
@@ -135,7 +141,7 @@ function connectPage(from, done) {
       await ui.alert({ title: 'Connect any time', message: 'Open Settings → Integrations to connect OneStep GPS, Invoice Ninja, Quo, Gmail or the leads sheet. Settings → Import jobs brings in a calendar file or spreadsheet. Each page has step-by-step instructions.' }); done(); } }))) });
 }
 
-WD.admin = { signInSpec, typesSpec, importSpec, connectPage };
+WD.admin = { signInSpec, typesSpec, custTypesSpec, custTypesSection, importSpec, connectPage };
 WD.panel.addJump('Import jobs', () => { WD.nav.switchTab('settings'); WD.nav.push(importSpec()); });
 WD.panel.addJump('Job type fields', () => { WD.nav.switchTab('settings'); WD.nav.push(typesSpec()); });
 })();

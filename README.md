@@ -29,6 +29,13 @@ Board and map colors: the job type fills each card and pin (purge yellow, govern
 
 Jobs have no scheduled times: each route's day is an ordered list, and stop 1 is done first. Cards leave the address off and show the key facts (containers or boxes, window, time on site); pinch on the board (or ⌘/ctrl-scroll, or Card detail in the board’s ⋯ menu) to switch between less and more detail. Every card carries all three levels and the board’s `lvl0`–`lvl2` class picks one, so pinching never rebuilds the list. AutoRoute recommends when to leave the truck's parking place for a day that hasn't started, which you can accept or replace with your own time, and gives a window to each stop marked **Needs a window**. On the board, drag a job up or down to reorder it or into another column to reassign it, and tap a column's empty space (or **Add stop**) to add a job at the end. Notes for the day sit above the list. The prototype clock starts at 10:24 AM; other drivers' trucks move and complete their stops on their own, faster than real life, so the board and map change while you watch.
 
+## Layout rules (4.3)
+
+- No text under 12px at the default text size, and every control has a 44 × 44 tap area (`.segmented` and `.stepper` are 44 high; small round buttons grow their touch area with `::after`).
+- Text on a colored fill takes its color from `WD.readableOn(hex)` (4.5:1; `WD.textOn` now calls it). Completed jobs get a muted fill and a check, never faded text.
+- Board warnings are a striped ring outside the card (yellow/gray unpaid, red/light gray not cleared), two or more warning lines fold into one row that expands in place, the ⋯ menu sets how many routes fit on screen (`S.board.cols`, a number or `'all'`), and AutoRoute is in that menu.
+- Settings groups: Display, Company, Client communications (`WD.rc.commsSpec`, a short list of pages), Routes and board, Jobs, CRM, HR, Sync, Privacy, About. There is no “Settings and assumptions” hub any more (`WD.co.hubSpec` is unused). Fleet settings live in Maintenance, services and fees in the Services and Fees section, customer types behind the gear on Customers, service agreements in Contracts, route performance in Reports.
+
 ## Version
 
 Settings → About → Version shows the prototype version, `WD.version` in `js/core.js`. Increment it every time the prototype is republished to the public site. A short “what’s new” tutorial (the `TOUR` steps in `js/screens/extras.js`) shows once per version after sign-in; update its steps with each release. Add `?notour` to the address to suppress it, or replay it from Settings → About.
@@ -66,6 +73,7 @@ A phone can hold on to an old version (the offline copy, plus the browser reusin
 | `js/screens/rc.js` | `WD.rc` (4.0): service plan and AI features by tier (`data.plan`, `RC.ai(id)`, `RC.aiBlock(id, build)`, `RC.startPromo`), Settings → Display (theme, text size via `WD.app.setTextSize`, menu sections in `S.prefs.hidden`), Company rows (business details, invoicing and payments in `data.pay`, plan), Settings → Client communications (templates and the reminder schedule in `data.comms`), the Services and Products menu sections (`data.priceBook`, `data.products`) |
 | `js/screens/rc-ops.js` | Maintenance section (`WD.screens.maintenance`; GPS readings in `data.telemetry`, repairs in `data.fleet.repairs`, alert settings in `data.maint`, `RC.maintCheck()` pop-ups), the pre-trip inspection (`RC.inspect`, also `WD.biz.inspect`), the clock-in sequence (`RC.afterClockIn`), the Checklist button before Complete stop (`RC.checklistButton`, `job.checkSubmitted`), the past-due flag at a stop (`RC.pastDueFlag`), day assignments of driver and truck (`data.routeAssign`, `RC.driverOn/vehicleOn(routeId, day)`, `RC.assignSheet`) |
 | `js/screens/rc-money.js` | Date and status filters (`RC.invFilter`, `RC.filterBar`, `RC.invStatus`), creating, viewing, sending and deleting invoices and service notes (`RC.newInvoice`, `RC.editNote`), statements (`RC.openStatement(customer, {job})`, `RC.batchStatements(list)`), the Reports section (`WD.screens.reports`; months before the current one come from a generated history), Price Calc (`WD.screens.calc`, assumptions in `data.calc`) |
+| `js/screens/r13.js` | `WD.r13` (4.3): the Contracts section (`WD.screens.contracts`; agreements tied to the CRM: `needsAgreement()`, `renewals()`, `agreementRow(c)`), the AI assistants and their settings (`data.aiAgents`: lead assistant `leadAISpec`/`simLead`, phone agent add-on `phoneAISpec`/`simCall`, route monitoring `routeAISpec`/`simBehind` with how far each kind of job may move `flexFor(job)`, week-ahead `lookAhead`), the purge check-in (`data.purgeCheckin`, `checkinSpec`), Google Sheets (`data.sheets`, `sheetsSpec`) |
 | `sw.js` | Service worker: keeps a copy of the prototype for offline use (network first, saved copy as fallback) |
 | `js/screens/admin.js` | Sign-in policy, job types and the fields each asks for, import from .ics or Excel/CSV, new-company “connect your tools” step |
 
@@ -105,14 +113,14 @@ A page is a spec object:
 - `ui.sheet(spec, {detent: 'large'|'medium'|'small'})` presents a modal sheet with its own stack → `{close(result), push(spec), closed: Promise}`. Inside it, `page.dismiss(result)` closes the sheet; give sheets a `Cancel`/`Done` nav button.
 - `page.refresh()`, `page.setTitle()`, `page.push(spec)`, `page.pop()`, `page.body`, `page.el`.
 - After changing `WD.state` or `WD.data`, call `WD.changed()`; visible pages re-render (a page with a focused text field is skipped so typing is not interrupted — keep form values in closure variables, not in the DOM).
-- Tabs are fixed in `WD.app.tabs` (`board map office shift more`; `office` is the CRM tab). The last tab, `more`, is a menu rather than a screen: it lists `WD.app.menu` (`services products customers invoices reports calc maintenance settings`) and opens the chosen section's `WD.screens.<id>.root()` in its own stack. `WD.nav.switchTab('<section id>')` opens a section from code. `can` is a permission flag or a function; `tab.badge` / `menuItem.badge = () => number` adds a badge.
+- Destinations are the screen tabs in `WD.app.tabs` (`board map office shift`; `office` is the CRM tab) plus the sections in `WD.app.menu` (`services contracts products customers invoices reports calc maintenance settings`). Each person chooses up to four for the bottom bar (`S.prefs.bar`, default `board map office shift`) and the order of the rest in the Menu (`S.prefs.order`, `S.prefs.hidden`) in Settings → Display → Tabs and menu (`WD.rc.sectionsSpec`, `WD.app.setLayout(fn)`, `app.barIds()`, `app.menuItems()`); the choice is kept in this browser. The last tab, `more`, is the menu: it opens the chosen section's `WD.screens.<id>.root()` in its own stack. `WD.nav.switchTab('<id>')` opens a destination from code wherever it lives (`'crm'` is the CRM tab). `can` is a permission flag or a function; `tab.badge` / `menuItem.badge = () => number` adds a badge.
 
 ### Feedback and fake network
 
 - `await ui.actionSheet({title, message, buttons: [{label, value, role: 'destructive'}]})` → value or `null`.
 - `await ui.alert({title, message, buttons: [{label, value, role, bold}], input})`.
 - `ui.menu(anchorEl, [{label, icon, checked, destructive, onTap} | 'divider' | {header}])`.
-- `ui.toast('Copied', 'checkmark')`, `ui.banner({title, text, icon, color, onTap})`, `ui.hud(text)`.
+- `ui.toast('Copied', 'checkmark')`, `ui.banner({title, text, icon, color, onTap, duration})`, `ui.hud(text)`. Toasts and banners appear above the tab bar so they never cover a title or a sheet's Done. A banner closes by itself (9 s at most, also for `duration: 0`), can be swiped away, has a close button, and replaces the one showing.
 - `await ui.run('Sending invitation…', () => { mutate data }, {done: 'Invitation sent'})` — blocking spinner, 0.7–1.5 s latency, success tick; explains and returns `false` when the panel is set to Offline.
 - `await WD.delay(min, max)` for inline waits (row spinners, progress bars).
 - Job changes go through the offline queue so they show as pending and survive Offline: `api.op({kind, title, scope, jobIds, apply() {...}})` and `api.setStatus(jobId, 'enroute'|'arrived'|'completed'|'skipped')`. Queue state is `S.pending` (`{id, kind, title, scope, status: 'queued'|'syncing'|'conflict'|'failed', message, at}`) and `S.abandoned`; `api.resolve(id, 'server'|'mine')`, `api.retry(id)`, `api.retryAll()`, `api.cancel(id)`.
@@ -146,6 +154,15 @@ A page is a spec object:
 | `WD.biz.homeSpec()`, `.wordingSpec()`, `.checklistSpec()`, `.fieldsSpec()`, `.fleetSpec()`, `.inspect(vehicle, after)`, `.loadSpec(day)`, `.mileSpec()`, `.perfSpec()`, `.customerSections(c, edit)`, `.jobSections(job, refresh)`, `.hubSection(row)` | biz.js |
 | `WD.miniMap({points, lines, aspect})`, `WD.pinStyle(job)` | map.js |
 | `WD.screens.map.root()`, `WD.screens.shift.root()` | map.js, shift.js |
+| `WD.readableOn(hex)`, `WD.contrast(a, b)` | board.js |
+| `WD.INV_BAD`, `WD.INV_VOID`, `WD.invClosed(inv)`, `WD.invOpen(inv)`, `WD.invStamp(inv)`; `WD.taxInfo(lines, customer)` → `{rate, tax, label, taxes}` (`data.tax.types`) | round9.js |
+| `WD.badDebt(customerId)`, `WD.badDebtBanner(customerId)`, `WD.badDebtConfirm(customerId)`; `WD.rc.closeInvoice(rec, 'bad'\|'void')`, `.reopenInvoice(rec)`, `.clearBadDebt(customerId)`, `.unbilledSpec({from, to, routeId})`, `.openNotesSpec()` | rc-money.js |
+| `WD.admin.custTypesSpec()` (customer types; `typesSpec()` is job types only) | admin.js |
+| `WD.workflow.destructionSpec()`, `.awaitingDestruction()`; `WD.screens.billing.confirmDestroyed(jobs)`, `.isFirstDelivery(job)` (`data.biz.destroy`, `job.destruction`, `job.invoice.first`) | billing.js, workflow.js |
+| `WD.ops.pricingOptions` (`data.settings.confirm.pricing`: `none rates total both`) | ops.js |
+| `WD.truckProfile(vehicleId)`, `WD.fuelPrice(kind)`, `WD.fuelCostPerMile(vehicleId)` (`v.dims`, `v.truckRoutes`, `v.shop`, `data.maint.fuelPrice`); `WD.screens.maintenance.locationsSpec()` | rc-ops.js |
+| `WD.r11.skillsSpec(scope)`, `.complianceSpec(scope)`, `WD.biz.fleetSpec(scope)` with scope `'people'` (HR) or `'trucks'` (Maintenance) | round11.js, biz.js |
+| `WD.r13.leadAISpec()`, `.phoneAISpec()`, `.routeAISpec()`, `.checkinSpec()`, `.sheetsSpec()`, `.agreementRow(customer)`, `.flexFor(job)` | r13.js |
 
 Always guard calls into another module (`WD.screens.jobs && WD.screens.jobs.openDetails && ...`).
 

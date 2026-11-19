@@ -292,8 +292,12 @@ OP.commsSpec = () => ({ title: 'Calls, texts and email', render: page => { if (!
 /* ================= Confirmation when a new job is scheduled ================= */
 const CF = ST.confirm, CMODE = [{ value: 'off', label: 'Don’t send one' }, { value: 'ask', label: 'Show it first, then send' }, { value: 'auto', label: 'Send it automatically' }], CCHAN = [{ value: 'text', label: 'Text message' }, { value: 'email', label: 'Email' }, { value: 'both', label: 'Text and email' }];
 OP.confirmLabel = () => CF.mode === 'off' ? 'Off' : (CF.mode === 'auto' ? 'Automatic' : 'Shown first') + ' · ' + ({ text: 'text', email: 'email', both: 'text and email' })[CF.channel];
-/** Pricing a confirmation can include, from what the customer told us when the job was scheduled: 'rates' (the price of each thing) or 'total' (the estimated cost). */
-const CPRICE = [{ value: 'none', label: 'No pricing' }, { value: 'rates', label: 'Pricing rates' }, { value: 'total', label: 'Estimated total cost' }];
+/** Pricing a confirmation can include, from what the customer told us when the job was scheduled: 'rates' (the price of each thing), 'total' (the estimated cost) or 'both'.
+    The company default is in Settings → Job confirmations; whoever schedules the job can choose differently for one message. */
+const CPRICE = [{ value: 'none', label: 'No pricing' }, { value: 'rates', label: 'Rates only' }, { value: 'total', label: 'Estimated total only' }, { value: 'both', label: 'Rates and estimated total' }], cpLabel = v => (CPRICE.find(x => x.value === v) || CPRICE[0]).label;
+/* The estimate is worked out from what the customer told us, so every message that carries one says how rough it is. */
+const ROUGH = 'This is only a rough estimate based on the details you gave us. The final charge depends on what we actually service.';
+OP.pricingOptions = CPRICE;
 const UNIT = { console: ['console', 'consoles'], bin64: ['64-gallon bin', '64-gallon bins'], bin96: ['96-gallon bin', '96-gallon bins'], box: ['box', 'boxes'], hdd: ['hard drive', 'hard drives'], binExtra: ['additional 65-gallon bin', 'additional 65-gallon bins'], trip: ['trip charge', 'trip charges'],
   stairsDown: ['box carried down stairs', 'boxes carried down stairs'], stairsUp: ['box carried up stairs', 'boxes carried up stairs'], haul: ['empty box hauled away', 'empty boxes hauled away'] };
 OP.pricingText = (job, kind) => {
@@ -301,9 +305,11 @@ OP.pricingText = (job, kind) => {
   if (kind === 'none' || !kind || !items.length) return '';
   const flat = 'up to ' + PP.binIncluded + ' 65-gallon ' + (PP.binIncluded === 1 ? 'bin' : 'bins'), each = job.recurring ? ' each service' : '';
   const and = a => a.length > 1 ? a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1] : a[0];
-  if (kind === 'rates') return (each ? 'Pricing for each service: ' : 'Pricing for this job: ') + and(items.map(i => i.id === 'binFlat' ? m(i.rate) + ' flat for ' + flat : m(i.rate) + ' per ' + unit(i, 1))) + '.' + (each ? '' : ' You are billed for what we actually shred.');
+  const rates = (each ? 'Pricing for each service: ' : 'Pricing for this job: ') + and(items.map(i => i.id === 'binFlat' ? m(i.rate) + ' flat for ' + flat : m(i.rate) + ' per ' + unit(i, 1))) + '.';
+  if (kind === 'rates') return rates + (each ? '' : ' You are billed for what we actually service.');
   const tot = items.reduce((s, i) => s + i.qty * i.rate, 0), rough = job.type === 'purge';
-  return (job.recurring ? 'Estimated cost per service: ' : 'Estimated total: ') + m(tot) + ', based on ' + and(items.map(i => i.id === 'binFlat' ? flat : (rough && i.id === 'box' ? 'about ' : '') + i.qty + ' ' + unit(i, i.qty))) + '.' + (each ? '' : ' The final amount depends on what we shred on the day.');
+  const est = (job.recurring ? 'Estimated cost per service: ' : 'Estimated total: ') + m(tot) + ', based on ' + and(items.map(i => i.id === 'binFlat' ? flat : (rough && i.id === 'box' ? 'about ' : '') + i.qty + ' ' + unit(i, i.qty))) + '. ' + ROUGH;
+  return kind === 'both' ? rates + '\n' + est : est;
 };
 /** After a new job is saved: send (or offer to send) the customer a confirmation with the date, by the company's settings. */
 OP.confirmJob = job => {
@@ -315,17 +321,18 @@ OP.confirmJob = job => {
   let pricing = OP.pricingText(job, 'rates') ? CF.pricing : 'none';
   const base = { text: CO.fill(CO.tpl('confirm').body, ctx), email: CO.fill(CO.tpl('confirmEmail').body, ctx) }, body = {}, build = () => { const t = OP.pricingText(job, pricing); body.text = base.text + (t ? '\n\n' + t : ''); body.email = base.email + (t ? '\n\n' + t : ''); }; build();
   const from = OP.senderFor(c, S.me, 'text'), who = first(p.name) || 'the customer';
-  const send = () => { job.events.push({ at: +WD.now(), actor: CF.mode === 'auto' ? 'RouteClerk' : me(), text: 'Confirmation sent by ' + use.join(' and ') + ' to ' + (p.name || 'the customer') + (use.includes('text') ? ' · from ' + from.text : '') + (pricing === 'rates' ? ' · with pricing rates' : pricing === 'total' ? ' · with the estimated total' : '') }); WD.changed(); };
+  const send = () => { job.events.push({ at: +WD.now(), actor: CF.mode === 'auto' ? 'RouteClerk' : me(), text: 'Confirmation sent by ' + use.join(' and ') + ' to ' + (p.name || 'the customer') + (use.includes('text') ? ' · from ' + from.text : '') + (pricing === 'rates' ? ' · with pricing rates' : pricing === 'total' ? ' · with the estimated total (rough estimate)' : pricing === 'both' ? ' · with rates and the estimated total (rough estimate)' : '') + (pricing !== CF.pricing && OP.pricingText(job, 'rates') ? ' · pricing changed for this message from the company default (' + cpLabel(CF.pricing).toLowerCase() + ')' : '') }); WD.changed(); };
   if (CF.mode === 'auto') { send(); return ui.toast('Confirmation ' + use.join(' and ') + ' sent to ' + who, use[0] === 'email' ? 'envelope' : 'message', 3000); }
   let tab = use[0];
-  ui.sheet({ title: 'Confirm with the customer', leading: [{ label: 'Skip', onTap: pg => pg.dismiss() }],
+  ui.sheet({ title: 'Confirm the job', leading: [{ label: 'Skip', onTap: pg => pg.dismiss() }],
     trailing: [{ label: 'Send', bold: true, onTap: async pg => { if (await ui.run('Sending…', send, { done: 'Sent', offlineOK: true })) pg.dismiss(); } }],
     render: pg => ui.list(
       ui.section({ header: job.title + ' · ' + fmt.day(job.day, 'long'), footer: job.recurring ? 'A recurring job confirms its first service date.' : null },
         use.includes('text') && ui.row({ icon: 'message', iconColor: 'var(--green)', title: 'Text to ' + (p.name || 'the customer'), subtitle: fmt.phone(p.phone) + ' · from ' + from.text }),
         use.includes('email') && ui.row({ icon: 'envelope', iconColor: 'var(--blue)', title: 'Email to ' + email, subtitle: 'From ' + OP.emailFrom(S.me) })),
-      OP.pricingText(job, 'rates') && ui.section({ header: 'Pricing', footer: pricing === 'none' ? 'Choose whether this confirmation also confirms the price.' : pricing === 'rates' ? 'Adds the rate for each thing on this job.' : 'Adds the estimated cost, worked out from what the customer told you: ' + fmt.money(job.items.filter(i => i.qty > 0).reduce((s, i) => s + i.qty * i.rate, 0), true) + '.' },
-        ui.pickerRow({ title: 'Include', icon: 'dollarsign.circle', iconColor: 'var(--green)', value: pricing, options: CPRICE, onChange: v => { pricing = v; build(); pg.refresh(); } })),
+      OP.pricingText(job, 'rates') && ui.section({ header: 'Pricing in this message', showFooter: true, footer: (pricing === 'none' ? 'No pricing is included.' : pricing === 'rates' ? 'Adds the rate for each thing on this job.' : (pricing === 'both' ? 'Adds the rates and the estimated cost' : 'Adds the estimated cost') + ', worked out from what the customer told you: ' + fmt.money(job.items.filter(i => i.qty > 0).reduce((s, i) => s + i.qty * i.rate, 0), true) + '. The message says it is only a rough estimate and that the final charge depends on what is actually serviced.') + (pricing === CF.pricing ? ' This is the company default.' : ' The company default is “' + cpLabel(CF.pricing) + '”; this choice applies to this message only.') },
+        ui.pickerRow({ title: 'Include', icon: 'dollarsign.circle', iconColor: 'var(--green)', value: pricing, options: CPRICE, onChange: v => { pricing = v; build(); pg.refresh(); } }),
+        pricing !== CF.pricing && ui.row({ title: 'Use the company default', subtitle: cpLabel(CF.pricing), tint: true, onTap: () => { pricing = CF.pricing; build(); pg.refresh(); } })),
       use.length > 1 && h('div', { style: 'padding:12px 16px 0' }, ui.segmented([{ value: 'text', label: 'Text' }, { value: 'email', label: 'Email' }], tab, v => { tab = v; pg.refresh(); })),
       ui.section({ header: tab === 'email' ? 'Subject: ' + CO.fill(CO.tpl('confirmEmail').subject, ctx) : 'Message', footer: 'Change the wording for this customer here. To change it for everyone, or to send these automatically, go to Settings → Job confirmations.' },
         (r => { r.classList.add('co-body'); return r; })(ui.inputRow({ multiline: true, value: body[tab], onInput: v => { body[tab] = v; } })))) }, { detent: 'large' });
@@ -335,7 +342,7 @@ OP.confirmSpec = () => ({ title: 'Job confirmations', render: page => { if (!adm
     ui.section({ header: 'When a new job is scheduled', footer: { off: 'Nothing is sent.', ask: 'Whoever schedules the job sees the message and taps Send or Skip.', auto: 'The confirmation goes out by itself as soon as the job is saved, and is noted in the job’s history.' }[CF.mode] },
       ui.pickerRow({ title: 'Confirmation', icon: 'checkmark.circle', iconColor: 'var(--green)', value: CF.mode, options: CMODE, onChange: v => { CF.mode = v; re(); } }),
       CF.mode !== 'off' && ui.pickerRow({ title: 'Send by', value: CF.channel, options: CCHAN, onChange: v => { CF.channel = v; re(); } })),
-    CF.mode !== 'off' && ui.section({ header: 'Pricing in the confirmation', footer: (CF.pricing === 'none' ? 'Confirmations start with no pricing.' : CF.pricing === 'rates' ? 'Confirmations start with the rate for each thing on the job, such as the price per box.' : 'Confirmations start with the estimated total, worked out from the quantities entered when the job was scheduled.') + (CF.mode === 'ask' ? ' Whoever schedules the job can change this for each customer before sending.' : ' With automatic sending, this is what goes out.') },
+    CF.mode !== 'off' && ui.section({ header: 'Pricing in the confirmation', showFooter: true, footer: (CF.pricing === 'none' ? 'Confirmations start with no pricing.' : CF.pricing === 'rates' ? 'Confirmations start with the rate for each thing on the job, such as the price per box.' : (CF.pricing === 'both' ? 'Confirmations start with the rates and the estimated total' : 'Confirmations start with the estimated total') + ', worked out from the quantities entered when the job was scheduled. Because that comes from what the customer told you, the message always says it is only a rough estimate and that the final charge depends on what is actually serviced.') + (CF.mode === 'ask' ? ' Whoever schedules the job can choose differently for each message before sending.' : ' With automatic sending, this is what goes out; switch to “Show it first” to choose for each message.') },
       ui.pickerRow({ title: 'Include', icon: 'dollarsign.circle', iconColor: 'var(--green)', value: CF.pricing, options: CPRICE, onChange: v => { CF.pricing = v; re(); } })),
     CF.mode !== 'off' && ui.section({ header: 'What it says', footer: 'It confirms the date, thanks them for being a customer, asks them to have the paper staged in a convenient location (additional service charges may apply otherwise), and gives your policy on what can be shredded: paper clips, staples and file folders are fine; no binders, x-rays or small plastic bags.' },
       CO.tplRow('confirm', page), CO.tplRow('confirmEmail', page)),

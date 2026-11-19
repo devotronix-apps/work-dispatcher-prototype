@@ -1,5 +1,6 @@
-/* RouteClerk prototype — version 4.0 operations (`WD.rc`, continued): the Maintenance section (trucks, flagged pre-trip reports, GPS readings,
-   engine codes, repairs and service due, low-battery alerts), the driver's clock-in sequence (load warning → pre-trip inspection signed with the
+/* RouteClerk prototype — version 4.0 operations (`WD.rc`, continued): the Maintenance section (a dashboard of trucks, flagged pre-trip reports,
+   GPS readings, engine codes, repairs and service due, low-battery alerts; each truck's size for truck-legal routing; the fuel price; and Fleet
+   setup: trucks and capabilities, locations and disposal sites, tracking, load sheet, mileage, fleet compliance), the driver's clock-in sequence (load warning → pre-trip inspection signed with the
    signature on file), the Checklist button that comes before Complete stop, the past-due flag at a stop, and assigning a driver and truck to a
    route for one day (press and hold the route's heading on Dispatch). */
 (function () {
@@ -15,18 +16,42 @@ WD.css(`
 .rc-flag { margin: 10px 0 2px; border-radius: 12px; padding: 10px 12px; background: color-mix(in srgb, var(--red) 12%, var(--cell)); border-left: 4px solid var(--red); font-size: 14px; line-height: 19px; letter-spacing: -.15px; }
 .rc-flag b { font-weight: 600; } .rc-flag .t { display: flex; align-items: center; gap: 6px; font-weight: 700; color: var(--red); margin-bottom: 3px; }
 .rc-flag .sh-acts { margin-top: 9px; }
-.rc-drv { font-size: 11px; font-weight: 500; color: var(--label2); letter-spacing: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.rc-drv { font-size: 12px; font-weight: 500; color: var(--label2); letter-spacing: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .rc-drv.ovr { color: var(--orange); font-weight: 600; }
 .rc-gauge { height: 8px; width: 84px; border-radius: 4px; background: var(--fill2); overflow: hidden; } .rc-gauge i { display: block; height: 100%; border-radius: 4px; background: var(--green); }
 .rc-gauge.low i { background: var(--red); } .rc-gauge.mid i { background: var(--orange); }
 .rc-signed { padding: 12px 16px; background: var(--cell); } .rc-signed .ink { height: 70px; display: grid; place-items: center; border-bottom: 1px solid var(--label3); margin-bottom: 5px; } .rc-signed .ink svg, .rc-signed .ink img { max-height: 66px; max-width: 100%; }
 .rc-signed .cap { font-size: 12px; color: var(--label2); letter-spacing: 0; }
 .rc-load { text-align: left; margin-top: 8px; } .rc-load div { display: flex; gap: 8px; padding: 6px 0; border-top: .5px solid var(--sep); font-size: 14px; line-height: 18px; } .rc-load b { font-weight: 600; }
+/* The Maintenance dashboard: stat tiles, one card per truck, then titled groups of rows. */
+.mt-root .cells { border-radius: 14px; } .mt-root .section-header.plain { padding-left: 4px; }
+.mt-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+.mt-tile { display: flex; flex-direction: column; gap: 2px; min-width: 0; min-height: 88px; padding: 12px 14px; border: 0; border-radius: 14px; background: var(--cell); color: var(--label); font: inherit; text-align: left; letter-spacing: -.1px; }
+button.mt-tile { cursor: pointer; } button.mt-tile:active, .mt-card:active { opacity: .65; }
+.mt-tile .k, .mt-tile .s { font-size: 13px; line-height: 17px; color: var(--label2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.mt-tile .v { font-size: 26px; line-height: 31px; font-weight: 700; letter-spacing: -.5px; font-variant-numeric: tabular-nums; color: var(--c, var(--label)); }
+.mt-tile .v.txt { font-size: 17px; line-height: 22px; font-weight: 600; letter-spacing: -.3px; margin: 5px 0 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.mt-cards { display: grid; gap: 10px; }
+.mt-card { background: var(--cell); border-radius: 14px; padding: 14px; cursor: pointer; min-width: 0; }
+.mt-card .top { display: flex; align-items: center; gap: 10px; min-height: 44px; } .mt-card .tk { width: 38px; height: 38px; border-radius: 10px; background: var(--fill3); color: var(--label2); display: grid; place-items: center; flex: none; }
+.mt-card .who { flex: 1; min-width: 0; } .mt-card .nm { font-size: 17px; line-height: 22px; font-weight: 600; letter-spacing: -.3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mt-card .sub, .mt-card .meta { font-size: 13px; line-height: 18px; color: var(--label2); letter-spacing: -.08px; } .mt-card .meta { margin-top: 8px; }
+.mt-card .urg { display: flex; gap: 7px; align-items: flex-start; margin-top: 8px; font-size: 14px; line-height: 19px; letter-spacing: -.15px; } .mt-card .urg svg { flex: none; margin-top: 2px; }
+.mt-bar { height: 4px; border-radius: 2px; background: var(--fill2); overflow: hidden; margin-top: 12px; } .mt-bar i { display: block; height: 100%; border-radius: 2px; background: var(--c, var(--green)); }
+.mt-next { display: flex; justify-content: space-between; gap: 10px; margin-top: 6px; font-size: 13px; line-height: 17px; color: var(--label2); } .mt-next span:first-child { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .mt-next span:last-child { flex: none; color: var(--c, var(--label2)); font-weight: 500; }
+.mt-dim { display: flex; align-items: center; gap: 6px; flex: none; font-size: 15px; color: var(--label2); } .mt-dim input { width: 72px; min-height: 44px; font-size: 16px; }
 `);
 
 /* ================= Data: GPS readings, engine codes, repairs, settings ================= */
 /** Maintenance alert settings. voltMin: a truck battery reading below this raises a notification. */
-const MT = data.maint = { voltMin: 12.0, lowFuel: 20 };
+const MT = data.maint = { voltMin: 12.0, lowFuel: 20,
+  /* The fuel price the company wants estimates to use, per US gallon in the company currency (shown per liter when units are metric).
+     fuelSplit: diesel and gasoline are priced apart; fuelPrice is then diesel and fuelGas gasoline. */
+  fuelPrice: 3.89, fuelSplit: false, fuelGas: 3.29, fuelAt: +WD.now() - 3 * 864e5, fuelBy: 'Dana Whitfield' };
+/* Size, weight and fuel for each truck. v.dims {heightIn, lengthFt, widthIn, gvwLb, axles}; v.truckRoutes keeps directions on truck-legal roads.
+   What it can carry (payload) stays in data.load.capacity, where the load sheet reads it. */
+(() => { const seed = { v1: [150, 26, 102, 25999, 2, 8.5], v2: [154, 28, 102, 33000, 2, 7.5], v3: [140, 24, 96, 25500, 2, 8], v4: [158, 26, 102, 33000, 2, 9] };
+  data.vehicles.forEach(v => { const s = seed[v.id]; if (!s || v.dims) return; v.dims = { heightIn: s[0], lengthFt: s[1], widthIn: s[2], gvwLb: s[3], axles: s[4] }; v.truckRoutes = true; v.hazmat = false; v.fuel = 'diesel'; v.mpg = s[5]; }); })();
 /** Latest readings from each truck's GPS unit (OneStep), keyed by vehicle id. Trucks without a unit have none. */
 const TEL = data.telemetry = {};
 const CODES = { P0420: 'Catalyst efficiency below threshold (bank 1)', P0171: 'Fuel system too lean (bank 1)', P20EE: 'SCR NOx catalyst efficiency below threshold', P0299: 'Turbocharger underboost', U0100: 'Lost communication with engine control module' };
@@ -48,6 +73,74 @@ const lowVolt = v => { const t = tel(v.id); return !!t && t.volts < MT.voltMin; 
 const svcOf = vid => F.services.filter(s => s.owner === vid).map(s => ({ s, st: WD.biz && WD.biz.svc ? WD.biz.svc(s) : { text: '' } }));
 const dueList = () => data.vehicles.filter(v => v.active !== false).flatMap(v => svcOf(v.id).filter(x => x.st.over || x.st.warn).map(x => ({ v, ...x })));
 const sigOf = x => x.sig || (data.users.find(u => u.name === x.by) || {}).signature || null;
+const admin = () => WD.can('settings.manage'), metric = () => WD.locale.units === 'metric', ND = () => (WD.r11 ? WD.r11.cfg.compliance.noticeDays : 30), money = n => fmt.money(n, true);
+/** How far a service is toward coming due: 0 just done, 1 due, above 1 overdue. Miles, engine hours and time; whichever is furthest along. */
+const svcFrac = s => Math.max(0, s.every ? ((F.odo[s.owner] || 0) - s.last) / s.every : 0, s.everyHours ? (((F.hours || {})[s.owner] || 0) - (s.lastHours || 0)) / s.everyHours : 0, s.everyDays ? D.diff(today(), s.lastDay || today()) / s.everyDays : 0);
+const nextSvc = vid => svcOf(vid).map(x => ({ ...x, frac: svcFrac(x.s) })).sort((a, b) => b.frac - a.frac)[0] || null;
+const truckDocs = vid => F.docs.filter(d => d.owner === vid && !(d.carb && WD.r11 && !WD.r11.cfg.compliance.carb)).map(d => ({ d, n: D.diff(d.expires, today()) }));
+/** Everything about one truck that wants attention, most urgent first: [{sev: 3 (red) | 2 (orange), kind: 'flag' | 'due' | 'code', icon, text}]. */
+const truckItems = v => { const t = tel(v.id), out = [];
+  openReports(v.id).forEach(x => out.push({ sev: 3, kind: 'flag', icon: 'flag', text: 'Pre-trip: ' + (x.defects.length ? x.defects.join(', ').toLowerCase() : 'driver’s comment') }));
+  if (lowVolt(v)) out.push({ sev: 3, kind: 'flag', icon: 'battery', text: 'Battery ' + t.volts.toFixed(1) + ' V, below your ' + MT.voltMin.toFixed(1) + ' V limit' });
+  svcOf(v.id).forEach(({ s, st }) => { if (st.over || st.warn) out.push({ sev: st.over ? 3 : 2, kind: 'due', icon: 'wrench', text: s.name + ' · ' + st.text }); });
+  truckDocs(v.id).forEach(({ d, n }) => { if (n <= ND()) out.push({ sev: n < 0 ? 3 : 2, kind: 'due', icon: 'doc.text', text: d.name + (n < 0 ? ' expired ' + plural(-n, 'day') + ' ago' : n === 0 ? ' expires today' : ' expires in ' + plural(n, 'day')) }); });
+  if (t) t.codes.filter(c => c.active).forEach(c => out.push({ sev: 2, kind: 'code', icon: 'exclamationmark.triangle', text: 'Engine code ' + c.code + ' · ' + (CODES[c.code] || 'manufacturer code') }));
+  return out.sort((a, b) => b.sev - a.sev); };
+/** The pill on a truck's card: In the shop, Flagged (an open pre-trip report or a low battery), Overdue, Due soon, or OK. */
+const truckStatus = v => { const top = truckItems(v)[0];
+  return v.shop ? { id: 'shop', label: 'In the shop', color: 'var(--gray)' } : !top ? { id: 'ok', label: 'OK', color: 'var(--green)' } : top.sev === 3 ? { id: top.kind === 'flag' ? 'flag' : 'over', label: top.kind === 'flag' ? 'Flagged' : 'Overdue', color: 'var(--red)' } : { id: 'soon', label: top.kind === 'code' ? 'Check engine' : 'Due soon', color: 'var(--orange)' }; };
+
+/* ---------- Truck size (for truck-legal routing) and the fuel price ---------- */
+const feetIn = n => Math.floor(n / 12) + '′' + (n % 12 ? (n % 12) + '″' : ''), meters = (n, dp) => n.toFixed(dp) + ' m';
+const fmtHigh = inches => metric() ? meters(inches * 0.0254, 2) : feetIn(Math.round(inches)), fmtLong = ft => metric() ? meters(ft * 0.3048, 1) : (+ft.toFixed(1)) + ' ft';
+/** A truck's size for routing. Lengths are stored in US units whatever the company shows: height and width in inches, length in feet, weight
+    (gross vehicle weight) and payload in pounds; heightM, lengthM, widthM and weightKg are the same in metric. text: “12′6″ high · 26 ft · 25,999 lb”.
+    truckRoutes: keep this truck on truck-legal roads. null when there is no such vehicle; sizes not entered yet are null. */
+WD.truckProfile = vehicleId => { const v = q.vehicle(vehicleId); if (!v) return null; const d = v.dims || {}, r = (n, k, dp) => n ? +(n * k).toFixed(dp) : null;
+  return { vehicleId: v.id, name: v.name, height: d.heightIn || null, length: d.lengthFt || null, width: d.widthIn || null, weight: d.gvwLb || null, axles: d.axles || 2, payload: (data.load && data.load.capacity[v.id]) || null, hazmat: !!v.hazmat, truckRoutes: !!v.truckRoutes,
+    heightM: r(d.heightIn, 0.0254, 2), lengthM: r(d.lengthFt, 0.3048, 1), widthM: r(d.widthIn, 0.0254, 2), weightKg: r(d.gvwLb, 0.4536, 0),
+    text: [d.heightIn && fmtHigh(d.heightIn) + ' high', d.lengthFt && fmtLong(d.lengthFt), d.gvwLb && fmt.weight(d.gvwLb)].filter(Boolean).join(' · ') }; };
+const GAL = 3.785, KMPL = 0.4251;   // liters in a US gallon; km per liter for one mile per gallon
+/** The fuel price set in Maintenance, per US gallon in the company currency. kind 'diesel' | 'gasoline' matters only when the two are priced apart. */
+WD.fuelPrice = kind => MT.fuelSplit && kind === 'gasoline' ? MT.fuelGas : MT.fuelPrice;
+/** “$3.89 per gallon”, or per liter when the company uses metric units. */
+WD.fuelPriceText = kind => metric() ? fmt.money(Math.round(WD.fuelPrice(kind) / GAL * 1000) / 1000, true) + ' per liter' : money(WD.fuelPrice(kind)) + ' per gallon';
+/** Fuel cost for one mile in a truck, from the fuel price and the truck's fuel economy; 0 when the fuel economy isn't entered. */
+WD.fuelCostPerMile = vehicleId => { const v = q.vehicle(vehicleId); return v && v.mpg > 0 ? WD.fuelPrice(v.fuel) / v.mpg : 0; };
+const fuelLine = () => MT.fuelSplit ? 'Diesel ' + WD.fuelPriceText('diesel') + ' · gasoline ' + WD.fuelPriceText('gasoline').replace(/ per .*/, '') : WD.fuelPriceText();
+function fuelSheet(done) { const m = metric(), unit = m ? 'per liter' : 'per gallon', show = p => (m ? p / GAL : p).toFixed(m ? 3 : 2), read = t => { const n = RC.num(t); return n > 0 ? +(m ? n * GAL : n).toFixed(3) : 0; };
+  const f = { price: show(MT.fuelPrice), gas: show(MT.fuelGas), split: MT.fuelSplit };
+  ui.sheet({ title: 'Fuel price', leading: [{ label: 'Cancel', onTap: p => p.dismiss() }], trailing: [{ label: 'Save', bold: true, onTap: p => { const a = read(f.price), b = read(f.gas); if (!a || (f.split && !b)) return ui.toast('Enter the price ' + unit, 'fuelpump', 2400);
+      MT.fuelPrice = a; if (f.split) MT.fuelGas = b; MT.fuelSplit = f.split; MT.fuelAt = +WD.now(); MT.fuelBy = me(); WD.changed(); p.dismiss(); ui.toast('Fuel price updated', 'checkmark'); done && done(); } }],
+    render: p => ui.list(ui.section({ header: 'Price ' + unit + ' · ' + WD.locale.currency, fold: false, showFooter: true, footer: 'The price you want estimates to use. It sets the fuel cost per mile on each truck and the fuel estimate under Mileage and expenses.' },
+        ui.inputRow({ label: f.split ? 'Diesel' : 'Fuel', inputmode: 'decimal', placeholder: '0.00', value: f.price, onInput: v => { f.price = v; } }),
+        f.split && ui.inputRow({ label: 'Gasoline', inputmode: 'decimal', placeholder: '0.00', value: f.gas, onInput: v => { f.gas = v; } }),
+        ui.toggleRow({ title: 'Separate diesel and gasoline prices', value: f.split, onChange: v => { f.split = v; p.refresh(); } })),
+      ui.section({ fold: false }, ui.row({ title: 'Last updated', detail: stamp(MT.fuelAt), subtitle: MT.fuelBy || null }))) }, { detent: 'medium' }); }
+/** Height, length, width, weight, axles, what it carries, hazmat and fuel for one truck. */
+function sizeSheet(v, done) { const m = metric(), d = v.dims || {}, cap = (data.load && data.load.capacity[v.id]) || 0, s = (x, k, dp) => x ? String(k ? +(x * k).toFixed(dp) : x) : '', n = RC.num;
+  const f = { hf: d.heightIn ? String(Math.floor(d.heightIn / 12)) : '', hi: d.heightIn ? String(d.heightIn % 12) : '', h: s(d.heightIn, 0.0254, 2), l: m ? s(d.lengthFt, 0.3048, 1) : s(d.lengthFt), w: m ? s(d.widthIn, 0.0254, 2) : s(d.widthIn),
+    gvw: m ? s(d.gvwLb, 0.4536, 0) : s(d.gvwLb), cap: m ? s(cap, 0.4536, 0) : s(cap), axles: d.axles || 2, hazmat: !!v.hazmat, fuel: v.fuel || 'diesel', mpg: m ? s(v.mpg, KMPL, 1) : s(v.mpg) };
+  const was = { ...f }, same = (k, old) => f[k] === was[k] && old > 0;   // a figure left alone keeps its exact stored value, so showing it in metric doesn't drift it
+  const inp = (k, label) => h('input.jb-rate', { type: 'text', inputmode: 'decimal', 'aria-label': label, value: f[k], oninput: e => { f[k] = e.target.value; } });
+  const dim = (title, sub, ...parts) => h('div.row', h('div.row-main', h('div.row-title', title), sub && h('div.row-sub', sub)), h('div.mt-dim', parts.map(([k, unit]) => [inp(k, title + ' ' + unit), h('span', unit)])));
+  const save = p => { if (!m && n(f.hi) >= 12) return ui.toast('Inches go up to 11', 'pencil', 2200);
+    const lb = t => Math.round(m ? n(t) / 0.4536 : n(t)), inch = t => Math.round(m ? n(t) / 0.0254 : n(t)), heightIn = m ? (same('h', d.heightIn) ? d.heightIn : inch(f.h)) : Math.round(n(f.hf) * 12 + n(f.hi));
+    if (!heightIn || !n(f.l) || !lb(f.gvw)) return ui.toast('Enter the height, length and gross weight', 'pencil', 2600);
+    v.dims = { heightIn, lengthFt: same('l', d.lengthFt) ? d.lengthFt : +(m ? n(f.l) / 0.3048 : n(f.l)).toFixed(1), widthIn: same('w', d.widthIn) ? d.widthIn : inch(f.w), gvwLb: same('gvw', d.gvwLb) ? d.gvwLb : lb(f.gvw), axles: f.axles };
+    v.hazmat = f.hazmat; v.fuel = f.fuel; v.mpg = same('mpg', v.mpg) ? v.mpg : +(m ? n(f.mpg) / KMPL : n(f.mpg)).toFixed(1) || 0;
+    if (!same('cap', cap) && lb(f.cap) > 0 && data.load) data.load.capacity[v.id] = lb(f.cap); if (v.truckRoutes == null) v.truckRoutes = true;
+    WD.changed(); p.dismiss(); ui.toast('Saved to ' + v.name, 'checkmark'); done && done(); };
+  ui.sheet({ title: 'Size and capacity', leading: [{ label: 'Cancel', onTap: p => p.dismiss() }], trailing: [{ label: 'Save', bold: true, onTap: save }],
+    render: p => ui.list(
+      ui.section({ header: v.name + ' · size', fold: false, showFooter: true, footer: 'Measure to the highest point, including the box and anything on the roof. Truck-legal routing compares these with bridge clearances and posted limits.' },
+        m ? dim('Height', 'To the highest point', ['h', 'm']) : dim('Height', 'To the highest point', ['hf', 'ft'], ['hi', 'in']), dim('Length', 'Bumper to bumper', ['l', m ? 'm' : 'ft']), dim('Width', 'Without the mirrors', ['w', m ? 'm' : 'in'])),
+      ui.section({ header: 'Weight and load', fold: false, showFooter: true, footer: 'Gross vehicle weight is the rating on the door plate: the truck and everything in it. What it carries feeds the load sheet and tells AutoRoute when to plan a trip to unload.' },
+        dim('Gross vehicle weight', 'GVWR on the door plate', ['gvw', m ? 'kg' : 'lb']), dim('Carries up to', 'Paper on board', ['cap', m ? 'kg' : 'lb']),
+        ui.row({ title: 'Axles', detail: String(f.axles), trailing: ui.stepper(f.axles, 2, 6, x => { f.axles = x; p.refresh(); }) }),
+        ui.toggleRow({ title: 'Carries hazardous materials', subtitle: 'Keeps it off roads and tunnels closed to hazmat', value: f.hazmat, onChange: x => { f.hazmat = x; } })),
+      ui.section({ header: 'Fuel', fold: false, footer: 'With the fuel price, this gives the fuel cost per mile.' },
+        ui.pickerRow({ title: 'Runs on', value: f.fuel, options: [{ value: 'diesel', label: 'Diesel' }, { value: 'gasoline', label: 'Gasoline' }], onChange: x => { f.fuel = x; p.refresh(); } }), dim('Fuel economy', 'Optional', ['mpg', m ? 'km/L' : 'mpg']))) }, { detent: 'large' }); }
 RC.maintBadge = () => canMaint() ? openReports().length + data.vehicles.filter(lowVolt).length + dueList().filter(x => x.st.over).length : 0;
 (m => { if (m) m.badge = RC.maintBadge; })(WD.app.menu.find(m => m.id === 'maintenance'));
 
@@ -138,11 +231,13 @@ const repairsSpec = () => ({ title: 'Repairs and maintenance', render: () => { c
   return ui.list(ui.section({ header: plural(list.length, 'record') + ' · ' + fmt.money(sum) + ' this year', fold: false, footer: 'Add a record from a truck’s page.' }, list.map(r => repRow(r, true)))); } });
 function truckSpec(v) {
   return { title: v.name, trailing: page => canMaint() ? [{ icon: 'plus', label: 'Add a record', onTap: () => repairSheet(v, {}, () => page.refresh()) }] : [],
-    render: page => { const t = tel(v.id), re = () => page.refresh(), open = openReports(v.id), svcs = svcOf(v.id), reps = F.repairs.filter(r => r.vehicleId === v.id).sort((a, b) => b.day.localeCompare(a.day)), ins = insOf(v.id), active = t ? t.codes.filter(c => c.active) : [];
+    render: page => { const t = tel(v.id), re = () => page.refresh(), edit = canMaint(), P = WD.truckProfile(v.id) || { axles: 2 }, cpm = WD.fuelCostPerMile(v.id), open = openReports(v.id), svcs = svcOf(v.id), reps = F.repairs.filter(r => r.vehicleId === v.id).sort((a, b) => b.day.localeCompare(a.day)), ins = insOf(v.id), active = t ? t.codes.filter(c => c.active) : [];
       return ui.list(
         open.length > 0 && ui.section({ header: 'Flagged by the pre-trip inspection', fold: false }, open.map(x => [
           ui.row({ icon: 'flag', iconColor: 'var(--red)', title: x.defects.length ? x.defects.join(', ') : 'Driver’s comment', subtitle: (x.note ? '“' + x.note + '” · ' : '') + x.by + ' · ' + fmt.rel(new Date(x.at)), chevron: true, onTap: () => page.push(inspectionSpec(x)) }),
           ui.row({ title: 'Close this report…', tint: true, onTap: () => resolve(x, v, re) })])),
+        (edit || v.shop) && ui.section({ fold: false }, ui.toggleRow({ icon: 'wrench', iconColor: v.shop ? 'var(--orange)' : 'var(--gray)', title: 'In the shop', subtitle: v.shop ? 'Out of service since ' + fmt.day(D.key(new Date(v.shop.since)), 'md') + (v.shop.by ? ' · ' + v.shop.by : '') : 'Switch on while it’s out of service for repairs', value: !!v.shop, disabled: !edit,
+          onChange: on => { v.shop = on ? { since: +WD.now(), by: me() } : null; WD.changed(); re(); ui.toast(on ? v.name + ' marked in the shop' : v.name + ' is back in service', on ? 'wrench' : 'checkmark', 2400); } })),
         t ? ui.section({ header: 'From the GPS unit', fold: false, footer: v.gps + ' · updated ' + fmt.rel(new Date(t.at)).toLowerCase() },
             ui.row({ icon: 'fuelpump', iconColor: t.fuel < MT.lowFuel ? 'var(--red)' : 'var(--green)', title: 'Fuel level', detail: t.fuel + '%', trailing: gauge(t.fuel) }),
             ui.row({ icon: 'gauge', iconColor: 'var(--blue)', title: 'Mileage', subtitle: 'Also fills in the pre-trip inspection', detail: nfmt(F.odo[v.id] || 0) + ' mi' }),
@@ -157,6 +252,10 @@ function truckSpec(v) {
         ui.section({ header: 'Upcoming maintenance', fold: false, footer: 'A notification shows when a service is coming due.' },
           svcs.length ? svcs.map(({ s, st }) => ui.row({ icon: 'wrench', iconColor: st.over ? 'var(--red)' : st.warn ? 'var(--orange)' : 'var(--gray)', title: s.name, subtitle: st.every, detail: st.text, onTap: canMaint() ? () => repairSheet(v, { kind: 'service', title: s.name, svc: s.id }, re) : null, chevron: canMaint() })) : ui.row({ title: 'Nothing scheduled' }),
           WD.biz && WD.biz.vehicleSpec && ui.row({ title: 'Change the schedule and documents', tint: true, chevron: true, onTap: () => page.push(WD.biz.vehicleSpec(v)) })),
+        ui.section({ header: 'Size and capacity', fold: false, showFooter: true, footer: 'Truck-legal routing (avoiding low bridges, weight limits and roads closed to trucks) is part of the higher AutoRoute plan. Drivers can also navigate with a truck GPS app such as “Hammer: Truck GPS & Maps”, offered in Settings → Routes and board → Directions app.' },
+          ui.row({ icon: 'truck', iconColor: 'var(--gray)', title: P.text || 'Height, length and weight not entered', subtitle: [P.width && fmtHigh(P.width) + ' wide', plural(P.axles, 'axle'), P.payload && 'carries ' + fmt.weight(P.payload), v.hazmat ? 'hazmat' : 'no hazmat'].filter(Boolean).join(' · '), detail: edit ? 'Edit' : null, chevron: edit, onTap: edit ? () => sizeSheet(v, re) : null }),
+          ui.row({ icon: 'fuelpump', iconColor: 'var(--gray)', title: (v.fuel === 'gasoline' ? 'Gasoline' : 'Diesel') + (v.mpg ? ' · ' + (metric() ? (v.mpg * KMPL).toFixed(1) + ' km/L' : v.mpg + ' mpg') : ''), subtitle: cpm ? 'About ' + (metric() ? money(cpm / 1.609) + ' a km' : money(cpm) + ' a mile') + ' in fuel, at ' + WD.fuelPriceText(v.fuel) : 'Add the fuel economy to see the fuel cost per mile' }),
+          ui.toggleRow({ title: 'Commercial truck — use truck-legal roads', subtitle: 'Directions and AutoRoute keep to roads this truck is allowed on and fits under', value: !!v.truckRoutes, disabled: !edit, onChange: on => { v.truckRoutes = on; WD.changed(); } })),
         ui.section({ header: 'Repairs and maintenance', fold: false }, reps.slice(0, 6).map(r => repRow(r)), !reps.length && ui.row({ title: 'No records yet' }),
           canMaint() && ui.row({ icon: 'plus.circle.fill', iconPlain: true, iconColor: 'var(--green)', title: 'Add a repair or maintenance record', tint: true, onTap: () => repairSheet(v, {}, re) })),
         ui.section({ header: 'Pre-trip inspections', fold: false }, ins.slice(0, 3).map(x => insRow(x, s => page.push(s))), !ins.length && ui.row({ title: 'Never inspected' }),
@@ -170,29 +269,80 @@ function codeHelp(code) {
     P0171: ['Watch it', 'the engine is running lean. Usually a vacuum leak or a dirty air-flow sensor.'], P0299: ['Deal with it this week', 'low turbo boost. Check intake hoses and clamps for a leak before anything bigger.'], U0100: ['Stop and check', 'modules can’t talk to the engine computer. Check battery connections and voltage first.'] }[code] || ['Have it read', 'a manufacturer-specific code. A shop scan will say what it means.'];
   return h('span', h('b', code + ' — ' + K[0] + ': '), K[1]);
 }
+/** Everything that wants attention across the fleet, as rows: open pre-trip reports, low batteries, service due and active engine codes. */
+const attnRows = push => { const trucks = data.vehicles.filter(v => v.active !== false);
+  return [].concat(
+    openReports().map(x => { const v = q.vehicle(x.vehicleId) || { name: 'Truck' }; return ui.row({ icon: 'flag', iconColor: 'var(--red)', title: v.name + ' · ' + (x.defects.length ? x.defects.join(', ') : 'driver’s comment'), subtitle: 'Pre-trip · ' + x.by + ' · ' + fmt.rel(new Date(x.at)) + (x.note ? ' · “' + x.note + '”' : ''), chevron: true, onTap: () => push(truckSpec(v)) }); }),
+    trucks.filter(lowVolt).map(v => ui.row({ icon: 'battery', iconColor: 'var(--red)', title: v.name + ' · battery ' + tel(v.id).volts.toFixed(1) + ' V', subtitle: 'Below your ' + MT.voltMin.toFixed(1) + ' V limit', chevron: true, onTap: () => push(truckSpec(v)) })),
+    dueList().map(x => ui.row({ icon: 'wrench', iconColor: x.st.over ? 'var(--red)' : 'var(--orange)', title: x.v.name + ' · ' + x.s.name, subtitle: x.st.text, chevron: true, onTap: () => push(truckSpec(x.v)) })),
+    trucks.flatMap(v => (tel(v.id) ? tel(v.id).codes : []).filter(c => c.active).map(c => ui.row({ icon: 'exclamationmark.triangle', iconColor: 'var(--orange)', title: v.name + ' · engine code ' + c.code, subtitle: CODES[c.code] || 'Manufacturer code', chevron: true, onTap: () => push(truckSpec(v)) })))); };
+const attnSpec = () => ({ title: 'Needs attention', render: page => { const rows = attnRows(s => page.push(s));
+  return rows.length ? ui.list(ui.section({ header: plural(rows.length, 'item') + ' · most urgent first', fold: false, footer: 'Open pre-trip reports, low batteries, service that is due and active engine codes. Tap one to open the truck.' }, rows)) : ui.empty({ icon: 'checkmark.circle', title: 'Nothing needs attention', text: 'Pre-trip reports, low batteries, service due and engine codes show here.' }); } });
+/** Add, rename, re-address or delete a place where trucks start and end the day. A place in use asks where its trucks should go instead. */
+function placeSheet(pl, done) { const f = { name: pl ? pl.name : '', address: pl ? pl.address : '' }, users = () => pl ? data.vehicles.filter(v => v.startId === pl.id || v.endId === pl.id) : [];
+  const del = async p => { if (data.places.length < 2) return ui.alert({ title: 'Keep one location', message: 'Trucks need somewhere to start and end the day. Add another location first.' });
+    const us = users(), others = data.places.filter(x => x !== pl); let to = others[0].id;
+    if (us.length) { to = await ui.actionSheet({ title: 'Delete “' + pl.name + '”?', message: us.map(v => v.name).join(', ') + (us.length === 1 ? ' starts or ends' : ' start or end') + ' here. Where should ' + (us.length === 1 ? 'it' : 'they') + ' start and end instead?', buttons: others.map(x => ({ label: 'Move to ' + x.name, value: x.id })) }); if (!to) return; }
+    else if (!(await ui.actionSheet({ title: 'Delete “' + pl.name + '”?', buttons: [{ label: 'Delete location', value: true, role: 'destructive' }] }))) return;
+    data.vehicles.concat(Object.values(data.vehicleDays || {})).forEach(o => { if (o.startId === pl.id) o.startId = to; if (o.endId === pl.id) o.endId = to; });
+    data.places.splice(data.places.indexOf(pl), 1); WD.changed(); p.dismiss(); ui.toast('Location deleted', 'checkmark'); done && done(); };
+  ui.sheet({ title: pl ? 'Location' : 'New location', leading: [{ label: 'Cancel', onTap: p => p.dismiss() }], trailing: [{ label: pl ? 'Save' : 'Add', bold: true, onTap: p => { const name = f.name.trim(), address = f.address.trim(); if (!name || !address) return ui.toast('Add a name and an address', 'mappin');
+      if (pl) Object.assign(pl, { name, address }); else data.places.push({ id: uid('p'), name, address, x: 150 + Math.round(Math.random() * 700), y: 150 + Math.round(Math.random() * 700) }); WD.changed(); p.dismiss(); ui.toast(pl ? 'Saved' : 'Location added', 'checkmark'); done && done(); } }],
+    render: p => ui.list(ui.section({ fold: false, footer: pl ? null : 'For example the yard, a storage lot or a driver’s house.' }, ui.inputRow({ label: 'Name', caps: 'words', placeholder: 'e.g. East yard', value: f.name, autofocus: !pl, onInput: v => { f.name = v; } }), ui.inputRow({ label: 'Address', placeholder: 'Street, city', value: f.address, onInput: v => { f.address = v; } })),
+      pl && ui.section({ fold: false, showFooter: true, footer: users().length ? 'Used by ' + users().map(v => v.name).join(', ') + '. Deleting it asks where those trucks should start and end instead.' : 'No truck starts or ends here.' }, ui.row({ title: 'Delete location', destructive: true, onTap: () => del(p) }))) }, { detent: 'medium' }); }
+/** Where trucks are kept (start and end of the day) and where they empty out. */
+const locationsSpec = () => ({ title: 'Locations and disposal sites', render: page => { const edit = admin(), re = () => page.refresh(), X = WD.r11, sites = X ? X.cfg.disposal.sites : [], KIND = { recycler: 'Recycler', landfill: 'Landfill', transfer: 'Transfer station' };
+  return ui.list(
+    ui.section({ header: 'Where trucks start and end the day', fold: false, footer: 'Each truck has its own start and end, set on the truck. Drivers can change them for the day when they clock in.' + (edit ? '' : ' Ask an admin to change locations.') },
+      data.places.map(pl => { const us = data.vehicles.filter(v => v.active !== false && (v.startId === pl.id || v.endId === pl.id)); return ui.row({ icon: pl.id === 'p1' ? 'building' : 'house', iconColor: 'var(--gray)', title: pl.name, subtitle: [h('div', pl.address), us.length > 0 && h('div', us.map(v => v.name).join(', '))], chevron: edit, onTap: edit ? () => placeSheet(pl, re) : null }); }),
+      edit && ui.row({ icon: 'plus.circle.fill', iconPlain: true, iconColor: 'var(--green)', title: 'Add a location', tint: true, onTap: () => placeSheet(null, re) })),
+    X && ui.section({ header: 'Recycling and disposal sites', fold: false, footer: 'Where trucks empty out. AutoRoute plans an unload stop at the nearest one when a truck fills up.' },
+      sites.map(x => ui.row({ icon: x.kind === 'landfill' ? 'trash' : 'arrow.clockwise', iconColor: x.kind === 'landfill' ? 'var(--brown)' : 'var(--green)', title: x.name, subtitle: (KIND[x.kind] || 'Site') + ' · ' + x.address, chevron: edit, onTap: edit ? () => page.push(X.disposalSpec()) : null })),
+      !sites.length && ui.row({ title: 'No sites yet' }),
+      edit && ui.row({ icon: 'gearshape', iconPlain: true, title: 'Add or change sites, and the unload stop', tint: true, chevron: true, onTap: () => page.push(X.disposalSpec()) })));
+} });
+/** The Maintenance dashboard: four stat tiles, a card per truck, then Records, Fleet setup, and Costs and alerts. */
 function maintRoot() {
   return { title: 'Maintenance', large: true, render: page => {
     if (!canMaint()) return ui.empty({ icon: 'lock', title: 'Maintenance is hidden', text: 'Owners, admins and people given Maintenance in Team and roles can see this section.' });
-    const push = s => page.push(s), trucks = data.vehicles.filter(v => v.active !== false), reports = openReports(), low = trucks.filter(lowVolt), due = dueList(), codes = trucks.flatMap(v => (tel(v.id) ? tel(v.id).codes : []).filter(c => c.active).map(c => ({ v, c })));
-    const attn = [].concat(
-      reports.map(x => { const v = q.vehicle(x.vehicleId); return ui.row({ icon: 'flag', iconColor: 'var(--red)', title: v.name + ' · ' + (x.defects.length ? x.defects.join(', ') : 'driver’s comment'), subtitle: 'Pre-trip · ' + x.by + ' · ' + fmt.rel(new Date(x.at)) + (x.note ? ' · “' + x.note + '”' : ''), chevron: true, onTap: () => push(truckSpec(v)) }); }),
-      low.map(v => ui.row({ icon: 'battery', iconColor: 'var(--red)', title: v.name + ' · battery ' + tel(v.id).volts.toFixed(1) + ' V', subtitle: 'Below your ' + MT.voltMin.toFixed(1) + ' V limit', chevron: true, onTap: () => push(truckSpec(v)) })),
-      due.map(x => ui.row({ icon: 'wrench', iconColor: x.st.over ? 'var(--red)' : 'var(--orange)', title: x.v.name + ' · ' + x.s.name, subtitle: x.st.text, chevron: true, onTap: () => push(truckSpec(x.v)) })),
-      codes.map(x => ui.row({ icon: 'exclamationmark.triangle', iconColor: 'var(--orange)', title: x.v.name + ' · engine code ' + x.c.code, subtitle: CODES[x.c.code] || 'Manufacturer code', chevron: true, onTap: () => push(truckSpec(x.v)) })));
-    return ui.list(
-      ui.section({ header: attn.length ? 'Needs attention · ' + attn.length : 'Needs attention', fold: false }, attn.length ? attn : ui.row({ icon: 'checkmark.circle.fill', iconPlain: true, iconColor: 'var(--green)', title: 'Nothing needs attention' })),
-      ui.section({ header: 'Trucks', fold: false, footer: 'A flag means a pre-trip inspection found a problem or the driver left a comment that hasn’t been closed.' }, trucks.map(v => { const t = tel(v.id), n = openReports(v.id).length;
-        return ui.row({ icon: n ? 'flag' : 'truck', iconColor: n ? 'var(--red)' : lowVolt(v) ? 'var(--orange)' : 'var(--green)', title: v.name, subtitle: nfmt(F.odo[v.id] || 0) + ' mi' + (t ? ' · fuel ' + t.fuel + '% · ' + t.volts.toFixed(1) + ' V' : ' · no GPS unit') + (n ? ' · ' + openReports(v.id)[0].defects.concat(openReports(v.id)[0].defects.length ? [] : ['comment']).join(', ') : ''),
-          badge: n ? ui.badge('Flagged', 'var(--red)') : null, chevron: true, onTap: () => push(truckSpec(v)) }); })),
-      ui.section({ header: 'Records', fold: false },
-        ui.row({ icon: 'checklist', iconColor: 'var(--indigo)', title: 'Truck inspection history', detail: String(F.inspections.length), chevron: true, onTap: () => push(historySpec()) }),
-        ui.row({ icon: 'wrench', iconColor: 'var(--orange)', title: 'Repairs and maintenance log', detail: String(F.repairs.length), chevron: true, onTap: () => push(repairsSpec()) }),
-        WD.biz && WD.biz.fleetSpec && ui.row({ icon: 'doc.text', iconColor: 'var(--teal)', title: 'Documents and the inspection checklist', subtitle: 'Registrations, licenses, what the pre-trip checks', chevron: true, onTap: () => push(WD.biz.fleetSpec()) })),
-      ui.section({ header: 'Alerts', fold: false, footer: 'A notification pops up for everyone with Maintenance when a truck’s battery reads below this, when a pre-trip inspection reports a problem, and when service is coming due. Who has Maintenance is set in Settings → Team and roles.' },
-        ui.pickerRow({ icon: 'battery', iconColor: 'var(--red)', title: 'Low battery below', value: MT.voltMin, options: [11.5, 11.8, 12.0, 12.2, 12.4].map(x => ({ value: x, label: x.toFixed(1) + ' V' })), onChange: v => { MT.voltMin = v; WD.changed(); page.refresh(); setTimeout(RC.maintCheck, 400); } })));
+    const push = s => page.push(s), re = () => page.refresh(), edit = admin(), X = WD.r11, BZ = WD.biz, VS = WD.screens.settings && WD.screens.settings.vehiclesSpec;
+    const trucks = data.vehicles.filter(v => v.active !== false), shop = trucks.filter(v => v.shop), reports = openReports(), low = trucks.filter(lowVolt), due = dueList(), codes = trucks.reduce((n, v) => n + (tel(v.id) ? tel(v.id).codes.filter(c => c.active).length : 0), 0), attn = reports.length + low.length + due.length + codes;
+    const next = trucks.map(v => ({ v, n: nextSvc(v.id) })).filter(x => x.n).sort((a, b) => b.n.frac - a.n.frac)[0], tone = st => st.over ? 'var(--red)' : st.warn ? 'var(--orange)' : null;
+    const tile = (k, v, s, o = {}) => h(o.onTap ? 'button.mt-tile' : 'div.mt-tile', { onclick: o.onTap || null, style: o.color ? { '--c': o.color } : null }, h('span.k', k), h('span.v' + (o.txt ? '.txt' : ''), v), h('span.s', s));
+    const card = v => { const t = tel(v.id), st = truckStatus(v), items = truckItems(v), top = items[0], n = nextSvc(v.id), P = WD.truckProfile(v.id), c = n && tone(n.st);
+      return h('div.mt-card', { role: 'button', tabindex: 0, 'aria-label': v.name + ', ' + st.label, onclick: () => push(truckSpec(v)) },
+        h('div.top', h('div.tk', icon('truck', 21)), h('div.who', h('div.nm', v.name), h('div.sub', [v.kind, v.plate].filter(Boolean).join(' · '))), ui.badge(st.label, st.color), icon('chevron.right', 14, 'var(--label3)')),
+        h('div.meta', h('div', nfmt(F.odo[v.id] || 0) + ' mi' + (t ? ' · fuel ' + t.fuel + '% · ' + t.volts.toFixed(1) + ' V' : ' · no GPS unit')), P.text && h('div', P.text)),
+        top && h('div.urg', icon(top.icon, 16, top.sev === 3 ? 'var(--red)' : 'var(--orange)'), h('span', top.text + (items.length > 1 ? ' · and ' + (items.length - 1) + ' more' : ''))),
+        n && h('div.mt-bar', { style: { '--c': c || 'var(--green)' } }, h('i', { style: { width: Math.max(2, Math.round(Math.min(1, n.frac) * 100)) + '%' } })),
+        n && h('div.mt-next', { style: c ? { '--c': c } : null }, h('span', 'Next service · ' + n.s.name), h('span', n.st.text))); };
+    const go = (ic, title, spec, detail) => ui.row({ icon: ic, iconPlain: true, iconColor: 'var(--tint)', title, detail: detail || null, chevron: true, onTap: () => push(spec()) });
+    const soon = X ? X.expiring(false, 'trucks').length : 0, track = X && { phone: 'Driver’s phone', truck: 'Truck GPS', both: 'Phone and GPS' }[X.cfg.tracking.source];
+    const el = ui.list(
+      h('div.mt-tiles',
+        tile('Trucks in service', String(trucks.length - shop.length), shop.length ? plural(shop.length, 'truck') + ' in the shop' : 'of ' + plural(trucks.length, 'truck')),
+        tile('Need attention', String(attn), attn ? [reports.length && plural(reports.length, 'report'), low.length && low.length + ' low battery', due.length && due.length + ' due', codes && plural(codes, 'code')].filter(Boolean).join(' · ') : 'Nothing right now', { color: attn ? 'var(--red)' : null, onTap: () => push(attnSpec()) }),
+        tile('Next service due', next ? next.n.s.name : 'None scheduled', next ? next.v.name + ' · ' + next.n.st.text : 'Add one on a truck’s page', { txt: true, color: next && tone(next.n.st), onTap: next ? () => push(truckSpec(next.v)) : null }),
+        tile('Open repairs', String(reports.length + shop.length), reports.length + shop.length ? [reports.length && plural(reports.length, 'pre-trip report'), shop.length && shop.length + ' in the shop'].filter(Boolean).join(' · ') : 'Nothing open', { onTap: () => push(attnSpec()) })),
+      h('div.section', h('div.section-header.plain', 'Trucks'), h('div.mt-cards', trucks.map(card)), !trucks.length && h('div.section-footer', 'No trucks yet. Add one under Fleet setup.')),
+      ui.section({ header: 'Records', plainHeader: true },
+        go('checklist', 'Inspection history', () => historySpec(), String(F.inspections.length)),
+        go('wrench', 'Repairs and maintenance log', repairsSpec, String(F.repairs.length))),
+      ui.section({ header: 'Fleet setup', plainHeader: true, footer: edit ? null : 'An admin changes the fleet setup.' },
+        edit && X ? go('truck', 'Trucks and capabilities', () => X.skillsSpec('trucks'), String(trucks.length)) : VS && go('truck', 'Trucks', VS, String(trucks.length)),
+        go('mappin', 'Locations and disposal sites', locationsSpec, String(data.places.length + (X ? X.cfg.disposal.sites.length : 0))),
+        edit && X && go('location', 'How trucks are tracked', X.trackingSpec, track),
+        BZ && go('shippingbox', 'Load sheet and truck capacity', () => BZ.loadSpec()),
+        BZ && go('gauge', 'Mileage and expenses', BZ.mileSpec),
+        X && go('bell', 'Fleet compliance and reminders', () => X.complianceSpec('trucks'), soon ? soon + ' coming up' : null),
+        BZ && go('doc.text', 'Documents and pre-trip checklist', () => BZ.fleetSpec('trucks'))),
+      ui.section({ header: 'Costs and alerts', plainHeader: true, footer: 'A notification pops up for everyone with Maintenance when a truck’s battery reads below the limit, when a pre-trip inspection reports a problem, and when service is coming due. Who has Maintenance is set in Settings → Team and roles.' },
+        ui.row({ icon: 'fuelpump', iconPlain: true, iconColor: 'var(--tint)', title: 'Fuel price', subtitle: (MT.fuelSplit ? fuelLine() : metric() ? 'Per liter' : 'Per gallon') + ' · updated ' + fmt.day(D.key(new Date(MT.fuelAt)), 'md'), detail: MT.fuelSplit ? null : fmt.money(metric() ? MT.fuelPrice / GAL : MT.fuelPrice, true), chevron: true, onTap: () => fuelSheet(re) }),
+        ui.pickerRow({ icon: 'battery', iconPlain: true, iconColor: 'var(--tint)', title: 'Low battery alert below', value: MT.voltMin, options: [11.5, 11.8, 12.0, 12.2, 12.4].map(x => ({ value: x, label: x.toFixed(1) + ' V' })), onChange: v => { MT.voltMin = v; WD.changed(); page.refresh(); setTimeout(RC.maintCheck, 400); } })));
+    el.classList.add('mt-root'); return el;
   } };
 }
-WD.screens.maintenance = { root: maintRoot, truckSpec };
+WD.screens.maintenance = { root: maintRoot, truckSpec, attentionSpec: attnSpec, locationsSpec, fuelSheet, sizeSheet };
 
 /* ================= Clock-in: load warning, then the pre-trip inspection ================= */
 const hddQty = job => (((job.items || []).find(i => i.id === 'hdd') || {}).qty) || 0;
@@ -277,7 +427,7 @@ RC.assignSheet = (rid, day) => {
             return pickRow(f.driverId === u.id, u.name, on ? (on.id === rid ? 'On this route' : 'On ' + q.routeName(on)) : 'Not on a route that day', () => { f.driverId = u.id; }, off ? 'Time off' : null); }),
           pickRow(!f.driverId, 'No driver', 'Leave the route unassigned', () => { f.driverId = null; })),
         ui.section({ header: 'Truck', fold: false }, trucks.map(v => { const on = q.routes().find(x => (RC.vehicleOn(x.id, day) || {}).id === v.id);
-          return pickRow(f.vehicleId === v.id, v.name, (v.kind || '') + (on ? ' · ' + (on.id === rid ? 'on this route' : 'on ' + q.routeName(on)) : ' · free that day'), () => { f.vehicleId = v.id; }); })),
+          return pickRow(f.vehicleId === v.id, v.name, (v.kind || '') + (on ? ' · ' + (on.id === rid ? 'on this route' : 'on ' + q.routeName(on)) : ' · free that day'), () => { f.vehicleId = v.id; }, v.shop ? 'In the shop' : null); })),
         changed(rid, day) && ui.section(null, ui.row({ title: 'Back to the usual driver and truck', destructive: true, onTap: () => { delete RA[rid + '|' + day]; WD.changed(); p.dismiss(); ui.toast('Back to the usual assignment', 'checkmark'); } }))); } }, { detent: 'large' });
 };
 
@@ -287,7 +437,7 @@ RC.assignSheet = (rid, day) => {
   if (b2 && b2 !== a) { b2.deliver = '1 console and 1 bin (64 gal)'; b2.checklist = [{ id: 'dk1', text: 'New containers placed where the customer wants them', req: true }, { id: 'dk2', text: 'Keys handed to the site contact', req: true }, { id: 'dk3', text: 'Photo of each container in place', req: false, photo: true }]; }
   /* A customer on today's North Route with several invoices past due, so the flag shows at the stop. */
   const c = (open[0] && q.customer(open[0].customerId)) || null;
-  if (c && data.invoices) [[82, 138], [58, 96], [51, 96], [17, 96]].forEach(([ago, amount], i) => data.invoices.push({ id: 'inv-pd' + i, number: 'INV-' + (2231 + i * 7), customerId: c.id, jobId: null, day: D.add(today(), -ago), amount, status: ago > 45 ? 'Overdue' : 'Sent', auto: false, payments: [], at: +D.parse(D.add(today(), -ago)) }));
+  if (c && data.invoices) [[82, 138], [58, 96], [51, 96], [17, 96]].forEach(([ago, amount], i) => data.invoices.push({ id: 'inv-pd' + i, number: (n => { while (data.invoices.some(x => x.number === 'INV-' + n)) n++; return 'INV-' + n; })(2231 + i * 7), customerId: c.id, jobId: null, day: D.add(today(), -ago), amount, status: ago > 45 ? 'Overdue' : 'Sent', auto: false, payments: [], at: +D.parse(D.add(today(), -ago)) }));
 })();
 WD.panel.addAction('Truck battery drops below the limit', () => { const v = q.vehicle('v3') || data.vehicles[0], t = tel(v.id); if (!t) return; t.volts = +(MT.voltMin - 0.3).toFixed(1); t.at = +WD.now(); WD.changed(); RC.maintCheck(); if (!canMaint()) ui.toast('Only people with Maintenance are notified', 'lock', 2600); });
 WD.panel.addAction('Driver reports a pre-trip defect', () => { const v = q.vehicle('v1') || data.vehicles[0], d = q.user('u4') || { name: 'Marcus Bell', id: 'u4' };

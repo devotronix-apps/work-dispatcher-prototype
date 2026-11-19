@@ -1,10 +1,12 @@
 /* RouteClerk prototype — version 4.0 money (`WD.rc`, continued): date-range and status filters for invoices and service notes; creating,
    viewing, sending and deleting invoices and service notes from the Invoices section; customer statements (one customer or many, with the
-   unpaid invoices in the same PDF, and the billing email reviewed first); the Reports section; and the two Price Calc calculators. */
+   unpaid invoices in the same PDF, and the billing email reviewed first); the Reports section; and the two Price Calc calculators. Also: writing an invoice off as bad debt or voiding it (`RC.closeInvoice`,
+   `WD.badDebt`, `WD.badDebtBanner`), and billing completed stops and open service notes from the Route performance report. */
 (function () {
 'use strict';
 const WD = window.WD, { h, ui, icon, state: S, data, q, fmt, date: D } = WD, RC = WD.rc, uid = RC.uid, plural = RC.plural, num = RC.num;
-const today = () => D.today(), me = () => (S.me || {}).name || 'You', money = n => fmt.money(n, true), yr = k => +k.slice(0, 4);
+const today = () => D.today(), me = () => (S.me || {}).name || 'You', money = n => fmt.money(n, true), yr = k => +k.slice(0, 4), cents = n => Math.round(n * 100) / 100;
+const BAD = WD.INV_BAD || 'Bad debt', VOID = WD.INV_VOID || 'Void', invClosed = i => !!i && (i.status === BAD || i.status === VOID), invOpen = i => !!i && i.status !== 'Paid' && i.status !== 'Draft' && !invClosed(i);
 const note = t => h('div', { style: 'padding:4px 4px 0' }, ui.note(t));
 const overdueDays = () => ((WD.r11 && WD.r11.cfg && WD.r11.cfg.unpaid) || { overdueDays: 45 }).overdueDays;
 const emailOf = c => (c && (c.billingEmail || ((c.contacts || [])[0] || {}).email)) || '', validEmail = s => /^[^\s@,]+@[^\s@,]+\.[^\s@,]+$/.test(String(s).trim());
@@ -31,7 +33,7 @@ WD.css(`
 .rc-card .hd { display: flex; align-items: flex-start; gap: 8px; } .rc-card .hd > div { flex: 1; min-width: 0; }
 .rc-card .mini { border: 0; background: var(--fill3); border-radius: 8px; font: inherit; font-size: 12px; font-weight: 600; letter-spacing: 0; padding: 4px 8px; color: var(--label); cursor: pointer; white-space: nowrap; }
 .rc-legend { display: flex; gap: 12px; font-size: 12px; color: var(--label2); letter-spacing: 0; margin: 6px 0 2px; } .rc-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; }
-.rc-chart text { font-size: 9.5px; fill: var(--label2); letter-spacing: 0; } .rc-chart .grid { stroke: var(--sep); stroke-width: .5; } .rc-chart .hit { fill: transparent; cursor: pointer; } .rc-chart .hit.on { fill: var(--fill3); }
+.rc-chart text { font-size: 12px; fill: var(--label2); letter-spacing: 0; } .rc-chart .grid { stroke: var(--sep); stroke-width: .5; } .rc-chart .hit { fill: transparent; cursor: pointer; } .rc-chart .hit.on { fill: var(--fill3); }
 .rc-hbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; align-items: center; padding: 6px 0; font-size: 14px; letter-spacing: -.1px; } .rc-hbar .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rc-hbar .amt { font-weight: 600; text-align: right; } .rc-hbar .amt small { color: var(--label2); font-weight: 400; margin-left: 5px; font-size: 12px; }
 .rc-hbar .bar { grid-column: 1 / -1; height: 8px; border-radius: 4px; background: var(--fill3); } .rc-hbar .bar i { display: block; height: 100%; border-radius: 4px; background: var(--s1); min-width: 2px; }
@@ -40,11 +42,20 @@ WD.css(`
 .rc-sum .big { font-weight: 700; font-size: 17px; } .rc-sum .muted span:first-child { color: var(--label2); }
 .rc-sugs { background: var(--cell); border-radius: 0 0 10px 10px; } .rc-sugs button { display: block; width: 100%; text-align: left; border: 0; border-top: .5px solid var(--sep); background: none; padding: 8px 16px; font: inherit; font-size: 15px; color: var(--label); cursor: pointer; } .rc-sugs small { display: block; color: var(--label2); font-size: 12px; letter-spacing: 0; }
 .rc-st h2 { color: #1E7B34; font: 23px/26px Georgia, 'Times New Roman', serif; margin: 0 0 4px; font-weight: 400; }
+/* The date range stays at the top of the page while the report scrolls under it. */
+.rc-sticky { position: sticky; top: 0; z-index: 6; background: var(--bg); padding-top: 8px; box-shadow: 0 7px 8px -8px rgba(0,0,0,.28); }
+.rc-sticky .rc-fbar { padding-bottom: 8px; } .rc-sticky .rc-pill { height: 44px; border-radius: 22px; padding: 0 14px 0 16px; font-size: 15px; box-shadow: 0 1px 4px rgba(0,0,0,.16); background: var(--cell); } .rc-sticky .rc-pill.on { background: var(--tint); }
+.rc-sum .tap { cursor: pointer; min-height: 44px; align-items: center; box-sizing: border-box; }
+/* Bad debt flag: red, on the customer record, the incoming-call card and the job editor. */
+.rc-bd { display: flex; align-items: flex-start; gap: 10px; margin: 8px 16px; padding: 10px 12px; border-radius: 12px; background: var(--cell); border: 1.5px solid var(--red); color: var(--label); font-size: 14px; line-height: 19px; letter-spacing: -.1px; text-align: left; }
+.rc-bd > svg { flex: none; margin-top: 1px; } .rc-bd .t { flex: 1; min-width: 0; } .rc-bd b { color: var(--red); font-weight: 700; } .rc-bd small { display: block; font-size: 12px; color: var(--label2); letter-spacing: 0; margin-top: 2px; }
+.rc-bd .a { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 2px; } .rc-bd .a button { border: 0; background: none; color: var(--tint); font: inherit; font-weight: 600; min-height: 44px; padding: 0 2px; cursor: pointer; }
+.rc-bd.void { border-color: var(--sep); } .rc-bd.void b { color: var(--label); }
 `);
 
 /* ================= Date range and status filters ================= */
 const RANGES = [['life', 'Lifetime'], ['year', 'This Year'], ['lastyear', 'Last Year'], ['month', 'This Month'], ['lastmonth', 'Last Month'], ['week', 'This Week'], ['yesterday', 'Yesterday'], ['today', 'Today'], ['custom', 'Custom']];
-const STATUSES = [['all', 'All'], ['paid', 'Paid'], ['unpaid', 'Unpaid'], ['overdue', 'Overdue']];
+const STATUSES = [['all', 'All'], ['paid', 'Paid'], ['unpaid', 'Unpaid'], ['overdue', 'Overdue'], ['baddebt', 'Bad debt'], ['void', 'Void']];
 RC.invFilter = { range: 'life', status: 'all', from: '', to: '' };
 /** [first day, last day] of a filter's range; null = open-ended. Weeks start on Sunday. */
 RC.rangeOf = f => { const t = today(), d = D.parse(t), y = d.getFullYear(), m = d.getMonth(), k = (yy, mm, dd) => D.key(new Date(yy, mm, dd, 12));
@@ -52,15 +63,15 @@ RC.rangeOf = f => { const t = today(), d = D.parse(t), y = d.getFullYear(), m = 
     case 'week': { const s = D.add(t, -d.getDay()); return [s, D.add(s, 6)]; } case 'yesterday': return [D.add(t, -1), D.add(t, -1)]; case 'today': return [t, t]; case 'custom': return [f.from || null, f.to || null]; default: return [null, null]; } };
 RC.inRange = (day, f) => { const [a, b] = RC.rangeOf(f); return (!a || day >= a) && (!b || day <= b); };
 RC.rangeLabel = f => f.range === 'custom' && (f.from || f.to) ? (f.from ? mdy(f.from) : 'Start') + ' – ' + (f.to ? mdy(f.to) : 'Today') : (RANGES.find(r => r[0] === f.range) || RANGES[0])[1];
-/** Paid, Draft, Overdue (unpaid longer than the past-due setting, 45 days unless changed) or Sent. */
-RC.invStatus = r => r.status === 'Paid' || r.status === 'Draft' ? r.status : D.diff(today(), r.day) > overdueDays() ? 'Overdue' : 'Sent';
-const statusOK = (st, f) => f.status === 'all' || (f.status === 'paid' ? st === 'Paid' : f.status === 'overdue' ? st === 'Overdue' : st !== 'Paid' && st !== 'Draft');
+/** Paid, Draft, Bad debt (written off), Void, Overdue (unpaid longer than the past-due setting, 45 days unless changed) or Sent. */
+RC.invStatus = r => r.status === 'Paid' || r.status === 'Draft' || invClosed(r) ? r.status : D.diff(today(), r.day) > overdueDays() ? 'Overdue' : 'Sent';
+const statusOK = (st, f) => f.status === 'all' || (f.status === 'paid' ? st === 'Paid' : f.status === 'overdue' ? st === 'Overdue' : f.status === 'baddebt' ? st === BAD : f.status === 'void' ? st === VOID : st !== 'Paid' && st !== 'Draft' && st !== BAD && st !== VOID);
 RC.invMatch = r => RC.inRange(r.day, RC.invFilter) && statusOK(RC.invStatus(r), RC.invFilter);
 /** A service note is paid when its master invoice is; until then it is unpaid, and overdue once it (or its master invoice) passes the past-due setting. */
 RC.noteStatus = n => { const mi = n.masterId && (data.invoices || []).find(i => i.masterId === n.masterId); return mi ? RC.invStatus(mi) : D.diff(today(), n.day) > overdueDays() ? 'Overdue' : 'Sent'; };
 RC.noteMatch = n => RC.inRange(n.day, RC.invFilter) && statusOK(RC.noteStatus(n), RC.invFilter);
 RC.invFilterOn = () => RC.invFilter.range !== 'life' || RC.invFilter.status !== 'all';
-/** Two drop-downs: date range, and (o.status) All / Paid / Unpaid / Overdue. Custom shows two date boxes. */
+/** Two drop-downs: date range, and (o.status) All / Paid / Unpaid / Overdue / Bad debt / Void. Custom shows two date boxes. */
 RC.filterBar = (f, re, o = {}) => { const pill = (label, on, items) => { const el = h('button.rc-pill' + (on ? '.on' : ''), { onclick: () => ui.menu(el, items, { compact: true }) }, label, icon('chevron.down', 13)); return el; };
   return h('div.rc-fbar', pill(RC.rangeLabel(f), f.range !== 'life', [{ header: 'Dates' }].concat(RANGES.map(([v, label]) => ({ label, checked: f.range === v, onTap: () => { f.range = v; re(); } })))),
     o.status && pill(f.status === 'all' ? 'All statuses' : STATUSES.find(s => s[0] === f.status)[1], f.status !== 'all', [{ header: 'Status' }].concat(STATUSES.map(([v, label]) => ({ label, checked: f.status === v, onTap: () => { f.status = v; re(); } })))),
@@ -83,7 +94,9 @@ const linesSection = (p, f, header) => ui.section({ header: header || 'Lines', f
 const closeTop = () => { const st = WD.nav.current(); if (st.sheet) st.sheet.close(); else st.pop(); };
 
 /* ================= Invoices: create, view, send, delete ================= */
-let invSeq = 2700; const nextNumber = () => { let n; do { n = 'INV-' + (++invSeq); } while ((data.invoices || []).some(i => i.number === n)); return n; };
+/* One numbering for every new invoice, wherever it is created: one more than the highest number in use. */
+const numOf = s => +String(s || '').replace(/\D/g, '') || 0;
+const nextNumber = WD.nextInvoiceNumber = () => 'INV-' + (Math.max(2600, ...(data.invoices || []).map(i => numOf(i.number)), ...data.jobs.map(j => j.invoice ? numOf(j.invoice.number) : 0)) + 1);
 /** What the Pro "Invoice check" says about a total, from what this customer is usually billed. */
 function invoiceCheck(c, amount, lines) {
   const past = (data.invoices || []).filter(i => i.customerId === c.id && !i.master).map(i => i.amount).sort((a, b) => a - b), usual = past.length ? past[Math.floor(past.length / 2)] : (c.stats && c.stats.rate) || 0, out = [];
@@ -102,7 +115,7 @@ RC.newInvoice = custId => {
     if (f.send && !validEmail(f.email)) return ui.toast('Enter the email address to send it to', 'envelope', 2600);
     const tx = WD.taxInfo ? WD.taxInfo(lines, c) : { tax: 0 }, amount = total(lines) + (tx.tax || 0), number = nextNumber();
     const ok = await ui.run(f.send ? 'Creating and sending…' : 'Creating invoice…', () => {
-      data.invoices.push({ id: uid('inv-n'), number, customerId: c.id, jobId: null, day: f.day, amount, status: 'Sent', lines: lines.map(l => ({ ...l })), tax: tx.tax || 0, taxLabel: tx.label, po: f.po.trim(), payments: [], at: +WD.now(), auto: false, sentAt: f.send ? +WD.now() : null, sentTo: f.send ? f.email.trim() : null, by: me() });
+      data.invoices.push({ id: uid('inv-n'), number, customerId: c.id, jobId: null, day: f.day, amount, status: 'Sent', lines: lines.map(l => ({ ...l })), tax: tx.tax || 0, taxRate: tx.rate || 0, taxLabel: tx.label, taxes: tx.taxes || [], po: f.po.trim(), payments: [], at: +WD.now(), auto: false, sentAt: f.send ? +WD.now() : null, sentTo: f.send ? f.email.trim() : null, by: me() });
       if (c.stats) { c.stats.invoiced += amount; c.stats.balance += amount; } if (f.send) logMail(c, 'Invoice ' + number, 'Invoice ' + number + ' for ' + money(amount) + ' is attached.', f.email.trim());
     }, { done: f.send ? number + ' sent' : number + ' created' });
     if (ok) p.dismiss(); };
@@ -112,7 +125,7 @@ RC.newInvoice = custId => {
         ui.section({ fold: false }, ui.row({ icon: 'person.crop.circle', iconPlain: true, title: c ? c.name : 'Choose a customer', subtitle: c ? (c.locations[0] || {}).address : null, tint: !c, chevron: true, onTap: () => custPicker(p, x => setC(x)) }),
           ui.dateRow({ title: 'Invoice date', value: f.day, onChange: v => { f.day = v; } })),
         c && linesSection(p, f, 'Lines · starts from their usual service'),
-        c && h('div.rc-sum', tx.tax > 0 && h('div.muted', h('span', tx.label), h('span', money(tx.tax))), h('div.big', h('span', 'Total'), h('span', money(sum)))),
+        c && h('div.rc-sum', tx.tax > 0 && ((tx.taxes || []).filter(t => t.amount > 0).length > 1 ? tx.taxes.filter(t => t.amount > 0).map(t => h('div.muted', h('span', t.label), h('span', money(t.amount)))) : h('div.muted', h('span', tx.label), h('span', money(tx.tax)))), h('div.big', h('span', 'Total'), h('span', money(sum)))),
         c && f.lines.length > 0 && RC.aiBlock('invcheck', () => RC.aiCard({ title: 'Invoice check', lines: invoiceCheck(c, sum, f.lines) })),
         c && ui.section({ header: 'Sending', fold: false, footer: f.send ? 'Emailed as a PDF with a pay link when you tap Create.' : 'Saved without emailing. Send it later from the invoice.' },
           ui.inputRow({ label: 'PO number', placeholder: 'Optional', value: f.po, onInput: v => { f.po = v; } }),
@@ -124,7 +137,7 @@ const recLines = rec => rec.lines && rec.lines.length ? rec.lines : (WD.screens.
 const billTo = c => { const parts = (((c || {}).locations || [])[0] || { address: '' }).address.split(',').map(x => x.trim()).filter(Boolean); return c ? [c.name].concat(c.attn ? ['Attn: ' + c.attn] : [], c.billAddress || [parts[0], parts.slice(1).join(', ')].filter(Boolean)) : []; };
 const invoiceNode = rec => { const B = WD.screens.billing, c = q.customer(rec.customerId), job = rec.jobId && q.job(rec.jobId);
   if (job && job.invoice && B.invoiceDoc) return B.invoiceDoc(job.invoice, job).firstChild;
-  return B.standardInvoice({ number: rec.number, date: rec.day, terms: c && c.terms, billTo: billTo(c), lines: recLines(rec), tax: rec.tax, taxLabel: rec.taxLabel, paid: rec.status === 'Paid', po: rec.po, sigs: [] }); };
+  return B.standardInvoice({ number: rec.number, date: rec.day, terms: c && c.terms, billTo: billTo(c), lines: recLines(rec), tax: rec.tax, taxLabel: rec.taxLabel, taxes: rec.taxes, stamp: WD.invStamp ? WD.invStamp(rec) : null, paid: rec.status === 'Paid', po: rec.po, sigs: [] }); };
 RC.viewInvoice = rec => ui.sheet({ title: rec.number, trailing: [{ label: 'Done', bold: true, onTap: p => p.dismiss() }], render: () => WD.screens.billing.docWrap([invoiceNode(rec)]) }, { detent: 'large' });
 RC.sendInvoice = async rec => { const c = q.customer(rec.customerId), r = await ui.alert({ title: 'Send ' + rec.number, message: 'Emailed as a PDF with a pay link.', input: { placeholder: 'Email address', value: rec.sentTo || emailOf(c), type: 'email' }, buttons: [{ label: 'Cancel', value: null }, { label: 'Send', value: true, bold: true }] });
   if (!r || !r.value) return; if (!validEmail(r.text)) return ui.toast('That isn’t an email address', 'envelope');
@@ -132,16 +145,95 @@ RC.sendInvoice = async rec => { const c = q.customer(rec.customerId), r = await 
 RC.deleteInvoice = async rec => { const c = q.customer(rec.customerId), paid = rec.status === 'Paid';
   const ok = await ui.actionSheet({ title: 'Delete ' + rec.number + '?', message: (paid ? 'This invoice is paid. Deleting it also removes its payment record. ' : '') + 'It comes off ' + (c ? c.name + '’s' : 'the customer’s') + ' account and can’t be brought back.' + (rec.jobId ? ' The job goes back to “not billed”.' : ''), buttons: [{ label: 'Delete invoice', role: 'destructive', value: true }] }); if (!ok) return;
   if (await ui.run('Deleting…', () => { data.invoices = data.invoices.filter(i => i !== rec); if (data.payments) data.payments = data.payments.filter(p => p.invoiceId !== rec.id);
-    if (c && c.stats) { c.stats.invoiced = Math.max(0, c.stats.invoiced - rec.amount); if (paid) c.stats.paid = Math.max(0, c.stats.paid - rec.amount); else c.stats.balance = Math.max(0, c.stats.balance - rec.amount); }
+    if (c && c.stats) { c.stats.invoiced = Math.max(0, c.stats.invoiced - (rec.status === VOID ? 0 : rec.amount)); if (paid) c.stats.paid = Math.max(0, c.stats.paid - rec.amount); else if (!invClosed(rec)) c.stats.balance = Math.max(0, c.stats.balance - rec.amount); }
     const j = rec.jobId && q.job(rec.jobId); if (j) { j.invoice = null; j.events.push({ at: +WD.now(), actor: me(), text: 'Invoice ' + rec.number + ' deleted' }); }
     if (rec.master && data.serviceNotes) data.serviceNotes.forEach(n => { if (n.masterId === rec.masterId) n.masterId = null; });
   }, { done: 'Deleted' })) closeTop(); };
 /* Add View (for invoices with no job), Send and Delete to every invoice's actions. */
 if (WD.workflow && WD.workflow.invoiceActionRows) { const base = WD.workflow.invoiceActionRows;
   WD.workflow.invoiceActionRows = (rec, job, o) => { const rows = base(rec, job, o) || [], field = WD.can('billing.field') || WD.can('billing.manage'), hasView = rec.master || (job && job.invoice);
+    const mg = WD.can('billing.manage'), open = invOpen(rec), closed = invClosed(rec);
     return [!hasView && ui.row({ title: 'View invoice', icon: 'doc.text', iconPlain: true, tint: true, chevron: true, onTap: () => RC.viewInvoice(rec) })].concat(rows, [
-      field && ui.row({ title: rec.sentAt ? 'Send again…' : 'Send to the customer…', subtitle: rec.sentAt ? 'Last sent ' + fmt.rel(new Date(rec.sentAt)).toLowerCase() + (rec.sentTo ? ' to ' + rec.sentTo : '') : null, icon: 'envelope', iconPlain: true, tint: true, onTap: () => RC.sendInvoice(rec) }),
+      mg && rec.status === BAD && ui.row({ title: 'Record payment and clear the flag…', subtitle: 'Collected after all: marks it paid', icon: 'dollarsign.circle', iconPlain: true, tint: true, onTap: () => RC.collectBadDebt(rec) }),
+      mg && closed && ui.row({ title: 'Reopen invoice', subtitle: 'Undo: back to unpaid, in accounts receivable', icon: 'arrow.uturn.left', iconPlain: true, tint: true, onTap: () => RC.reopenInvoice(rec) }),
+      field && !closed && ui.row({ title: rec.sentAt ? 'Send again…' : 'Send to the customer…', subtitle: rec.sentAt ? 'Last sent ' + fmt.rel(new Date(rec.sentAt)).toLowerCase() + (rec.sentTo ? ' to ' + rec.sentTo : '') : null, icon: 'envelope', iconPlain: true, tint: true, onTap: () => RC.sendInvoice(rec) }),
+      mg && open && ui.row({ title: 'Write off as bad debt…', subtitle: 'Off accounts receivable; flags the customer until collected', icon: 'exclamationmark.triangle', iconPlain: true, iconColor: 'var(--red)', destructive: true, onTap: () => RC.closeInvoice(rec, 'bad') }),
+      mg && open && ui.row({ title: 'Void invoice…', subtitle: 'Cancels the debt; no flag on the customer', icon: 'xmark.circle.fill', iconPlain: true, iconColor: 'var(--gray)', destructive: true, onTap: () => RC.closeInvoice(rec, 'void') }),
       WD.can('billing.manage') && ui.row({ title: 'Delete invoice…', icon: 'trash', iconPlain: true, iconColor: 'var(--red)', destructive: true, onTap: () => RC.deleteInvoice(rec) })]); }; }
+
+/* ================= Bad debt and void ================= */
+/* Two ways an unpaid invoice stops being owed. Both need a reason, are saved with who and when on the invoice (`rec.closed`, `rec.log`),
+   leave accounts receivable, past-due balances, statements and unpaid warnings, and can be undone with Reopen invoice.
+   Bad debt flags the customer until it is collected; void leaves no flag and no penalty. */
+const logClose = (rec, text) => { (rec.log = rec.log || []).unshift({ at: +WD.now(), by: me(), text }); };
+const mirrorJob = (rec, text) => { const j = rec.jobId && q.job(rec.jobId); if (!j) return; if (j.invoice) j.invoice.status = rec.status; j.events.push({ at: +WD.now(), actor: me(), text }); };
+const needManage = () => WD.can('billing.manage') ? false : (ui.toast('This needs the Manage billing permission', 'lock', 2600), true);
+/** kind: 'bad' (write off as bad debt) or 'void'. Asks for a reason, confirms, then closes the invoice. */
+RC.closeInvoice = async (rec, kind) => {
+  if (needManage()) return false; if (!invOpen(rec)) { ui.toast(rec.number + ' isn’t an open invoice', 'info.circle'); return false; }
+  const bad = kind === 'bad', c = q.customer(rec.customerId), who = c ? c.name : 'The customer';
+  const r = await ui.alert({ title: bad ? 'Write off ' + rec.number + ' as bad debt' : 'Void ' + rec.number, message: money(rec.amount) + (bad ? ' comes off accounts receivable and past-due balances. ' + who + ' is flagged so nobody schedules them again without collecting.' : ' comes off accounts receivable and past-due balances. ' + who + ' can still be scheduled as usual, with no flag.') + ' Why?',
+    input: { placeholder: bad ? 'e.g. No reply to three statements' : 'e.g. Billed twice' }, buttons: [{ label: 'Cancel', value: null }, { label: bad ? 'Write off' : 'Void', value: true, bold: true }] });
+  if (!r || !r.value) return false; const reason = (r.text || '').trim(); if (!reason) { ui.toast('A reason is required', 'pencil', 2400); return false; }
+  if (!await ui.actionSheet({ title: (bad ? 'Write off ' : 'Void ') + rec.number + ' · ' + money(rec.amount) + '?', message: 'Reason: ' + reason + '. Saved on the invoice with your name and the time. Undo it later with “Reopen invoice”.', buttons: [{ label: bad ? 'Write off as bad debt' : 'Void invoice', role: 'destructive', value: true }] })) return false;
+  return ui.run(bad ? 'Writing off…' : 'Voiding…', () => { const was = rec.status;
+    rec.closed = { kind: bad ? 'bad' : 'void', was, reason, by: me(), at: +WD.now(), day: today() }; rec.status = bad ? BAD : VOID;
+    logClose(rec, (bad ? 'Written off as bad debt' : 'Voided') + ' · ' + money(rec.amount) + ' · ' + reason);
+    if (c && c.stats) { if (was === 'Overdue') c.stats.balance = Math.max(0, c.stats.balance - rec.amount); if (!bad) c.stats.invoiced = Math.max(0, c.stats.invoiced - rec.amount); }
+    mirrorJob(rec, 'Invoice ' + rec.number + (bad ? ' written off as bad debt' : ' voided') + ' · ' + reason);
+  }, { done: bad ? 'Written off as bad debt' : 'Invoice voided' });
+};
+/** Undo a write-off or a void: the invoice is unpaid again and back in accounts receivable. */
+RC.reopenInvoice = async rec => {
+  if (needManage() || !invClosed(rec)) return false; const bad = rec.status === BAD, c = q.customer(rec.customerId);
+  if (!await ui.actionSheet({ title: 'Reopen ' + rec.number + '?', message: money(rec.amount) + ' goes back into accounts receivable as an unpaid invoice.' + (bad ? ' The bad-debt flag comes off ' + (c ? c.name : 'the customer') + ' if no other invoice is written off.' : ''), buttons: [{ label: 'Reopen invoice', value: true }] })) return false;
+  return ui.run('Reopening…', () => { const k = rec.closed || {}; rec.status = k.was && k.was !== BAD && k.was !== VOID ? k.was : 'Sent'; rec.closed = null;
+    logClose(rec, 'Reopened · was ' + (bad ? 'bad debt' : 'void'));
+    if (c && c.stats) { if (rec.status === 'Overdue') c.stats.balance += rec.amount; if (!bad) c.stats.invoiced += rec.amount; }
+    mirrorJob(rec, 'Invoice ' + rec.number + ' reopened');
+  }, { done: 'Invoice reopened' });
+};
+/** The customer paid after all: record the payment against the written-off invoice. It becomes Paid and stops flagging the customer. */
+RC.collectBadDebt = async rec => {
+  if (needManage() || rec.status !== BAD) return false; const wf = WD.workflow; if (!wf || !wf.markPaid) return false;
+  if (!await wf.markPaid(rec)) return false;
+  rec.recovered = Object.assign({}, rec.closed, { paidAt: +WD.now(), paidBy: me() }); rec.closed = null; logClose(rec, 'Bad debt collected · ' + money(rec.amount) + ' · marked paid');
+  WD.changed(); if (!WD.badDebt(rec.customerId)) ui.toast('Paid · bad-debt flag cleared', 'checkmark', 2600); return true;
+};
+/** “Clear the flag”: choose the written-off invoice that was collected and record its payment. */
+RC.clearBadDebt = async cid => {
+  const b = WD.badDebt(cid), c = q.customer(cid); if (!b || needManage()) return false; let rec = b.invoices[0];
+  if (b.invoices.length > 1) { const id = await ui.actionSheet({ title: 'Which invoice was collected?', message: 'Record the payment against the written-off invoice. The flag clears when none are left.', buttons: b.invoices.map(i => ({ label: i.number + ' · ' + money(i.amount), value: i.id })) }); if (!id) return false; rec = b.invoices.find(i => i.id === id); }
+  else if (!await ui.actionSheet({ title: 'Clear the bad-debt flag?', message: 'Record the payment for ' + rec.number + ' (' + money(rec.amount) + '). It is marked paid and the flag comes off ' + (c ? c.name : 'the customer') + '.', buttons: [{ label: 'Record the payment…', value: true }] })) return false;
+  return RC.collectBadDebt(rec);
+};
+/** A customer's written-off invoices → { amount, count, last (day of the latest write-off), invoices } or null. Voided invoices never count. */
+WD.badDebt = cid => { const list = cid ? (data.invoices || []).filter(i => i.customerId === cid && i.status === BAD) : []; if (!list.length) return null;
+  return { amount: cents(list.reduce((s, i) => s + i.amount, 0)), count: list.length, last: list.reduce((m, i) => { const d = (i.closed && i.closed.day) || i.day; return d > m ? d : m; }, ''), invoices: list }; };
+/** The red flag for a customer with bad debt, or null. o.actions adds “See the invoices” and (Manage billing) “Clear the flag…”. */
+WD.badDebtBanner = (cid, o = {}) => { const b = WD.badDebt(cid); if (!b) return null; const SC = WD.screens.customers;
+  return h('div.rc-bd', { role: 'alert' }, icon('exclamationmark.triangle', 22, 'var(--red)'), h('div.t', h('b', 'Wrote off ' + money(b.amount) + ' as bad debt on ' + longDay(b.last)), ' — collect before scheduling.', b.count > 1 ? h('small', plural(b.count, 'invoice') + ' written off') : null,
+    o.actions && (WD.can('billing.view') || WD.can('billing.manage')) ? h('div.a', SC && SC.custInvoices && h('button', { onclick: () => WD.nav.push(SC.custInvoices(cid, false)) }, 'See the invoices'), WD.can('billing.manage') && h('button', { onclick: () => RC.clearBadDebt(cid) }, 'Clear the flag…')) : null)); };
+/** Asked before a new job is saved for a customer with bad debt → true to go ahead. Customers without bad debt (voided debt included) are never asked. */
+WD.badDebtConfirm = async cid => { const b = WD.badDebt(cid); if (!b) return true; const c = q.customer(cid);
+  return !!(await ui.actionSheet({ title: 'Schedule anyway?', message: (c ? c.name : 'This customer') + ': wrote off ' + money(b.amount) + ' as bad debt on ' + longDay(b.last) + '. Collect before scheduling.', buttons: [{ label: 'Schedule anyway', value: true }], cancel: 'Don’t schedule' })); };
+/** Under an invoice's heading: why it was written off or voided, by whom and when. */
+RC.closedNote = rec => { const k = invClosed(rec) && rec.closed; if (!invClosed(rec)) return null; const bad = rec.status === BAD;
+  return h('div.rc-bd' + (bad ? '' : '.void'), icon(bad ? 'exclamationmark.triangle' : 'xmark.circle.fill', 22, bad ? 'var(--red)' : 'var(--gray)'), h('div.t', h('b', bad ? 'Written off as bad debt' : 'Voided'), k ? ' by ' + k.by + ' on ' + longDay(k.day) : '', k && k.reason ? h('small', 'Reason: ' + k.reason) : null,
+    h('small', bad ? 'Not in accounts receivable or past-due balances. The customer is flagged until this is collected.' : 'Not in accounts receivable or past-due balances. No flag on the customer.'))); };
+/** Every write-off, void, reopen and collection on an invoice, newest first. */
+RC.closeLogSection = rec => rec && rec.log && rec.log.length ? ui.section({ header: 'Write-off and void history', fold: false }, rec.log.map(l => ui.row({ title: l.text, subtitle: l.by + ' · ' + fmt.rel(new Date(l.at)) }))) : null;
+/* Demo: one customer with one invoice written off as bad debt and one voided (billed twice), so the flag and both badges are visible. */
+(function seedClosed() { const c = q.customer('c22') || data.customers.find(x => x.lifecycle === 'serviced'); if (!c || !data.invoices || data.invoices.some(invClosed)) return;
+  let n = 2180; const free = () => { do { n++; } while (data.invoices.some(i => i.number === 'INV-' + n)); return 'INV-' + n; }, day = D.add(today(), -118), at = +D.parse(day) + 10 * 36e5, by = ((data.users || []).find(u => u.role === 'office') || { name: 'Colleen Abbott' }).name;
+  const lines = [{ id: 'box', name: 'Purge, per box', qty: 20, rate: 8 }, { id: 'trip', name: 'Trip charge', qty: 1, rate: 25 }], mk = (id, o) => ({ id, number: free(), customerId: c.id, jobId: null, day, amount: 185, lines: lines.map(l => ({ ...l })), payments: [], at, auto: false, sentAt: at, sentTo: emailOf(c), by, ...o });
+  const stamp = ago => { const d = D.add(today(), -ago); return { day: d, at: +D.parse(d) + 14 * 36e5 }; }, w = stamp(24), v = stamp(110);
+  const bad = mk('inv-bd1', { status: BAD, closed: { kind: 'bad', was: 'Overdue', reason: 'No reply to three statements and two calls', by, ...w } }); bad.log = [{ at: w.at, by, text: 'Written off as bad debt · ' + money(185) + ' · ' + bad.closed.reason }];
+  const dup = mk('inv-vd1', { status: VOID, at: at + 6e5, sentAt: at + 6e5, closed: { kind: 'void', was: 'Sent', reason: 'Billed twice — duplicate of ' + bad.number, by, ...v } }); dup.log = [{ at: v.at, by, text: 'Voided · ' + money(185) + ' · ' + dup.closed.reason }];
+  data.invoices.push(bad, dup);
+  WD.panel.addAction('Incoming call (customer with bad debt)', () => WD.screens.customers && WD.screens.customers.simulateCall(c.id));
+  WD.panel.addJump('Bad debt customer', () => { WD.nav.switchTab('customers'); WD.screens.customers.openDetail(c.id); });
+})();
 
 /* ================= Service notes: create, edit, send, delete ================= */
 let snSeq = 3300;
@@ -171,7 +263,8 @@ RC.noteActions = n => { const c = q.customer(n.customerId), can = WD.can('billin
 RC.newMenu = (el, page, kind) => ui.menu(el, [{ label: 'New invoice', icon: 'doc.text', onTap: () => RC.newInvoice() }, { label: 'New service note', icon: 'signature', onTap: () => RC.editNote(null) }]);
 
 /* ================= Statements ================= */
-const unpaid = c => (data.invoices || []).filter(i => i.customerId === c.id && i.status !== 'Paid' && i.status !== 'Draft').sort((a, b) => a.day.localeCompare(b.day));
+/* Bad debt and void invoices are not owed, so they never go on a statement. */
+const unpaid = c => (data.invoices || []).filter(i => i.customerId === c.id && invOpen(i)).sort((a, b) => a.day.localeCompare(b.day));
 const age = i => D.diff(today(), i.day);
 const aging = invs => { const b = [0, 0, 0, 0]; invs.forEach(i => { const a = age(i) - 30; b[a <= 0 ? 0 : a <= 30 ? 1 : a <= 60 ? 2 : 3] += i.amount; }); return b; };
 const AGE_LABELS = ['Not yet due', '1–30 days past due', '31–60 days past due', 'Over 60 days past due'];
@@ -259,7 +352,8 @@ function history() {
     HIST[key] = { total: tot, count: Math.round(tot / 92), paid: tot, by }; }
   return HIST;
 }
-const liveInv = () => { history(); return (data.invoices || []).filter(i => i.day >= cut && i.status !== 'Draft'); };
+/* A voided invoice was never a sale. A bad-debt invoice was: it stays in sales and is reported separately as written off. */
+const liveInv = () => { history(); return (data.invoices || []).filter(i => i.day >= cut && i.status !== 'Draft' && i.status !== VOID); };
 const liveBy = i => { const by = {}, lines = i.lines && i.lines.length ? i.lines : null; if (!lines) { const c = q.customer(i.customerId), k = i.master ? CATS[1] : c && c.type === 'purge' ? CATS[3] : CATS[0]; by[k] = i.amount; return by; }
   lines.forEach(l => { const k = catOf(l); by[k] = (by[k] || 0) + (+l.qty || 0) * (+l.rate || 0); }); return by; };
 const monthTotal = key => { const H = history(); return H[key] ? H[key].total : liveInv().filter(i => ym(i.day) === key).reduce((s, i) => s + i.amount, 0); };
@@ -271,8 +365,8 @@ function aggregate(f) {
   return out;
 }
 const RP = { f: { range: 'year', from: '', to: '' }, compare: true, table: false, sel: null };
-const CARDS = [['tiles', 'Invoice totals', 'Overdue, unpaid and paid this year'], ['monthly', 'Invoiced each month', 'This year, compared with last year'], ['years', 'Sales by year', 'Total for each year in the date range'], ['services', 'Revenue by service', 'Where the money comes from'], ['aging', 'What customers owe', 'Unpaid invoices by age'], ['top', 'Top customers', 'By amount invoiced in the date range'], ['insights', 'Insights', 'AI findings (Premium)']];
-S.prefs.reportCards = S.prefs.reportCards || Object.fromEntries(CARDS.map(c => [c[0], true]));
+const CARDS = [['tiles', 'Invoice totals', 'Overdue, unpaid and paid this year'], ['monthly', 'Invoiced each month', 'This year, compared with last year'], ['years', 'Sales by year', 'Total for each year in the date range'], ['services', 'Revenue by service', 'Where the money comes from'], ['aging', 'What customers owe', 'Unpaid invoices by age'], ['top', 'Top customers', 'By amount invoiced in the date range'], ['writeoff', 'Written off and voided', 'Bad debt and void invoices in the date range'], ['insights', 'Insights', 'AI findings (Premium)']];
+S.prefs.reportCards = S.prefs.reportCards || Object.fromEntries(CARDS.map(c => [c[0], true])); CARDS.forEach(c => { if (S.prefs.reportCards[c[0]] == null) S.prefs.reportCards[c[0]] = true; });
 const kfmt = v => v >= 1000 ? '$' + (v / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : '$' + Math.round(v);
 function svg(tag, attrs, kids) { const el = document.createElementNS('http://www.w3.org/2000/svg', tag); Object.entries(attrs || {}).forEach(([k, v]) => v != null && el.setAttribute(k, v)); (kids || []).forEach(k => k && el.appendChild(k)); return el; }
 const svgText = (x, y, s, anchor) => { const t = svg('text', { x, y, 'text-anchor': anchor || 'middle' }); t.textContent = s; return t; };
@@ -283,7 +377,7 @@ function monthlyCard(re) {
   const ytd = cur.reduce((s, v) => s + (v || 0), 0), pytd = prev.slice(0, curM + 1).reduce((s, v) => s + v, 0), pct = (a, b) => b ? (a >= b ? '+' : '−') + Math.abs(Math.round((a - b) / b * 100)) + '%' : '';
   const sub = h('div.sub'), say = i => { sub.textContent = i == null ? y + ' so far ' + fmt.money(ytd) + (RP.compare ? ' · ' + pct(ytd, pytd) + ' vs the same months of ' + (y - 1) : '') : MON[i] + ': ' + (cur[i] == null ? 'not yet' : fmt.money(cur[i])) + (RP.compare ? ' · ' + (y - 1) + ' ' + fmt.money(prev[i]) + (cur[i] != null ? ' (' + pct(cur[i], prev[i]) + ')' : '') : ''); };
   say(RP.sel);
-  const W = 340, H = 176, L = 30, B = 16, T = 6, max = Math.max(1, ...cur.map(v => v || 0), ...(RP.compare ? prev : [0])), step = Math.pow(10, Math.floor(Math.log10(max))) * (max / Math.pow(10, Math.floor(Math.log10(max))) > 5 ? 2 : max / Math.pow(10, Math.floor(Math.log10(max))) > 2 ? 1 : 0.5), top = Math.ceil(max / step) * step;
+  const W = 340, H = 180, L = 40, B = 18, T = 8, max = Math.max(1, ...cur.map(v => v || 0), ...(RP.compare ? prev : [0])), step = Math.pow(10, Math.floor(Math.log10(max))) * (max / Math.pow(10, Math.floor(Math.log10(max))) > 5 ? 2 : max / Math.pow(10, Math.floor(Math.log10(max))) > 2 ? 1 : 0.5), top = Math.ceil(max / step) * step;
   const yOf = v => T + (H - T - B) * (1 - v / top), gw = (W - L) / 12, bw = RP.compare ? 8.5 : 14, kids = [];
   for (let v = 0; v <= top + 1; v += step) { kids.push(svg('line', { class: 'grid', x1: L, x2: W, y1: yOf(v), y2: yOf(v) })); kids.push(svgText(L - 4, yOf(v) + 3, kfmt(v), 'end')); }
   const hits = [];
@@ -303,7 +397,7 @@ function monthlyCard(re) {
 const hbars = (rows, totalAll) => { const max = Math.max(1, ...rows.map(r => r[1])); return rows.map(([name, v, tap]) => h('div.rc-hbar', { onclick: tap, style: tap ? 'cursor:pointer' : null }, h('span.t', name), h('span.amt', fmt.money(v), totalAll ? h('small', Math.round(v / totalAll * 100) + '%') : null), h('div.bar', h('i', { style: { width: v / max * 100 + '%' } })))); };
 function insights(A) {
   const y = yr(today()), curM = D.parse(today()).getMonth(), key = (yy, i) => yy + '-' + String(i + 1).padStart(2, '0'), cur = [...Array(curM + 1)].map((_, i) => monthTotal(key(y, i))), prev = cur.map((_, i) => monthTotal(key(y - 1, i))), a = cur.reduce((s, v) => s + v, 0), b = prev.reduce((s, v) => s + v, 0);
-  const best = cur.indexOf(Math.max(...cur)), svc = Object.entries(A.by).sort((p, n) => n[1] - p[1]), all = (data.invoices || []).filter(i => i.status !== 'Paid' && i.status !== 'Draft'), over = all.filter(i => RC.invStatus(i) === 'Overdue'), byCust = {};
+  const best = cur.indexOf(Math.max(...cur)), svc = Object.entries(A.by).sort((p, n) => n[1] - p[1]), all = (data.invoices || []).filter(invOpen), over = all.filter(i => RC.invStatus(i) === 'Overdue'), byCust = {};
   over.forEach(i => { byCust[i.customerId] = (byCust[i.customerId] || 0) + i.amount; }); const worst = Object.entries(byCust).sort((p, n) => n[1] - p[1])[0], overSum = over.reduce((s, i) => s + i.amount, 0);
   return [b ? h('span', h('b', 'Sales are ' + (a >= b ? 'up ' : 'down ') + Math.abs(Math.round((a - b) / b * 100)) + '%'), ' on the same months of ' + (y - 1) + ' (' + fmt.money(a) + ' against ' + fmt.money(b) + ').') : null,
     h('span', h('b', MON[best] + ' was the strongest month'), ' this year at ' + fmt.money(cur[best]) + '.'),
@@ -313,26 +407,94 @@ function insights(A) {
 function reportsRoot() {
   return { title: 'Reports', large: true, trailing: page => [{ label: 'Edit', onTap: () => ui.sheet({ title: 'Reports shown', trailing: [{ label: 'Done', bold: true, onTap: p => p.dismiss() }], render: () => ui.list(ui.section({ fold: false, footer: 'Your choice of what shows on the Reports screen.' }, CARDS.map(([id, name, sub]) => ui.toggleRow({ title: name, subtitle: sub, value: S.prefs.reportCards[id], onChange: v => { S.prefs.reportCards[id] = v; WD.changed(); } })))) }, { detent: 'large' }).closed.then(() => page.refresh()) }],
     render: page => { if (!(WD.can('analytics.view') || WD.can('billing.view'))) return ui.empty({ icon: 'lock', title: 'Reports are hidden', text: 'You need Analytics or billing access to see reports.' });
-      const on = S.prefs.reportCards, re = () => page.refresh(), money$ = WD.can('billing.view'), A = aggregate(RP.f), y = yr(today()), all = (data.invoices || []).filter(i => i.status !== 'Draft'), open = all.filter(i => i.status !== 'Paid'), over = open.filter(i => RC.invStatus(i) === 'Overdue');
+      const on = S.prefs.reportCards, re = () => page.refresh(), money$ = WD.can('billing.view'), A = aggregate(RP.f), y = yr(today()), all = (data.invoices || []).filter(i => i.status !== 'Draft'), open = all.filter(invOpen), over = open.filter(i => RC.invStatus(i) === 'Overdue');
+      /* Written off and voided in the date range, by the day it was done. Neither is in Overdue, Unpaid or What customers owe. */
+      const shutIn = st => all.filter(i => i.status === st && RC.inRange((i.closed && i.closed.day) || i.day, RP.f)), bad = shutIn(BAD), voided = shutIn(VOID);
       const H = history(), paidHist = Object.keys(H).filter(k => +k.slice(0, 4) === y).reduce((s, k) => ({ n: s.n + H[k].count, v: s.v + H[k].paid }), { n: 0, v: 0 }), paidLive = liveInv().filter(i => i.status === 'Paid' && yr(i.day) === y);
-      const sum = l => l.reduce((s, i) => s + i.amount, 0), go = (range, status) => () => { RC.invFilter.range = range; RC.invFilter.status = status; WD.nav.switchTab('invoices'); };
+      /* A tile opens the matching invoices ON TOP of Reports, so Back returns here. The Invoices section's own filters are put back on the way out. */
+      const sum = l => l.reduce((s, i) => s + i.amount, 0), go = (range, status) => () => { const IS = WD.screens.invoices; if (!IS || !IS.root) return; const keep = { ...RC.invFilter }, spec = IS.root({ scope: 'all' }), was = spec.onClose;
+        Object.assign(RC.invFilter, { range, status }); page.push({ ...spec, backLabel: 'Reports', onClose: p => { Object.assign(RC.invFilter, keep); was && was(p); } }); };
+      const perfRow = (ic, col) => WD.biz && WD.biz.perfSpec && ui.row({ icon: ic, iconColor: col, title: 'Route performance', subtitle: 'Billed per stop, per hour and per mile · completed stops and service notes not billed', chevron: true, onTap: () => page.push(WD.biz.perfSpec()) });
       const tile = (label, color, n, v, tap) => h('div.rc-tile', { onclick: tap, role: 'button' }, h('div.l', h('i', { style: { background: color } }), label), h('div.v', fmt.money(v)), h('div.n', plural(n, 'invoice')));
       const ag = [0, 0, 0, 0]; open.forEach(i => { const a = D.diff(today(), i.day); ag[a <= 30 ? 0 : a <= 60 ? 1 : a <= 90 ? 2 : 3] += i.amount; });
       const years = Object.entries(A.years).sort((a, b) => b[0] - a[0]), svc = CATS.map(k => [k, A.by[k] || 0]).filter(r => r[1] > 0).sort((a, b) => b[1] - a[1]), top = Object.entries(A.cust).sort((a, b) => b[1] - a[1]).slice(0, 5);
-      if (!money$) return ui.list(note('Invoice and sales reports need billing access. Route performance is still available.'), WD.biz && WD.biz.perfSpec && ui.section(null, ui.row({ icon: 'chart.bar', iconColor: 'var(--blue)', title: 'Route performance', chevron: true, onTap: () => page.push(WD.biz.perfSpec()) })));
-      return [RC.filterBar(RP.f, re), h('div', { style: 'padding:0 16px 20px' },
+      if (!money$) return ui.list(note('Invoice and sales reports need billing access. Route performance is still available.'), ui.section(null, perfRow('chart.bar', 'var(--blue)')));
+      return [h('div.rc-sticky', RC.filterBar(RP.f, re)), h('div', { style: 'padding:6px 16px 20px' },
         on.tiles && h('div.rc-tiles', tile('Overdue', 'var(--red)', over.length, sum(over), go('life', 'overdue')), tile('Unpaid', 'var(--orange)', open.length, sum(open), go('life', 'unpaid')), tile('Paid ' + y, 'var(--green)', paidHist.n + paidLive.length, paidHist.v + sum(paidLive), go('year', 'paid'))),
+        ui.list(ui.section({ header: 'Routes and team', fold: false }, perfRow('route', 'var(--teal)'),
+          WD.timeclock && WD.timeclock.timesheetsSpec && WD.can('hr.manage') && ui.row({ icon: 'clock', iconColor: 'var(--orange)', title: 'Hours and overtime', chevron: true, onTap: () => page.push(WD.timeclock.timesheetsSpec()) }))),
         on.monthly && monthlyCard(re),
         on.insights && RC.aiBlock('insights', () => RC.aiCard({ title: 'Insights', lines: insights(A) })),
         on.years && h('div.rc-card', h('h4', 'Sales by year'), h('div.sub', RC.rangeLabel(RP.f) + ' · ' + fmt.money(A.total) + ' in ' + plural(A.count, 'invoice')), years.length ? hbars(years.map(([k, v]) => [k + (+k === y ? ' so far' : ''), v])) : h('div.sub', 'No sales in this date range.')),
         on.services && h('div.rc-card', h('h4', 'Revenue by service'), h('div.sub', RC.rangeLabel(RP.f)), svc.length ? hbars(svc, A.total) : h('div.sub', 'No sales in this date range.')),
         on.aging && h('div.rc-card', h('h4', 'What customers owe'), h('div.sub', fmt.money(sum(open)) + ' unpaid, by the age of the invoice'), hbars([['30 days or less', ag[0]], ['31 to 60 days', ag[1]], ['61 to 90 days', ag[2]], ['Over 90 days', ag[3]]], sum(open) || 1)),
+        on.writeoff && h('div.rc-card', { style: 'padding-bottom:4px' }, h('h4', 'Written off and voided'), h('div.sub', RC.rangeLabel(RP.f) + ' · by the day it was written off or voided · not counted in what customers owe'),
+          h('div.rc-sum', { style: 'margin:8px -12px 0;border-radius:0;background:none' }, h('div.tap', { role: 'button', onclick: go('life', 'baddebt') }, h('span', 'Written off (bad debt)'), h('span', h('b', { style: { color: bad.length ? 'var(--red)' : null } }, fmt.money(sum(bad))), ' · ' + plural(bad.length, 'invoice'), icon('chevron.right', 12, 'var(--label3)'))),
+            h('div.tap', { role: 'button', onclick: go('life', 'void') }, h('span', 'Voided'), h('span', h('b', fmt.money(sum(voided))), ' · ' + plural(voided.length, 'invoice'), icon('chevron.right', 12, 'var(--label3)'))))),
         on.top && top.length > 0 && h('div.rc-card', h('h4', 'Top customers'), h('div.sub', RC.rangeLabel(RP.f) + ' · from invoices on record'), hbars(top.map(([id, v]) => [(q.customer(id) || { name: 'Customer' }).name, v, () => WD.screens.customers.openDetail(id)]))),
-        ui.list(ui.section({ header: 'More reports', fold: false }, WD.biz && WD.biz.perfSpec && ui.row({ icon: 'route', iconColor: 'var(--teal)', title: 'Route performance', subtitle: 'Billed per stop, per hour and per mile', chevron: true, onTap: () => page.push(WD.biz.perfSpec()) }),
-          WD.timeclock && WD.timeclock.timesheetsSpec && WD.can('hr.manage') && ui.row({ icon: 'clock', iconColor: 'var(--orange)', title: 'Hours and overtime', chevron: true, onTap: () => page.push(WD.timeclock.timesheetsSpec()) }))),
         h('div.footnote.secondary', { style: 'padding:0 4px' }, 'Prototype: months before ' + fmt.day(cut, 'month') + ' use generated sales history; later months come from the invoices on record.'))]; } };
 }
 WD.screens.reports = { root: reportsRoot };
+
+/* ================= Route performance: completed stops not billed, service notes not invoiced ================= */
+const jobRev = j => j.billing ? +j.billing.amount || 0 : j.invoice && j.invoice.status !== 'Draft' ? +j.invoice.amount || 0 : 0;
+/** Completed stops in the dates with nothing billed (same rule as the Route performance count). */
+RC.unbilledJobs = (from, to, routeId) => data.jobs.filter(j => !j.allDay && j.status === 'completed' && j.day >= from && j.day <= to && (!routeId || j.routeId === routeId) && !jobRev(j) && j.type !== 'meet' && j.type !== 'creditCard').sort((a, b) => b.day.localeCompare(a.day) || String(a.routeId).localeCompare(String(b.routeId)) || (a.seq || 0) - (b.seq || 0));
+const estLines = j => { const B = WD.screens.billing; return B && B.linesForJob ? B.linesForJob(j) : (j.items || []).filter(i => i.qty > 0).map(i => ({ id: i.id, name: i.id, qty: i.qty, rate: i.rate || 0 })); }, est = j => total(estLines(j));
+/** Bill one completed stop as it stands: an invoice from its containers at the customer's rates (a service note for master-invoice customers). */
+function billJob(job) {
+  const c = job.customerId && q.customer(job.customerId), lines = estLines(job).map(l => ({ ...l })), at = +WD.now(), who = me(), wf = WD.workflow;
+  WD.api.op({ kind: 'edit', title: job.title, scope: 'Billed from Route performance', jobIds: [job.id], apply() {
+    if (c && c.billingMode === 'serviceNote' && wf && wf.addServiceNote) { const sn = wf.addServiceNote(job, { lines, po: job.po || '', day: job.day, by: who }), amount = total(lines);
+      job.billing = { kind: 'serviceNote', number: sn.number, amount, at, by: who }; job.events.push({ at, actor: who, text: 'Service note ' + sn.number + ' created from Route performance · ' + money(amount) + ' · added to the master invoice' }); return; }
+    const tx = WD.taxInfo ? WD.taxInfo(lines, c) : { tax: 0 }, amount = cents(total(lines) + (tx.tax || 0)), number = nextNumber(), to = emailOf(c), po = job.po || (c && c.po) || '';
+    job.invoice = { number, status: 'Sent', amount, tax: tx.tax || 0, taxRate: tx.rate || 0, taxLabel: tx.label, taxes: tx.taxes || [], auto: false, lines, po, contract: job.contract || (c && c.contract) || '', billTo: to, includeDate: true, serviceDate: job.day, pounds: null, note: '', scans: [], scanNote: '', drives: [], driveScan: false, driveNote: '', custSig: null, custName: '', paid: null, sentAt: at };
+    job.events.push({ at, actor: who, text: 'Invoice ' + number + ' created and sent to ' + (to || 'the customer') + ' · ' + money(amount) + ' · billed from Route performance' });
+    if (c) { data.invoices.push({ id: 'inv-f' + number, number, customerId: c.id, jobId: job.id, day: job.day, amount, status: 'Sent', lines, tax: tx.tax || 0, taxLabel: tx.label, taxes: tx.taxes || [], po, payments: [], at, auto: false, sentAt: at, sentTo: to, by: who });
+      if (c.stats) { c.stats.invoiced += amount; c.successful = true; if (!c.stats.firstInvoice) c.stats.firstInvoice = job.day; } }
+  } });
+}
+/** The stops behind “completed stops not billed”: customer, route, date, what was serviced and the estimated amount, each with Bill, plus Bill all. o: {from, to, routeId}. */
+RC.unbilledSpec = (o = {}) => ({ title: 'Completed, not billed', render: page => {
+  const to = o.to || today(), from = o.from || D.add(to, -29), jobs = RC.unbilledJobs(from, to, o.routeId), can = WD.can('billing.manage') || WD.can('billing.field'), sum = cents(jobs.reduce((s, j) => s + est(j), 0)), B = WD.screens.billing, J = WD.screens.jobs;
+  const scope = (o.routeId ? q.routeName(o.routeId) : 'All routes') + ' · ' + fmt.day(from, 'md') + ' – ' + fmt.day(to, 'md');
+  if (!jobs.length) return ui.empty({ icon: 'checkmark.circle', title: 'Everything is billed', text: scope + ': every completed stop has an invoice, a service note or a payment.' });
+  const notes = jobs.filter(j => (q.customer(j.customerId) || {}).billingMode === 'serviceNote').length;
+  /* Stops for a customer with a written-off invoice: billing them is fine, but nobody should do it without knowing. */
+  const bd = j => (WD.badDebt && j.customerId && WD.badDebt(j.customerId)) || null, flagged = jobs.filter(bd), flaggedNames = [...new Set(flagged.map(j => (q.customer(j.customerId) || {}).name))];
+  const counts = list => { const n = list.filter(j => (q.customer(j.customerId) || {}).billingMode === 'serviceNote').length; return plural(list.length - n, 'invoice') + (n ? ' and ' + plural(n, 'service note') : ''); };
+  return ui.list(
+    h('div.rc-sum', h('div.big', h('span', plural(jobs.length, 'stop') + ' not billed'), h('span', money(sum))), h('div.muted', h('span', scope), h('span', 'estimated'))),
+    can && h('div', { style: 'padding:0 0 14px' }, ui.button('Bill all ' + jobs.length + ' · ' + money(sum), { icon: 'doc.text', onTap: async () => {
+      const rest = jobs.filter(j => !bd(j)), which = await ui.actionSheet({ title: 'Bill all ' + plural(jobs.length, 'stop') + '?', message: money(sum) + ' in total. Each invoice is created from the stop’s containers at the customer’s rates and emailed to their billing address.' + (notes ? ' ' + plural(notes, 'stop') + ' for master-invoice customers ' + (notes === 1 ? 'gets' : 'get') + ' a service note instead.' : '')
+          + (flagged.length ? '\n\n' + plural(flagged.length, 'stop') + (flagged.length === 1 ? ' is' : ' are') + ' for ' + flaggedNames.join(' and ') + ', who ' + (flaggedNames.length === 1 ? 'has' : 'have') + ' an invoice written off as bad debt. Collect before sending more work on account.' : ''),
+        buttons: [flagged.length && rest.length ? { label: 'Leave out bad debt · create ' + counts(rest), value: 'rest' } : null, { label: 'Create ' + counts(jobs) + (flagged.length ? ' anyway' : ''), value: 'all', role: flagged.length ? 'destructive' : null }].filter(Boolean) });
+      if (!which) return; const list = which === 'rest' ? rest : jobs;
+      await ui.run('Billing ' + plural(list.length, 'stop') + '…', () => list.forEach(billJob), { done: plural(list.length, 'stop') + ' billed', min: 1200, max: 2000 }); page.refresh(); } })),
+    flagged.length > 0 && h('div.r13-late', { style: 'background:color-mix(in srgb, var(--red) 12%, var(--cell))' }, h('b', plural(flagged.length, 'stop') + ' for a customer with bad debt. '), flaggedNames.join(' and ') + ': ' + flaggedNames.map(n => { const j = flagged.find(x => (q.customer(x.customerId) || {}).name === n), b = bd(j); return money(b.amount) + ' written off'; }).join('; ') + '. Collect before billing more on account.'),
+    ui.section({ header: 'Stops', fold: false, showFooter: true, footer: 'The amount is an estimate from each stop’s containers and the customer’s rates. Bill opens the invoice so you can check it before it goes out.' },
+      jobs.map(j => { const c = q.customer(j.customerId), lines = estLines(j);
+        return ui.row({ leading: ui.dot(q.routeColor(j.routeId)), title: c ? c.name : j.title, badge: bd(j) ? ui.badge('Bad debt ' + money(bd(j).amount).replace(/\.00$/, ''), 'var(--red)') : null, subtitle: [h('div', q.routeName(j.routeId) + ' · ' + fmt.day(j.day, 'md') + ', ' + j.day.slice(0, 4)), h('div', lines.map(l => (+l.qty || 0) + ' × ' + l.name).join(', ') + ' · ' + money(est(j)))],
+          trailing: can && B && B.openEditor ? ui.button('Bill', { kind: 'tinted', small: true, block: false, onTap: e => { if (e && e.stopPropagation) e.stopPropagation(); B.openEditor(j.id); } }) : h('b', money(est(j))), onTap: () => J && J.openDetails && J.openDetails(j.id) }); })));
+} });
+const openNotesBy = () => { const m = new Map(); (data.serviceNotes || []).filter(n => !n.masterId).forEach(n => { const g = m.get(n.customerId) || { c: q.customer(n.customerId), notes: [], amount: 0 }; g.notes.push(n); g.amount += n.amount; m.set(n.customerId, g); }); return [...m.values()].filter(g => g.c).sort((a, b) => b.amount - a.amount); };
+/** Service notes that are not on a master invoice yet, by customer, with the way to build each customer's master invoice from them. */
+RC.openNotesSpec = () => ({ title: 'Service notes not invoiced', render: page => { const gs = openNotesBy(), wf = WD.workflow, all = gs.reduce((s, g) => s + g.notes.length, 0);
+  if (!gs.length) return ui.empty({ icon: 'checkmark.circle', title: 'Nothing waiting', text: 'Every service note is on a master invoice.' });
+  return ui.list(h('div.rc-sum', h('div.big', h('span', plural(all, 'service note') + ' not invoiced'), h('span', money(gs.reduce((s, g) => s + g.amount, 0)))), h('div.muted', h('span', plural(gs.length, 'master-invoice customer')), h('span', 'waiting'))),
+    gs.map(g => { const list = g.notes.slice().sort((a, b) => b.day.localeCompare(a.day) || b.at - a.at);
+      return ui.section({ header: g.c.name + ' · ' + plural(list.length, 'note') + ' · ' + money(g.amount), fold: false },
+        list.slice(0, 4).map(n => ui.row({ icon: 'signature', iconColor: 'var(--brown)', title: fmt.day(n.day, 'md') + ' · ' + n.location, subtitle: n.number + ' · ' + n.lines.map(l => l.qty + ' × ' + l.name).join(', '), detail: money(n.amount) })),
+        list.length > 4 && ui.row({ title: (list.length - 4) + ' more, back to ' + fmt.day(list[list.length - 1].day, 'md'), disabled: true }),
+        wf && wf.masterSpec && ui.row({ icon: 'tray', iconPlain: true, iconColor: 'var(--tint)', title: 'Build the master invoice · ' + money(g.amount), subtitle: 'Review the notes and the preview, then create and send it', tint: true, chevron: true, onTap: () => page.push(wf.masterSpec(g.c.id)) })); }),
+    note('A master invoice is built from every service note waiting for that customer. Creating it needs the Manage billing permission.'));
+} });
+/** For the Route performance report: what was done in the dates but not billed, and the service notes waiting for a master invoice. */
+RC.perfBillingSection = (page, from, to) => { if (!(WD.can('billing.view') || WD.can('billing.field'))) return null;
+  const jobs = RC.unbilledJobs(from, to || today()), gs = openNotesBy(), nN = gs.reduce((s, g) => s + g.notes.length, 0), aN = gs.reduce((s, g) => s + g.amount, 0), sum = cents(jobs.reduce((s, j) => s + est(j), 0));
+  return ui.section({ header: 'Not billed yet', fold: false },
+    ui.row({ icon: jobs.length ? 'exclamationmark.circle' : 'checkmark.circle.fill', iconPlain: true, iconColor: jobs.length ? 'var(--orange)' : 'var(--green)', title: jobs.length ? plural(jobs.length, 'completed stop') + ' not billed' : 'Every completed stop is billed', subtitle: jobs.length ? 'About ' + money(sum) + ' · see them and bill' : null, chevron: jobs.length > 0, onTap: jobs.length ? () => page.push(RC.unbilledSpec({ from, to })) : null }),
+    ui.row({ icon: nN ? 'signature' : 'checkmark.circle.fill', iconPlain: true, iconColor: nN ? 'var(--orange)' : 'var(--green)', title: nN ? plural(nN, 'service note') + ' not yet invoiced' : 'No service notes waiting', subtitle: nN ? money(aN) + ' · ' + plural(gs.length, 'master-invoice customer') + ' · build the master invoice' : null, chevron: nN > 0, onTap: nN ? () => page.push(RC.openNotesSpec()) : null })); };
 
 /* ================= Price Calc ================= */
 /** Assumptions for both calculators; all editable on the screen. Area prices are the owner's base price for a standard purge in places off the regular routes. */
@@ -346,9 +508,27 @@ const nearestJob = spot => { const end = D.add(today(), 14); let best = null; da
 /** How far a place is from the regular routes: the closest location of a recurring customer. */
 const offRoute = spot => { let best = Infinity; data.customers.forEach(c => { if (!c.freq || c.freq === 'One time' || c.lifecycle !== 'customer') return; c.locations.forEach(l => { if (l.x != null) best = Math.min(best, milesBetween(spot, l)); }); }); return best; };
 const r5 = v => Math.round(v / 5) * 5;
+const calcField = (label, key, unit, o = CALC) => h('div.row', h('div.row-main', h('div.row-title', label)), h('span.secondary', { style: 'margin-right:4px' }, unit[0] === '$' ? '$' : ''), h('input.jb-rate', { style: 'width:70px', type: 'text', inputmode: 'decimal', 'aria-label': label, value: String(o[key]), onfocus: e => e.target.select(), onchange: e => { o[key] = Math.max(0, num(e.target.value)); WD.changed(); } }), h('span.secondary', { style: 'margin-left:5px;min-width:42px' }, unit.replace(/^\$/, '')));
+/** Price Calc → gear: the assumptions behind both calculators. */
+function calcSettingsSpec() {
+  const field = calcField;
+  return { title: 'Assumptions', render: page => { const re = () => page.refresh();
+    return ui.list(
+      ui.section({ header: 'Cost to serve', fold: false, footer: 'Miles are road miles: straight-line distance × the road factor. Lost revenue is what the truck would normally earn in an hour. These apply to both calculators.' }, field('Vehicle cost', 'perMile', '$per mile'), field('Labor', 'labor', '$per hour'), field('Lost revenue', 'opp', '$per hour'), field('Average speed', 'mph', 'mph'), field('Road factor', 'road', '× direct')),
+      ui.section({ header: 'Standard purge rate', fold: false, footer: 'The standard rate applies anywhere within ' + CALC.zone + ' road miles of a regular customer.' }, field('Show-up price', 'base', '$'), field('Boxes included', 'included', 'boxes'), field('Each additional box', 'extra', '$per box'), field('Regular-route range', 'zone', 'miles')),
+      ui.section({ header: 'Base prices by area', fold: false, footer: 'Your price for a standard purge in each place. An address that mentions the area’s name uses it as the floor.' },
+        CALC.areas.map(a => ui.row({ title: a.name, detail: fmt.money(a.price), chevron: true, onTap: async () => { const v = await ui.actionSheet({ title: a.name, buttons: [{ label: 'Change the price…', value: 'p' }, { label: 'Rename…', value: 'n' }, { label: 'Remove', value: 'x', role: 'destructive' }] });
+          if (v === 'p') { const t = await RC.ask('Base price for ' + a.name, 'e.g. 225', a.price, null, 'number'); if (t) a.price = num(t); } else if (v === 'n') { const t = await RC.ask('Area name', '', a.name); if (t) a.name = t; } else if (v === 'x') CALC.areas.splice(CALC.areas.indexOf(a), 1); WD.changed(); re(); } })),
+        ui.row({ icon: 'plus.circle.fill', iconPlain: true, iconColor: 'var(--green)', title: 'Add an area', tint: true, onTap: async () => { const n = await RC.ask('Area or town', 'e.g. Pine Hollow'); if (!n) return; const p = await RC.ask('Base price for ' + n, 'e.g. 200', '', null, 'number'); CALC.areas.push({ id: uid('ar'), name: n, price: num(p) || CALC.base }); WD.changed(); re(); } }),
+        h('label.row.tappable', { style: 'cursor:pointer' }, h('div.row-icon.plain', { style: { color: 'var(--tint)' } }, icon('doc', 24)), h('div.row-main', h('div.row-title.tint', 'Upload a price list'), h('div.row-sub', 'CSV: one area and price per line')),
+          h('input', { type: 'file', accept: '.csv,.txt,text/csv,text/plain', style: 'display:none', onchange: e => { const file = e.target.files[0]; if (!file) return; const r = new FileReader(); r.onload = () => { let n = 0; String(r.result).split(/\r?\n/).forEach(line => { const m = /^\s*"?([^",]+?)"?\s*[,;\t]\s*\$?\s*([\d.]+)/.exec(line); if (!m || !+m[2]) return; const ex = CALC.areas.find(a => a.name.toLowerCase() === m[1].trim().toLowerCase()); if (ex) ex.price = +m[2]; else CALC.areas.push({ id: uid('ar'), name: m[1].trim(), price: +m[2] }); n++; }); WD.changed(); re(); ui.toast(n ? plural(n, 'area') + ' loaded' : 'No “area, price” lines found', n ? 'checkmark' : 'exclamationmark.triangle', 2600); }; r.readAsText(file); } })))); } };
+}
 function calcRoot() {
-  const field = (label, key, unit, o = CALC) => h('div.row', h('div.row-main', h('div.row-title', label)), h('span.secondary', { style: 'margin-right:4px' }, unit[0] === '$' ? '$' : ''), h('input.jb-rate', { style: 'width:70px', type: 'text', inputmode: 'decimal', 'aria-label': label, value: String(o[key]), onfocus: e => e.target.select(), onchange: e => { o[key] = Math.max(0, num(e.target.value)); WD.changed(); } }), h('span.secondary', { style: 'margin-left:5px;min-width:42px' }, unit.replace(/^\$/, '')));
-  return { title: 'Price Calc', large: true, render: page => {
+  return { title: 'Price Calc', large: true,
+    /* The gear at the top right: every assumption behind both calculators. */
+    trailing: () => [{ icon: 'gearshape', label: 'Edit assumptions', onTap: p => p.push(calcSettingsSpec()) }],
+    render: page => {
+    const assume = text => ui.section({ fold: false }, ui.row({ icon: 'gearshape', iconPlain: true, title: 'Assumptions', subtitle: text, chevron: true, onTap: () => page.push(calcSettingsSpec()) }));
     const re = () => page.refresh(), pick = s => { PC.addr = s.address; PC.text = s.address; PC.spot = s.l ? { x: s.l.x, y: s.l.y } : hashSpot(s.address); PC.sugs = []; re(); };
     const sugBox = h('div.rc-sugs'), showSugs = () => { sugBox.replaceChildren(...PC.sugs.map(s => h('button', { onclick: () => pick(s) }, s.title, h('small', s.sub)))); };
     const addr = ui.section({ header: 'Address', fold: false }, ui.inputRow({ icon: 'mappin', placeholder: 'Street, city', value: PC.text, onInput: v => { PC.text = v; PC.sugs = WD.addressSuggestions ? WD.addressSuggestions(v).slice(0, 5) : []; showSugs(); }, onEnter: v => v.trim() && pick({ address: v.trim() }) }), sugBox,
@@ -370,7 +550,7 @@ function calcRoot() {
           h('div.rc-sum', h('div.muted', h('span', 'Opportunity cost · ' + hours.toFixed(2) + ' h × ' + money(CALC.opp)), h('span', money(opp))), h('div.big', h('span', 'Total with opportunity cost'), h('span', money(veh + lab + opp)))),
           h('div.footnote.secondary', { style: 'padding:0 6px 14px' }, 'Opportunity cost is the revenue the truck would normally earn in the time spent driving: about ' + fmt.money(CALC.opp) + ' an hour.'))
           : note('Enter an address to see the miles, drive time and cost of the round trip.'),
-        ui.section({ header: 'Assumptions', fold: true, folded: !!PC.spot, footer: 'Miles are road miles (straight-line distance × ' + CALC.road + '). Changes apply to both calculators.' }, field('Vehicle cost', 'perMile', '$per mile'), field('Labor', 'labor', '$per hour'), field('Lost revenue', 'opp', '$per hour'), field('Average speed', 'mph', 'mph')))];
+        assume(money(CALC.perMile) + ' a mile · ' + money(CALC.labor) + ' an hour labor · ' + fmt.money(CALC.opp) + ' an hour lost revenue · ' + CALC.mph + ' mph'))];
     }
     /* Purge price */
     const std = CALC.base + Math.max(0, PC.boxes - CALC.included) * CALC.extra, off = PC.spot ? offRoute(PC.spot) : 0, inZone = off <= CALC.zone, area = PC.spot && CALC.areas.find(a => PC.addr.toLowerCase().includes(a.name.replace(/\s*\(.*\)/, '').toLowerCase()));
@@ -387,13 +567,7 @@ function calcRoot() {
         h('div', h('span', 'Standard rate'), h('span', money(std))), PC.spot && add > 0 && h('div.muted', h('span', inZone ? 'Area price difference' : 'Out-of-area charge'), h('span', '+ ' + money(add))), PC.spot && h('div.big', h('span', inZone && !add ? 'Price' : 'Recommended price'), h('span', money(rec)))),
       PC.spot ? RC.aiBlock('pricing', () => RC.aiCard({ title: 'Pricing recommendation', lines: lines() })) : note('Enter the address to check whether it is on your regular routes and get a recommended price.'),
       PC.spot && !RC.ai('pricing') && !inZone && h('div.footnote.secondary', { style: 'padding:0 6px 12px' }, 'Without the recommendation: this address is ' + fmt.dist(off) + ' off your routes; the out-of-area charge above is the cost of the extra driving.'),
-      ui.section({ header: 'Base prices by area', fold: true, folded: true, count: CALC.areas.length, footer: 'Your price for a standard purge in each place. An address that mentions the area’s name uses it as the floor.' },
-        CALC.areas.map(a => ui.row({ title: a.name, detail: fmt.money(a.price), chevron: true, onTap: async () => { const v = await ui.actionSheet({ title: a.name, buttons: [{ label: 'Change the price…', value: 'p' }, { label: 'Rename…', value: 'n' }, { label: 'Remove', value: 'x', role: 'destructive' }] });
-          if (v === 'p') { const t = await RC.ask('Base price for ' + a.name, 'e.g. 225', a.price, null, 'number'); if (t) a.price = num(t); } else if (v === 'n') { const t = await RC.ask('Area name', '', a.name); if (t) a.name = t; } else if (v === 'x') CALC.areas.splice(CALC.areas.indexOf(a), 1); WD.changed(); re(); } })),
-        ui.row({ icon: 'plus.circle.fill', iconPlain: true, iconColor: 'var(--green)', title: 'Add an area', tint: true, onTap: async () => { const n = await RC.ask('Area or town', 'e.g. Pine Hollow'); if (!n) return; const p = await RC.ask('Base price for ' + n, 'e.g. 200', '', null, 'number'); CALC.areas.push({ id: uid('ar'), name: n, price: num(p) || CALC.base }); WD.changed(); re(); } }),
-        h('label.row.tappable', { style: 'cursor:pointer' }, h('div.row-icon.plain', { style: { color: 'var(--tint)' } }, icon('doc', 24)), h('div.row-main', h('div.row-title.tint', 'Upload a price list'), h('div.row-sub', 'CSV: one area and price per line')),
-          h('input', { type: 'file', accept: '.csv,.txt,text/csv,text/plain', style: 'display:none', onchange: e => { const file = e.target.files[0]; if (!file) return; const r = new FileReader(); r.onload = () => { let n = 0; String(r.result).split(/\r?\n/).forEach(line => { const m = /^\s*"?([^",]+?)"?\s*[,;\t]\s*\$?\s*([\d.]+)/.exec(line); if (!m || !+m[2]) return; const ex = CALC.areas.find(a => a.name.toLowerCase() === m[1].trim().toLowerCase()); if (ex) ex.price = +m[2]; else CALC.areas.push({ id: uid('ar'), name: m[1].trim(), price: +m[2] }); n++; }); WD.changed(); re(); ui.toast(n ? plural(n, 'area') + ' loaded' : 'No “area, price” lines found', n ? 'checkmark' : 'exclamationmark.triangle', 2600); }; r.readAsText(file); } }))),
-      ui.section({ header: 'Standard purge rate', fold: true, folded: true, footer: 'The standard rate applies anywhere within ' + CALC.zone + ' road miles of a regular customer.' }, field('Show-up price', 'base', '$'), field('Boxes included', 'included', 'boxes'), field('Each additional box', 'extra', '$per box'), field('Regular-route range', 'zone', 'miles')))];
+      assume('Show up ' + fmt.money(CALC.base) + ' with ' + CALC.included + ' boxes · ' + money(CALC.extra) + ' each extra · ' + CALC.zone + '-mile range · ' + plural(CALC.areas.length, 'area price')))];
   } };
 }
 WD.screens.calc = { root: calcRoot };
@@ -401,5 +575,5 @@ WD.screens.calc = { root: calcRoot };
 WD.panel.addJump('Reports', () => WD.nav.switchTab('reports'));
 WD.panel.addJump('Price Calc', () => WD.nav.switchTab('calc'));
 WD.panel.addJump('New invoice', () => { WD.nav.switchTab('invoices'); RC.newInvoice(); });
-WD.panel.addJump('Statement', () => { const c = data.customers.find(x => (data.invoices || []).filter(i => i.customerId === x.id && i.status !== 'Paid').length > 1); if (c) { WD.nav.switchTab('customers'); RC.openStatement(c); } });
+WD.panel.addJump('Statement', () => { const c = data.customers.find(x => (data.invoices || []).filter(i => i.customerId === x.id && invOpen(i)).length > 1); if (c) { WD.nav.switchTab('customers'); RC.openStatement(c); } });
 })();

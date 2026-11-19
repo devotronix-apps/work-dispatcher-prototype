@@ -25,12 +25,15 @@ WD.css(`
 .sh-next .sh-top { display: flex; gap: 12px; align-items: flex-start; margin-top: 8px; }
 .sh-next .sh-top > div { flex: 1; min-width: 0; }
 .sh-num { width: 34px; height: 34px; border-radius: 50%; background: var(--c); border: 3px solid var(--ring); color: var(--fg, #fff); font-weight: 700; font-size: 15px; display: grid; place-items: center; flex: none; letter-spacing: 0; }
-.sh-num.small { width: 26px; height: 26px; font-size: 11.5px; border-width: 2.5px; }
+.sh-num.small { width: 26px; height: 26px; font-size: 12px; border-width: 2.5px; }
 .sh-num.none { background: var(--fill); border-color: transparent; color: var(--label2); }
 .sh-num.q { background: none; border: 2px solid var(--red); color: var(--red); font-weight: 900; }
 .sh-lines { margin: 10px 0 2px; display: flex; flex-direction: column; gap: 6px; font-size: 15px; letter-spacing: -.24px; }
 .sh-lines > div { display: flex; gap: 8px; align-items: flex-start; } .sh-lines .ic { color: var(--label2); margin-top: 1px; }
-.sh-acts { display: flex; gap: 8px; margin-top: 14px; } .sh-acts .btn { flex: 1; min-height: 46px; padding: 0 8px; font-size: 16px; }
+.sh-acts { display: flex; gap: 8px; margin-top: 14px; } .sh-acts .btn { flex: 1 1 0; min-width: 0; min-height: 46px; padding: 0 6px; gap: 5px; font-size: 16px; white-space: nowrap; }
+.sh-acts .btn.small { min-height: 44px; font-size: 15px; white-space: normal; line-height: 18px; }
+.sh-svc { font-size: 21px; line-height: 26px; font-weight: 700; letter-spacing: -.3px; color: var(--label); margin-top: 3px; }
+.sh-svc2 { font-size: 15.5px; line-height: 20px; font-weight: 600; letter-spacing: -.2px; color: var(--label); }
 .sh-done { display: flex; gap: 12px; align-items: center; }
 .sh-done > div { flex: 1; min-width: 0; }
 .sh-bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: var(--fill); margin: 4px 0 8px; }
@@ -59,6 +62,13 @@ const defaultRoute = () => (q.routes().find(r => r.driverId === (S.me && S.me.id
 /** What the truck is doing right now, from the route's job statuses (works with location off too). */
 function activity(sh) { const js = todayJobs(sh.routeId); return js.some(j => j.status === 'arrived') ? 'service' : js.some(j => j.status === 'enroute') ? 'drive' : 'idle'; }
 const canSeeInv = () => WD.can('billing.view') || WD.can('billing.field');
+/** What the driver services at a stop, said plainly: “2 consoles”, “1 bin (64 gal)”, “≈65 boxes”. Shown large on the next-stop card and the stop list. */
+function serviceText(j) {
+  if (!j || j.allDay) return '';
+  if (j.type === 'purge' && j.purge && WD.purgeEstimate) { const e = WD.purgeEstimate(j.purge); if (e && e.boxes > 0) return (e.guess ? '≈' : '') + (e.billable || e.boxes) + ((e.billable || e.boxes) === 1 ? ' box' : ' boxes'); }
+  const hdd = ((j.items || []).find(i => i.id === 'hdd') || {}).qty || 0, t = (WD.itemsLabel(j.items, j.type === 'purge') || j.containers || '').replace(/\s*\(estimate\)/, '');
+  return [t, hdd > 0 ? hdd + (hdd === 1 ? ' hard drive' : ' hard drives') : ''].filter(Boolean).join(', ');
+}
 WD.on('stopCompleted', id => { lastCompleted = id; });
 const lowPower = sh => sh.lowPower || sh.battery < 20;
 function elapsed(sh) { const now = +WD.now(); return now - sh.startedAt - sh.breakMs - (sh.onBreak ? now - sh.breakStartedAt : 0); }
@@ -232,7 +242,7 @@ function offShift(m) {
 function nextCard(r) {
   const stop = q.stops(r.id, D.today()).find(s => !DONE[s.job.status]);
   if (!stop) return h('div.sh-card.sh-done', icon('checkmark.circle.fill', 34, 'var(--green)'), h('div', h('div.headline', remaining(r.id).length ? 'No more mapped stops' : 'All stops done'), h('div.footnote', remaining(r.id).length ? 'The jobs left need an address or are meet-the-truck jobs.' : 'Head back to the shop and clock out.')));
-  const job = stop.job, sx = WD.jobStatuses[job.status], b = (label, kind, fn, ic) => ui.button(label, { kind, icon: ic, block: false, onTap: fn }), btnArrive = data.workflow.arrival !== 'auto';
+  const job = stop.job, svc = serviceText(job), sx = WD.jobStatuses[job.status], b = (label, kind, fn, ic) => ui.button(label, { kind, icon: ic, block: false, onTap: fn }), btnArrive = data.workflow.arrival !== 'auto';
   /* A job with a checklist shows Checklist here first; Complete stop takes its place once the checklist is finished or submitted unfinished. */
   const complete = (WD.rc && WD.rc.checklistButton && WD.rc.checklistButton(job, b)) || b('Complete stop', 'filled', () => { clearTimeout(geofenceTimer); wf().completeStop(job); }, 'checkmark');
   /* Complete works from any status: drivers who know the way, or several customers at one address, skip Start driving and arrival. */
@@ -241,9 +251,9 @@ function nextCard(r) {
     arrived: [complete] }[job.status] || [], gate = WD.rc && WD.rc.pretripGate && WD.rc.pretripGate(b);
   return h('div.sh-card.sh-next',
     h('div.hstack', h('span.sh-kicker', 'Next stop'), h('span.spacer'), ui.badge(sx.title, sx.color), job.pending && ui.badge('Pending sync', 'var(--orange)')),
-    h('div.sh-top', numFor(job, stop.number), h('div', h('div.title3', job.title), (d => d.length ? h('div.wf-chips', d.map(x => h('span.wf-chip', x))) : null)(wf().titleDetails(job)), h('div.subhead.secondary', { style: { marginTop: '4px' } }, job.address))),
+    h('div.sh-top', numFor(job, stop.number), h('div', h('div.title3', job.title), svc && h('div.sh-svc', svc), (d => d.length ? h('div.wf-chips', d.map(x => h('span.wf-chip', x))) : null)(wf().titleDetails(job)), h('div.subhead.secondary', { style: { marginTop: '4px' } }, job.address))),
     h('div.sh-lines', h('div', icon('list.bullet', 17), h('span', (p => 'Stop ' + p.n + ' of ' + p.of + ' on today’s list')(q.position(job)))),
-      job.containers && h('div', icon('shippingbox', 17), h('span', job.containers)), job.notes && h('div', icon('note', 17), h('span', job.notes))),
+      !svc && job.containers && h('div', icon('shippingbox', 17), h('span', job.containers)), job.notes && h('div', icon('note', 17), h('span', job.notes))),
     WD.rc && WD.rc.pastDueFlag && WD.rc.pastDueFlag(job),
     h('div.sh-acts', gate || flow),
     h('div.sh-acts', { style: { marginTop: '8px' } }, b('Navigate', 'gray', () => wf().openDirections(job), 'arrow.triangle.turn.up.right'), b('Details', 'plain', () => openDetails(job.id), 'info.circle'), b('Skip…', 'plain', () => skip(job), 'xmark.circle.fill')));
@@ -265,8 +275,8 @@ function onShift() {
         ui.button('Photo or note', { kind: 'gray', small: true, block: false, icon: 'camera', onTap: () => openCamera(done) }))),
     unbilled.length > 0 && ui.section(null, ui.row({ icon: 'exclamationmark.triangle', iconColor: 'var(--orange)', title: unbilled.length + (unbilled.length === 1 ? ' completed stop isn’t billed' : ' completed stops aren’t billed'), subtitle: 'Create the invoice, mark paid–no invoice, or skip', chevron: true, onTap: () => wf().missedSheet(unbilled) })),
     nextCard(r),
-    ui.section('Today · ' + q.routeName(r), q.jobsFor(r.id, D.today()).map(j => { const sx = WD.jobStatuses[j.status];
-      return ui.row({ class: WD.struck[j.status] ? 'sh-struck' : null, leading: numFor(j, numbers.get(j.id), true), title: wf().titleNode(j), subtitle: (j.allDay ? 'Note for the day' : 'Stop ' + q.position(j).n) + (j.status === 'completed' && !j.allDay && j.type !== 'meet' ? (wf().billed(j) ? ' · ' + (j.invoice ? j.invoice.number : wf().billingLabel(j)) : ' · not billed') : '') + (WD.struck[j.status] ? ' · ' + sx.title + (j.rescheduledTo ? ' to ' + fmt.day(j.rescheduledTo, 'md') : '') : '') + (!j.located && j.address ? ' · address not found' : '') + (j.pending ? ' · waiting to sync' : ''),
+    ui.section('Today · ' + q.routeName(r), q.jobsFor(r.id, D.today()).map(j => { const sx = WD.jobStatuses[j.status], svc = serviceText(j);
+      return ui.row({ class: WD.struck[j.status] ? 'sh-struck' : null, leading: numFor(j, numbers.get(j.id), true), title: wf().titleNode(j), subtitle: h('span', svc && h('div.sh-svc2', svc), (j.allDay ? 'Note for the day' : 'Stop ' + q.position(j).n) + (j.status === 'completed' && !j.allDay && j.type !== 'meet' ? (wf().billed(j) ? ' · ' + (j.invoice ? j.invoice.number : wf().billingLabel(j)) : ' · not billed') : '') + (WD.struck[j.status] ? ' · ' + sx.title + (j.rescheduledTo ? ' to ' + fmt.day(j.rescheduledTo, 'md') : '') : '') + (!j.located && j.address ? ' · address not found' : '') + (j.pending ? ' · waiting to sync' : '')),
         trailing: h('span.hstack', { style: { gap: '6px' } }, j.pending && icon('sync', 16, 'var(--orange)'), j.allDay ? null : icon(sx.icon, 18, sx.color)), onTap: () => openDetails(j.id) }); })),
     ui.section({ header: 'Tracking', footer: denied ? 'Location isn’t allowed, so nothing is recorded. Use the status buttons to report stops.' : 'Points are thinned to one every 30 seconds and upload in small batches. Without a connection they wait on this iPhone.' },
       ui.row({ title: 'Last location', detail: span('lastFix'), icon: 'location.fill', iconColor: 'var(--blue)' }), ui.row({ title: 'Accuracy', detail: span('accuracy'), icon: 'scope', iconColor: 'var(--teal)' }),

@@ -27,7 +27,7 @@ WD.css(`
 .co-bubble.in { background: var(--fill2); color: var(--label); margin-left: 16px; margin-right: auto; }
 .co-eta { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 18px 16px 6px; text-align: center; } .co-eta small { font-size: 13px; color: var(--label2); } .co-eta b { font-size: 40px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: .2px; } .co-eta span { font-size: 15px; color: var(--label2); }
 .co-acts { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px 18px; }
-.co-tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: .5px; background: var(--sep); } .co-tiles > div { background: var(--cell); padding: 10px 6px; text-align: center; } .co-tiles b { display: block; font-size: 19px; font-weight: 600; font-variant-numeric: tabular-nums; } .co-tiles span { font-size: 11px; color: var(--label2); }
+.co-tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: .5px; background: var(--sep); } .co-tiles > div { background: var(--cell); padding: 10px 6px; text-align: center; } .co-tiles b { display: block; font-size: 19px; font-weight: 600; font-variant-numeric: tabular-nums; } .co-tiles span { font-size: 12px; color: var(--label2); }
 .co-stars { color: var(--orange); letter-spacing: 1px; font-size: 14px; white-space: nowrap; } .co-stars i { color: var(--label3); font-style: normal; }
 .co-qr { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 22px 24px 8px; text-align: center; }
 .co-qr .box { width: 250px; height: 250px; background: #fff; border-radius: 18px; padding: 16px; box-shadow: 0 2px 12px rgba(0,0,0,.14); display: grid; place-items: center; position: relative; } .co-qr .box img, .co-qr .box svg { width: 100%; height: 100%; object-fit: contain; }
@@ -38,7 +38,7 @@ WD.css(`
 .co-file { position: relative; overflow: hidden; } .co-file input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
 .co-clause { border-top: 6px solid var(--bg); }
 .x-doc .cl { margin-top: 9px; } .x-doc .cl b { display: inline; }
-.bi-scan { margin-top: 8px; font-size: 9.500px; line-height: 13px; } .bi-scan b { font-weight: 700; }
+.bi-scan { margin-top: 8px; font-size: 12px; line-height: 13px; } .bi-scan b { font-weight: 700; }
 `);
 
 /* ================= Settings data ================= */
@@ -65,7 +65,7 @@ const CHANNELS = [{ value: 'text', label: 'Text message' }, { value: 'email', la
 const CH_ICON = { text: ['message', 'var(--green)'], email: ['envelope', 'var(--blue)'], letter: ['doc.text', 'var(--indigo)'], app: ['bell', 'var(--orange)'] };
 const FIELDS = [['{first}', 'Contact’s first name'], ['{contact}', 'Contact’s full name'], ['{customer}', 'Customer name'], ['{company}', 'Your company'], ['{phone}', 'Your phone number'], ['{sender}', 'Whoever sends it'], ['{owner}', 'The owner'],
   ['{driver}', 'The driver'], ['{date}', 'Service date'], ['{window}', 'Arrival window'], ['{eta}', 'Estimated arrival'], ['{invoice}', 'Invoice number'], ['{amount}', 'Amount'], ['{effective}', 'Date a change starts'], ['{changes}', 'Table of price or service changes'],
-  ['{olddate}', 'The day a visit was moved from'], ['{reason}', 'Why a visit was moved'], ['{link}', 'Signing or quote link'], ['{portal}', 'Customer payment portal'], ['{review_links}', 'Links to your review sites'], ['{employee}', 'Employee’s first name']];
+  ['{olddate}', 'The day a visit was moved from'], ['{reason}', 'Why a visit was moved'], ['{link}', 'Signing or quote link'], ['{portal}', 'Customer payment portal'], ['{remit}', 'Where to mail a check'], ['{review_links}', 'Links to your review sites'], ['{employee}', 'Employee’s first name']];
 const G = { svc: 'Service messages', bill: 'Billing and price changes', rev: 'Reviews and feedback', lead: 'Leads and follow-ups', team: 'Team' };
 const T = (id, group, name, channel, subject, body) => ({ id, group, name, channel, subject, body, builtin: true, def: { name, channel, subject, body } });
 data.templates = [
@@ -74,7 +74,7 @@ data.templates = [
   T('remind', G.svc, 'Service reminder', 'text', '', '{company}: your service is scheduled for {date}. Reply C to confirm or call {phone}.'),
   T('aglink', G.svc, 'Service agreement — signing link', 'email', 'Your service agreement with {company}', 'Hi {first},\n\nYour service agreement with {company} is ready. You can read and sign it on your phone or computer here:\n{link}\n\nIf anything needs changing, reply to this email or call {phone}.\n\n{sender}\n{company}'),
   T('price', G.bill, 'Price or service change', 'letter', 'A change to your service', 'Dear {contact},\n\nThank you for trusting {company} with your document destruction. This letter is to let you know about a change to your service, beginning with your service on {effective}.\n\n{changes}\n\nServices before that date are billed at your current rate. Nothing else about your service changes, and there is nothing you need to do.\n\nIf you have any questions, call us at {phone} or reply to this email.\n\nSincerely,\n{owner}\n{company}'),
-  T('payrem', G.bill, 'Payment reminder', 'email', 'Payment reminder — {invoice}', 'Hi {first},\n\nA friendly reminder that invoice {invoice} for {amount} is still open. You can pay online, or add a card or bank account for automatic payment, in your customer portal:\n{portal}\n\nThank you,\n{company}'),
+  T('payrem', G.bill, 'Payment reminder', 'email', 'Payment reminder — {invoice}', 'Hi {first},\n\nA friendly reminder that invoice {invoice} for {amount} is still open.\n\nThe quickest way to pay is online in your customer portal, where you can also add a card or bank account so future invoices are paid automatically:\n{portal}\n\nPrefer to mail a check? Make it payable to {company}, write {invoice} on it, and send it to:\n{remit}\n\nThank you,\n{company}'),
   T('rvask', G.rev, 'Follow-up after service', 'text', '', 'Hi {first}, this is {company}. {driver} serviced your location today. How did {driver} and the service do? Reply with a number from 1 (poor) to 5 (great), and anything you’d like us to know.'),
   T('rvpos', G.rev, 'Positive reply — ask for a review', 'text', '', 'Thank you, {first}! We’ll pass that on to {driver}. If you have a minute, a public review really helps {driver} and our small team get found by new customers:\n{review_links}'),
   T('rvneg', G.rev, 'Negative reply — apology', 'text', '', '{first}, I’m sorry we let you down. Thank you for telling us. We appreciate your feedback and take it seriously, and {owner} will call you to make it right.'),
@@ -92,7 +92,7 @@ const reviewLinks = () => ST.reviews.sites.filter(s => s.on && s.url).map(s => s
 /** Values for the merge fields, for one customer plus whatever the caller knows (driver, eta, invoice…). */
 const ctxFor = CO.ctxFor = (c, extra = {}) => { const p = (c && c.contacts[0]) || {}, o = org();
   return { first: first(p.name) || 'there', contact: p.name || 'Customer', customer: c ? c.name : 'your company', company: o.name, phone: o.phone || '', sender: first(me()), owner: (q.user('u1') || {}).name || o.name,
-    portal: 'https://pay.discountshred.example/portal', link: 'https://go.discountshred.example/s/7Kq2', review_links: reviewLinks(), employee: first(me()), ...extra }; };
+    portal: 'https://pay.discountshred.example/portal', remit: [o.name, o.street, o.cityLine].filter(Boolean).join('\n') || o.name, link: 'https://go.discountshred.example/s/7Kq2', review_links: reviewLinks(), employee: first(me()), ...extra }; };
 const sampleCtx = () => ctxFor(q.customer('c1') || data.customers[0], { driver: 'Marcus', date: fmt.day(D.add(today(), 1), 'long'), window: '9:00 – 11:00 AM', eta: '10:45 AM', invoice: 'INV-2417', amount: '$130.00', effective: longDay(D.add(today(), 30)), changes: '[table of changes]', employee: 'Sam' });
 const edited = t => t.builtin && (t.body !== t.def.body || t.subject !== t.def.subject || t.channel !== t.def.channel || t.name !== t.def.name);
 
@@ -274,7 +274,7 @@ CO.omwSpec = () => ({ title: 'On-my-way notices', render: page => { if (!admin()
       ui.pickerRow({ title: 'For most jobs', icon: 'message', iconColor: 'var(--green)', value: o.mode, options: OMW, onChange: v => { o.mode = v; WD.changed(); page.refresh(); } }), tplRow('omw', page)),
     ui.section({ header: 'By job type', footer: 'For example: always text ahead of a purge, never for route service.' }, WD.jobTypes.map(t => over(o.byJob, t.id, t.title))),
     ui.section({ header: 'By customer type', footer: 'A customer type setting wins over the job type.' }, WD.custTypes.map(t => over(o.byCust, t.id, t.title))),
-    ui.section({ footer: 'The ETA is the drive time from the last completed stop (or the truck’s start), with your drive-time allowance.' }, ui.row({ title: 'Routing assumptions', chevron: true, onTap: () => page.push(CO.routingSpec()) })));
+    ui.note('The ETA is the drive time from the last completed stop (or the truck’s start), with your drive-time allowance. Drive time and the start of the day are set in Settings → Routes and board → Routing assumptions.'));
 } });
 
 /* ================= Container barcodes ================= */
@@ -325,7 +325,7 @@ CO.barcodeSpec = () => ({ title: 'Barcode scanning', render: page => { if (!admi
 } });
 
 /* ================= Bookkeeping: payment status ================= */
-const unpaidRecs = () => (data.invoices || []).filter(r => r.status !== 'Paid' && r.status !== 'Draft');
+const unpaidRecs = () => (data.invoices || []).filter(r => r.status !== 'Paid' && r.status !== 'Draft' && !(WD.invClosed && WD.invClosed(r)));
 /** Ask the bookkeeping program which open invoices have been paid there, and mark them paid here. manual: show progress. Returns the invoices updated. */
 CO.syncPayments = async manual => {
   if (!CO.hasBooks()) { if (manual) ui.toast('No bookkeeping program is connected', 'info.circle'); return []; }
@@ -515,7 +515,6 @@ CO.hubSpec = () => ({ title: 'Settings and assumptions', render: page => { if (!
 
 /* ================= Control panel ================= */
 const openSet = spec => { WD.nav.switchTab('settings'); WD.nav.push(spec); };
-WD.panel.addJump('Settings and assumptions', () => openSet(CO.hubSpec()));
 WD.panel.addJump('Templates', () => openSet(CO.templatesSpec()));
 WD.panel.addJump('Customer feedback', () => { WD.nav.switchTab(WD.can('leads.view') ? 'crm' : 'settings'); WD.nav.push(CO.feedbackSpec()); });
 WD.panel.addJump('Review QR code', () => { WD.nav.switchTab('shift'); WD.nav.push(CO.qrSpec()); });

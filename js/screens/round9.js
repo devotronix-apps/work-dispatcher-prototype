@@ -1,7 +1,8 @@
 /* Round 9 additions (prototype 2.8). Registers WD.r9:
    editing an invoice after it was created (lines, service date, PO, pounds, send-to; a reason is required and every change is kept),
    moving several selected jobs to another route, day or both (Dispatch menu → Select jobs to move), and sales tax
-   (Settings → Sales tax; off by default). The 50-mile distance and address suggestions on the 45-day map are in round8.js. */
+   (Business details → Apply tax to invoices; off by default; one or more taxes, each applied to chosen services and products).
+   Also the shared tests for invoices that are no longer owed (WD.invClosed / WD.invOpen: bad debt and void). The 50-mile distance and address suggestions on the 45-day map are in round8.js. */
 (function () {
 'use strict';
 const WD = window.WD, { h, ui, icon, state: S, data, q, fmt, date: D, api } = WD;
@@ -24,25 +25,63 @@ WD.css(`
 .r9-date { display: flex; align-items: center; gap: 8px; }
 `);
 
+/* ================= Invoices that are no longer owed ================= */
+/** Written off as bad debt, or voided: neither counts as money owed anywhere (accounts receivable, past due, statements, warnings). */
+WD.INV_BAD = 'Bad debt'; WD.INV_VOID = 'Void';
+WD.invClosed = i => !!i && (i.status === WD.INV_BAD || i.status === WD.INV_VOID);
+/** Sent and still owed: not paid, not a draft, not written off and not voided. */
+WD.invOpen = i => !!i && i.status !== 'Paid' && i.status !== 'Draft' && !WD.invClosed(i);
+/** The stamp printed across an invoice document that is no longer owed. */
+WD.invStamp = i => !i ? null : i.status === WD.INV_VOID ? 'VOID' : i.status === WD.INV_BAD ? 'BAD DEBT' : null;
+
 /* ================= Sales tax ================= */
-data.tax = { on: false, name: 'Sales tax', rate: 8.25, exemptItems: { cod: true }, exemptGov: true, exemptCustomers: [] };
+/* One or more taxes. Each has its own rate and its own list of what it applies to, in two categories: services (the price book) and products.
+   `svcOn` / `prodOn` switch a whole category; `off[id]` leaves one item out of a category that is on. Exemptions apply to every tax. */
+data.tax = { on: false, exemptGov: true, exemptCustomers: [], types: [{ id: 'tx1', name: 'Sales tax', rate: 8.25, on: true, svcOn: true, prodOn: true, off: { cod: true } }] };
+/* Older callers read data.tax.name / .rate / .exemptItems: they see the first tax. */
+['name', 'rate'].forEach(k => Object.defineProperty(data.tax, k, { enumerable: true, get: () => (data.tax.types[0] || { name: 'Sales tax', rate: 0 })[k], set: v => { if (data.tax.types[0]) data.tax.types[0][k] = v; } }));
+Object.defineProperty(data.tax, 'exemptItems', { enumerable: false, get: () => (data.tax.types[0] || { off: {} }).off });
 const cents = n => Math.round(n * 100) / 100;
-const taxable = lines => lines.reduce((s, l) => s + (l.id && data.tax.exemptItems[l.id] ? 0 : (+l.qty || 0) * (+l.rate || 0)), 0);
+const isProduct = id => !!id && (data.products || []).some(x => x.id === id);
+const taxedBy = (t, l) => (isProduct(l.id) ? t.prodOn : t.svcOn) && !(l.id && t.off[l.id]);
+const taxableFor = (t, lines) => lines.reduce((s, l) => s + (taxedBy(t, l) ? (+l.qty || 0) * (+l.rate || 0) : 0), 0);
+const taxLbl = t => t.name + ' (' + t.rate + '%)', activeTaxes = () => data.tax.types.filter(t => t.on);
 const exempt = c => !!c && (data.tax.exemptCustomers.includes(c.id) || (data.tax.exemptGov && c.custType === 'government'));
-/** Tax for a set of invoice lines and a customer → { tax, rate, label }. Zero when tax is off or the customer is exempt. */
-WD.taxInfo = (lines, cust) => { const T = data.tax, rate = T.on && !exempt(cust) ? T.rate : 0; return { rate, tax: cents(taxable(lines) * rate / 100), label: T.name + ' (' + T.rate + '%)' }; };
-R9.taxLabel = () => data.tax.on ? data.tax.rate + '% · ' + data.tax.name : 'Off';
-R9.taxSpec = () => ({ title: 'Sales tax', render: page => { if (!admin()) return ui.empty({ icon: 'lock', title: 'Ask an admin', text: 'This needs the Company settings permission.' });
-  const T = data.tax, re = () => { WD.changed(); page.refresh(); }, sample = [{ id: 'console', qty: 2, rate: 30 }, { id: 'trip', qty: 1, rate: 25 }], others = data.customers.filter(c => !T.exemptCustomers.includes(c.id) && !['lead', 'contacted', 'quoted', 'lost'].includes(c.lifecycle)).sort((a, b) => a.name.localeCompare(b.name));
+/** Tax for a set of invoice lines and a customer → { tax, rate, label, taxes: [{id, name, rate, amount, label}] }. `tax` is the total of every tax that applies,
+    `rate` the sum of their rates, `label` their names. Zero (and no `taxes`) when tax is off or the customer is exempt. */
+WD.taxInfo = (lines, cust) => { const T = data.tax, act = activeTaxes(), list = T.on && !exempt(cust) ? act.map(t => ({ id: t.id, name: t.name, rate: t.rate, amount: cents(taxableFor(t, lines) * t.rate / 100), label: taxLbl(t) })) : [];
+  return { rate: cents(list.reduce((s, t) => s + t.rate, 0)), tax: cents(list.reduce((s, t) => s + t.amount, 0)), label: act.length ? act.map(taxLbl).join(' + ') : 'Sales tax', taxes: list }; };
+R9.taxLabel = () => { const act = activeTaxes(); return !data.tax.on || !act.length ? 'Off' : act.length === 1 ? act[0].rate + '% · ' + act[0].name : act.length + ' taxes · ' + act.map(t => t.rate + '%').join(' + '); };
+const pctInput = (t, re) => h('input.jb-rate', { type: 'text', inputmode: 'decimal', 'aria-label': 'Tax rate', value: t.rate + '%', onfocus: e => e.target.select(), onchange: e => { const v = parseFloat(e.target.value.replace(/[^0-9.]/g, '')); if (!isNaN(v) && v <= 30) t.rate = v; re(); } });
+const catSummary = (t, on, items, word) => { const n = items.filter(x => !t.off[x.id]).length; return !on ? 'no ' + word + 's' : n === items.length ? 'all ' + word + 's' : n + ' of ' + plural(items.length, word); };
+const taxSummary = t => t.rate + '% · ' + catSummary(t, t.svcOn, data.priceBook, 'service') + ', ' + catSummary(t, t.prodOn, data.products || [], 'product');
+/** One tax: its name and rate, and what it applies to in two categories, each with a switch for the whole category and one per item. */
+const taxTypeSpec = t => ({ title: t.name, render: page => { const T = data.tax, re = () => { WD.changed(); page.refresh(); };
+  const cat = (header, key, items, word) => { const n = items.filter(x => !t.off[x.id]).length;
+    return ui.section({ header: header + ' · ' + (t[key] ? n + ' of ' + items.length + ' taxed' : 'not taxed'), fold: false, footer: t[key] ? 'Switch off any ' + word + ' this tax doesn’t apply to. ' + (word === 'service' ? 'Services' : 'Products') + ' you add later are taxed unless you switch them off here.' : 'No ' + word + ' is charged this tax.' },
+      ui.toggleRow({ title: h('b', 'Tax all ' + word + 's'), subtitle: t[key] ? (n === items.length ? 'Every ' + word + ' is taxed' : plural(items.length - n, word) + ' left out below') : 'Off for the whole category', value: t[key], onChange: v => { t[key] = v; if (v) items.forEach(x => { delete t.off[x.id]; }); re(); } }),
+      t[key] && items.map(x => ui.toggleRow({ title: x.name, subtitle: money(x.rate) + ' per ' + x.unit, value: !t.off[x.id], onChange: v => { if (v) delete t.off[x.id]; else t.off[x.id] = true; re(); } }))); };
+  const sample = [{ id: 'console', qty: 2, rate: 30 }, { id: 'trip', qty: 1, rate: 25 }];
   return ui.list(
-    ui.section({ footer: T.on ? 'Tax is added to new invoices as its own line above the total, and prints on the invoice. Invoices already created keep the tax they were created with.' : 'Off: invoices have no tax line. Turn this on if what you sell or the services you perform are taxed where you work.' },
-      ui.toggleRow({ icon: 'percent', iconColor: 'var(--red)', title: 'Charge sales tax', value: T.on, onChange: v => { T.on = v; re(); } })),
-    T.on && ui.section({ header: 'Rate', footer: 'For example 2 consoles at $30 and a $25 trip charge: ' + money(taxable(sample)) + ' taxable → ' + money(cents(taxable(sample) * T.rate / 100)) + ' tax.' },
-      ui.inputRow({ label: 'Name on the invoice', value: T.name, placeholder: 'Sales tax', onInput: v => { T.name = v.trim() || 'Sales tax'; } }),
-      h('div.row', h('div.row-main', h('div.row-title', 'Rate'), h('div.row-sub', 'Percent of the taxable lines')), h('input.jb-rate', { type: 'text', inputmode: 'decimal', 'aria-label': 'Tax rate', value: T.rate + '%', onchange: e => { const v = parseFloat(e.target.value.replace(/[^0-9.]/g, '')); if (!isNaN(v) && v <= 30) T.rate = v; re(); } }))),
-    T.on && ui.section({ header: 'What is taxed', footer: 'Switch off anything that isn’t taxable, such as a service or a fee that your state doesn’t tax.' },
-      data.priceBook.map(x => ui.toggleRow({ title: x.name, subtitle: money(x.rate) + ' per ' + x.unit, value: !T.exemptItems[x.id], onChange: v => { T.exemptItems[x.id] = !v; re(); } }))),
-    T.on && ui.section({ header: 'Tax-exempt customers', footer: 'Exempt customers are never charged tax. Keep their exemption certificate in the customer’s documents.' },
+    ui.section({ header: 'Name and rate', fold: false, footer: 'For example 2 consoles at $30 and a $25 trip charge: ' + money(taxableFor(t, sample)) + ' taxable → ' + money(cents(taxableFor(t, sample) * t.rate / 100)) + ' of ' + t.name.toLowerCase() + '.' },
+      ui.inputRow({ label: 'Name on the invoice', value: t.name, placeholder: 'Sales tax', onInput: v => { t.name = v.trim() || 'Sales tax'; page.setTitle(t.name); } }),
+      h('div.row', h('div.row-main', h('div.row-title', 'Rate'), h('div.row-sub', 'Percent of the taxed lines')), pctInput(t, re)),
+      ui.toggleRow({ title: 'Charge this tax', subtitle: t.on ? null : 'Off: kept here, not added to invoices', value: t.on, onChange: v => { t.on = v; re(); } })),
+    cat('Services', 'svcOn', data.priceBook, 'service'), cat('Products', 'prodOn', data.products || [], 'product'),
+    T.types.length > 1 && ui.section({ fold: false, footer: 'Invoices already created keep the tax they were created with.' }, ui.row({ title: 'Delete this tax', destructive: true, onTap: async () => {
+      if (await ui.actionSheet({ title: 'Delete “' + t.name + '”?', message: 'It stops being added to new invoices.', buttons: [{ label: 'Delete tax', value: true, role: 'destructive' }] })) { T.types.splice(T.types.indexOf(t), 1); WD.changed(); page.pop(); } } })));
+} });
+R9.taxSpec = () => ({ title: 'Rate, what is taxed and exemptions', render: page => { if (!admin()) return ui.empty({ icon: 'lock', title: 'Ask an admin', text: 'This needs the Company settings permission.' });
+  const T = data.tax, re = () => { WD.changed(); page.refresh(); }, others = data.customers.filter(c => !T.exemptCustomers.includes(c.id) && !['lead', 'contacted', 'quoted', 'lost'].includes(c.lifecycle)).sort((a, b) => a.name.localeCompare(b.name));
+  return ui.list(
+    ui.section({ fold: false, footer: T.on ? 'Each tax is added to new invoices as its own line above the total, and prints on the invoice. Invoices already created keep the tax they were created with.' : 'Off: invoices have no tax line. Turn this on if what you sell or the services you perform are taxed where you work.' },
+      ui.toggleRow({ icon: 'percent', iconColor: 'var(--red)', title: 'Apply tax to invoices', value: T.on, onChange: v => { T.on = v; re(); } })),
+    T.on && ui.section({ header: 'Taxes · ' + T.types.length, fold: false, footer: 'Tap a tax for its rate and what it applies to: services and products each have a switch for the whole category and one for every item. Add another tax when a different rate applies to different services or products, such as a county tax on products only.' },
+      T.types.map(t => ui.row({ icon: 'percent', iconColor: t.on ? 'var(--red)' : 'var(--gray)', title: t.name, subtitle: taxSummary(t), badge: t.on ? null : ui.badge('Off', 'var(--gray)'), chevron: true, onTap: () => page.push(taxTypeSpec(t)) })),
+      ui.row({ icon: 'plus.circle.fill', iconPlain: true, iconColor: 'var(--green)', title: 'Add a tax', tint: true, onTap: async () => {
+        const r = await ui.alert({ title: 'New tax', message: 'For example “County tax” or “Product sales tax”. You choose its rate and what it applies to next.', input: { placeholder: 'Name on the invoice' }, buttons: [{ label: 'Cancel', value: null }, { label: 'Add', value: true, bold: true }] }); if (!r || !r.value || !r.text.trim()) return;
+        const t = { id: 'tx' + Date.now().toString(36), name: r.text.trim(), rate: 1, on: true, svcOn: false, prodOn: true, off: {} }; T.types.push(t); WD.changed(); page.push(taxTypeSpec(t)); } })),
+    T.on && ui.section({ header: 'Tax-exempt customers', footer: 'Exempt customers are never charged any tax. Keep their exemption certificate in the customer’s documents.' },
       ui.toggleRow({ title: 'Government customers are exempt', value: T.exemptGov, onChange: v => { T.exemptGov = v; re(); } }),
       T.exemptCustomers.map(id => q.customer(id)).filter(Boolean).map(c => ui.row({ title: c.name, trailing: h('button.cu-link', { onclick: () => { T.exemptCustomers = T.exemptCustomers.filter(x => x !== c.id); re(); } }, 'Remove') })),
       ui.pickerRow({ title: 'Add a customer', value: '', options: [{ value: '', label: 'Choose…' }].concat(others.map(c => ({ value: c.id, label: c.name }))), onChange: v => { if (v) { T.exemptCustomers.push(v); re(); } } })),
@@ -62,6 +101,7 @@ function lineChanges(a, b) {
 }
 /** The “Edit invoice…” row, shown wherever an invoice’s actions are. Master invoices are corrected through their service notes. */
 R9.editRow = (rec, job) => { const inv = job && job.invoice, status = rec ? rec.status : inv && inv.status;
+  if (WD.invClosed && WD.invClosed(rec || inv)) return null;   // a voided or written-off invoice is reopened before it can be changed
   if (!status || status === 'Draft' || (rec && rec.master) || !B().canInvoice()) return null;
   return ui.row({ title: 'Edit invoice…', subtitle: status === 'Paid' ? 'Fix a mistake · this invoice is already paid' : 'Fix a mistake: lines, quantities, prices, date, PO', icon: 'pencil', iconPlain: true, tint: true, onTap: () => R9.editInvoice(rec, job) }); };
 R9.editInvoice = (rec, job) => {
@@ -73,7 +113,9 @@ R9.editInvoice = (rec, job) => {
   const src = (rec && rec.lines) || (inv && inv.lines) || (rec && WD.screens.customers.invLines ? WD.screens.customers.invLines(rec) : job ? B().linesForJob(job) : []);
   const was = { lines: src.map(l => ({ ...l })), amount: rec ? rec.amount : inv.amount, po: (inv && inv.po) || (rec && rec.po) || '', serviceDate: (inv && inv.serviceDate) || (job && job.day) || rec.day, pounds: (inv && inv.pounds) || '', billTo: (inv && inv.billTo) || (cust && (cust.billingEmail || (cust.contacts[0] || {}).email)) || '' };
   /* An invoice keeps the tax rate it was created with; one created without tax stays without. */
-  const rate = (inv && inv.tax > 0 && inv.taxRate) || 0, taxOf = lines => cents(taxable(lines) * rate / 100), sum = lines => cents(lines.reduce((s, l) => s + (+l.qty || 0) * (+l.rate || 0), 0) + taxOf(lines));
+  const th = inv && inv.tax > 0 ? inv : holder, kept = th && th.tax > 0 ? (th.taxes && th.taxes.length ? th.taxes : [{ id: (data.tax.types[0] || {}).id, name: th.taxLabel || 'Sales tax', label: th.taxLabel || 'Sales tax', rate: th.taxRate || (was.amount > th.tax ? cents(th.tax / (was.amount - th.tax) * 100) : 0) }]) : [], taxDef = id => data.tax.types.find(t => t.id === id) || data.tax.types[0];
+  const taxesOf = lines => kept.map(k => ({ ...k, amount: cents((taxDef(k.id) ? taxableFor(taxDef(k.id), lines) : lines.reduce((s, l) => s + (+l.qty || 0) * (+l.rate || 0), 0)) * k.rate / 100) })), taxOf = lines => cents(taxesOf(lines).reduce((s, t) => s + t.amount, 0)), rate = kept.length;
+  const sum = lines => cents(lines.reduce((s, l) => s + (+l.qty || 0) * (+l.rate || 0), 0) + taxOf(lines));
   const f = { lines: was.lines.map(l => ({ ...l })), po: was.po, serviceDate: was.serviceDate, pounds: was.pounds, billTo: was.billTo, reason: '', resend: true };
   const changes = () => { const out = lineChanges(was.lines, f.lines);
     if (f.serviceDate !== was.serviceDate) out.push('Service date: ' + fmt.day(was.serviceDate, 'md') + ' → ' + fmt.day(f.serviceDate, 'md'));
@@ -101,8 +143,8 @@ R9.editInvoice = (rec, job) => {
     const resent = f.resend && !!f.billTo.trim(), at = +WD.now(), who = me();
     const apply = () => {
       const lines = f.lines.map(l => ({ ...l })), c = cust;
-      if (inv) { Object.assign(inv, { lines, amount, tax: taxOf(lines), po: f.po.trim(), serviceDate: f.serviceDate, pounds: f.pounds || null, billTo: f.billTo.trim(), revisedAt: at }); job.po = f.po.trim(); }
-      if (rec) Object.assign(rec, { lines, amount, po: f.po.trim(), revisedAt: at });
+      if (inv) { Object.assign(inv, { lines, amount, tax: taxOf(lines), taxes: kept.length ? taxesOf(lines) : inv.taxes, po: f.po.trim(), serviceDate: f.serviceDate, pounds: f.pounds || null, billTo: f.billTo.trim(), revisedAt: at }); job.po = f.po.trim(); }
+      if (rec) Object.assign(rec, { lines, amount, po: f.po.trim(), revisedAt: at }, kept.length ? { tax: taxOf(lines), taxes: taxesOf(lines) } : null);
       (holder.revisions = holder.revisions || []).unshift({ at, by: who, reason, from: was.amount, to: amount, changes: ch, resent: resent ? f.billTo.trim() : null });
       if (c && c.stats) { c.stats.invoiced = Math.max(0, c.stats.invoiced + delta); if (status === 'Overdue') c.stats.balance = Math.max(0, c.stats.balance + delta); }
       if (status === 'Paid' && delta > 0) { holder.balanceDue = cents((holder.balanceDue || 0) + delta); holder.credit = 0; if (rec) rec.status = 'Sent'; if (inv) inv.status = 'Sent'; }
@@ -121,7 +163,7 @@ R9.editInvoice = (rec, job) => {
         ui.section({ header: (cust ? cust.name : job ? job.title : 'Invoice') + ' · issued ' + fmt.day(rec ? rec.day : job.day, 'md'), footer: 'Change a quantity or price, rename or delete a line, or add one.' },
           f.lines.map((l, i) => lineRow(l, i, p)),
           ui.row({ title: 'Add line', icon: 'plus.circle.fill', iconPlain: true, iconColor: 'var(--green)', tint: true, onTap: (e, el) => addLine(el, p) }),
-          rate > 0 && h('div.bi-total', { style: 'font-weight:400;font-size:15px;padding-bottom:0' }, h('span', inv.taxLabel || 'Sales tax'), h('span', money(taxOf(f.lines)))),
+          rate > 0 && taxesOf(f.lines).map(t => h('div.bi-total', { style: 'font-weight:400;font-size:15px;padding-bottom:0' }, h('span', t.label || t.name || 'Sales tax'), h('span', money(t.amount)))),
           h('div.bi-total', h('span', 'Total'), totalEl = h('span', money(t))),
           wasEl = h('div.r9-was', { style: { display: t !== was.amount ? '' : 'none' } }, t !== was.amount ? 'Was ' + money(was.amount) + ' · ' + (t > was.amount ? '+' : '−') + money(Math.abs(t - was.amount)) : '')),
         ui.section('Details',

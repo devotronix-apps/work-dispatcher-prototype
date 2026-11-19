@@ -13,7 +13,7 @@ const R8 = WD.r8 = {};
 WD.css(`
 .r8-ex { padding: 10px 16px 12px; font-size: 14px; line-height: 21px; color: var(--label2); } .r8-ex b { color: var(--label); }
 .pm-wrap { padding: 6px 16px 0; } .pm-map { position: relative; } .pm-map .mm { border-radius: 14px; }
-.pm-pin { position: absolute; transform: translate(-50%, -50%); width: 25px; height: 25px; border-radius: 50%; background: var(--c); border: 3px solid var(--ring, #fff); color: var(--fg, #fff); font-family: inherit; font-size: 9.5px; font-weight: 800; letter-spacing: 0; display: grid; place-items: center; box-shadow: 0 1px 3px rgba(0,0,0,.35); padding: 0; cursor: pointer; }
+.pm-pin { position: absolute; transform: translate(-50%, -50%); width: 25px; height: 25px; border-radius: 50%; background: var(--c); border: 3px solid var(--ring, #fff); color: var(--fg, #fff); font-family: inherit; font-size: 12px; font-weight: 800; letter-spacing: 0; display: grid; place-items: center; box-shadow: 0 1px 3px rgba(0,0,0,.35); padding: 0; cursor: pointer; }
 .pm-pin.faded { opacity: .38; width: 19px; height: 19px; font-size: 0; border-width: 2.5px; } .pm-pin.sel { outline: 3px solid var(--tint); outline-offset: 2px; z-index: 3; opacity: 1; }
 .pm-target { position: absolute; width: 20px; height: 20px; transform: translate(-50%, -100%) rotate(-45deg); transform-origin: 50% 100%; margin-top: -3px; border-radius: 50% 50% 50% 0; background: #FF3B30; border: 2.5px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.45); z-index: 2; pointer-events: none; }
 .pm-target::after { content: ''; position: absolute; inset: 4px; border-radius: 50%; background: #fff; }

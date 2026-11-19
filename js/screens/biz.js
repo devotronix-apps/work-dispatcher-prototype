@@ -2,7 +2,8 @@
    business type and document wording (industry presets with starter items), service checklists and required photos by job type,
    custom fields on customers and jobs, pausing a customer's service, fleet and compliance (pre-trip inspections, maintenance by
    odometer, expiring vehicle and driver documents), the load sheet and truck capacity, mileage and expenses, and route performance.
-   Everything is reached from Settings → Business type and wording; the pieces a driver uses also sit on the job, customer and Shift screens. */
+   Business wording, checklists, custom fields and route performance are reached from Settings; fleet and compliance, the load sheet and mileage
+   and expenses from Maintenance → Fleet setup. The pieces a driver uses also sit on the job, customer and Shift screens. */
 (function () {
 'use strict';
 const WD = window.WD, { h, ui, icon, state: S, data, q, fmt, date: D, api } = WD;
@@ -16,9 +17,9 @@ const BZ = WD.biz = {};
 WD.addIcons({ wrench: '<path d="M14.500 6.500a4 4 0 0 0 5 5L11 20a2.100 2.100 0 0 1-3-3l8.500-8.500"/><path d="M14.500 6.500l2-2a4.500 4.500 0 0 1 3 3l-2 2"/>', gauge: '<path d="M4 17a8.500 8.500 0 1 1 16 0"/><path d="M12 14l3.500-4.500"/><circle cx="12" cy="14.500" r="1.300" fill="currentColor"/>' });
 WD.css(`
 .bz-bar { padding: 2px 16px 12px; } .bz-bar .progress { height: 8px; } .bz-bar.over .progress i { background: var(--red); } .bz-bar small { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--label2); padding-top: 5px; }
-.bz-kpi { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--sep); } .bz-kpi div { background: var(--cell); padding: 10px 6px; text-align: center; } .bz-kpi b { display: block; font-size: 17px; font-variant-numeric: tabular-nums; } .bz-kpi span { font-size: 11.5px; color: var(--label2); }
+.bz-kpi { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--sep); } .bz-kpi div { background: var(--cell); padding: 10px 6px; text-align: center; } .bz-kpi b { display: block; font-size: 17px; font-variant-numeric: tabular-nums; } .bz-kpi span { font-size: 12px; color: var(--label2); }
 .bz-insp { display: flex; gap: 6px; } .bz-insp button { border: 0; border-radius: 8px; padding: 5px 10px; font: inherit; font-size: 14px; background: var(--fill3); color: var(--label2); cursor: pointer; } .bz-insp button.ok.on { background: var(--green); color: #fff; } .bz-insp button.bad.on { background: var(--red); color: #fff; }
-.bz-prev { margin: 8px 16px 12px; padding: 12px 14px; border-radius: 10px; background: #fff; color: #1c1c1e; box-shadow: inset 0 0 0 .5px var(--sep); font-size: 12.5px; line-height: 17px; } .bz-prev b { font-size: 13.5px; } .bz-prev i { display: block; text-align: center; margin-top: 4px; } .bz-prev .sl { border-top: 1px solid #1c1c1e; margin-top: 26px; padding-top: 3px; font-size: 11px; color: #3a3a3c; }
+.bz-prev { margin: 8px 16px 12px; padding: 12px 14px; border-radius: 10px; background: #fff; color: #1c1c1e; box-shadow: inset 0 0 0 .5px var(--sep); font-size: 12.5px; line-height: 17px; } .bz-prev b { font-size: 13.5px; } .bz-prev i { display: block; text-align: center; margin-top: 4px; } .bz-prev .sl { border-top: 1px solid #1c1c1e; margin-top: 26px; padding-top: 3px; font-size: 12px; color: #3a3a3c; }
 .bz-seg { padding: 10px 16px 0; }
 `);
 
@@ -36,7 +37,7 @@ const PRESETS = [
   { id: 'sales', name: 'Field sales and merchandising', ic: 'briefcase', rep: 'Sales Representative', proofOn: false, proofTitle: 'ORDER CONFIRMATION', proofText: 'Thank you for your order. {company} will confirm the delivery date.', items: [['Product order', 'order', 0], ['Display setup', 'visit', 0], ['Samples left', 'each', 0]], checks: ['Shelf or display checked', 'Order reviewed with the buyer', 'Photo of the display'], fields: ['Buyer’s name', 'Best day to visit'] },
   { id: 'other', name: 'Another route business', ic: 'route', rep: 'Service Representative', proofOn: false, proofTitle: 'SERVICE SUMMARY', proofText: DONE, items: [], checks: [], fields: [] },
 ];
-data.biz = { industry: 'shredding', repTitle: PRESETS[0].rep, proofOn: true, proofTitle: PRESETS[0].proofTitle, proofText: SHRED };
+data.biz = { industry: 'shredding', repTitle: PRESETS[0].rep, proofOn: true, proofTitle: PRESETS[0].proofTitle, proofText: SHRED, destroy: 'onsite' };   // destroy: 'onsite' | 'offsite' (shredding only)
 const preset = () => PRESETS.find(x => x.id === data.biz.industry) || PRESETS[0];
 BZ.industryName = () => preset().name;
 BZ.wordingSpec = () => ({ title: 'Business type and wording', render: page => { if (!admin()) return locked();
@@ -45,6 +46,12 @@ BZ.wordingSpec = () => ({ title: 'Business type and wording', render: page => { 
   return ui.list(
     h('div', { style: 'padding:4px 4px 0' }, ui.note('The app was built for a shredding company, but routes, stops, invoices and customers work the same for any business that visits customers on a route. Choose yours to change the wording on documents and get starter items.')),
     ui.section({ header: 'What kind of business is this?' }, PRESETS.map(x => ui.row({ icon: x.ic, iconColor: Z.industry === x.id ? 'var(--tint)' : 'var(--gray)', title: x.name, trailing: Z.industry === x.id ? icon('checkmark', 20, 'var(--tint)') : null, onTap: () => { if (Z.industry === x.id) return; Object.assign(Z, { industry: x.id, repTitle: x.rep, proofOn: x.proofOn, proofTitle: x.proofTitle, proofText: x.proofText }); re(); ui.toast('Wording set for ' + x.name.toLowerCase(), 'checkmark', 2200); } }))),
+    /* Shredding only: off-site companies collect the material and destroy it later, so the certificate waits for someone to confirm it (billing.js). */
+    Z.industry === 'shredding' && ui.section({ header: 'Where material is destroyed', fold: false, showFooter: true, footer: Z.destroy === 'offsite' ? 'Invoices created at the stop print “Certificate of destruction to follow once destruction is confirmed.” The job shows “Destruction not yet confirmed” until someone at the plant confirms it under Invoices → Awaiting destruction confirmation; the certificate is sent then, with the destruction date.' : 'The truck shreds at the customer, so the certificate of destruction prints on the invoice created at the stop.' },
+      [['onsite', 'On site at the customer'], ['offsite', 'Off site at our facility']].map(([v, t]) => ui.row({ title: t, trailing: (Z.destroy || 'onsite') === v ? icon('checkmark', 20, 'var(--tint)') : null, onTap: () => { if ((Z.destroy || 'onsite') === v) return; Z.destroy = v;
+        const n = v === 'offsite' && WD.screens.billing && WD.screens.billing.seedAwaiting ? WD.screens.billing.seedAwaiting() : 0; re();
+        ui.toast(v === 'offsite' ? 'Certificates now wait for confirmation' + (n ? ' · ' + n + (n === 1 ? ' recent load is' : ' recent loads are') + ' awaiting confirmation' : '') : 'Certificates print on the invoice at the stop', 'checkmark', 3000); } })),
+      Z.destroy === 'offsite' && WD.workflow && WD.workflow.destructionSpec && ui.row({ icon: 'clock', iconColor: 'var(--orange)', title: 'Awaiting destruction confirmation', detail: String(WD.workflow.awaitingDestruction ? WD.workflow.awaitingDestruction() : ''), chevron: true, onTap: () => page.push(WD.workflow.destructionSpec()) })),
     ui.section({ header: 'Wording on invoices', footer: 'The statement prints at the bottom of every invoice. {company} is replaced with your company name.' },
       ui.inputRow({ label: 'Signature line', value: Z.repTitle, placeholder: 'Service Representative', onInput: v => { Z.repTitle = v.trim() || P.rep; } }),
       ui.toggleRow({ title: 'Print a statement on invoices', subtitle: 'A certificate, service report or proof of delivery', value: Z.proofOn, onChange: v => { Z.proofOn = v; re(); } }),
@@ -165,14 +172,16 @@ function pmSheet(s, done) { const f = { mi: s.every ? String(s.every) : '', hr: 
 BZ.svc = svc; BZ.daysTo = k => daysTo(k);
 const dueIn = s => s.last + s.every - (F.odo[s.owner] || 0), daysTo = k => Math.round((D.parse(k) - D.parse(today())) / 864e5), ownerName = id => (q.vehicle(id) || q.user(id) || { name: '' }).name;
 const lastInsp = vid => F.inspections.filter(x => x.vehicleId === vid).sort((a, b) => b.at - a.at)[0], inspectedToday = vid => { const x = lastInsp(vid); return !!x && D.key(new Date(x.at)) === today(); };
-function attention() {
+/** scope 'trucks' keeps what belongs to a vehicle, 'people' what belongs to a person; nothing keeps both. */
+function attention(scope) {
+  if (scope) return attention().filter(a => (scope === 'trucks') === !!q.vehicle(a.owner));
   const out = [];
   F.services.forEach(s => { const st = svc(s); if (st.over || st.warn) out.push({ color: st.over ? 'var(--red)' : 'var(--orange)', icon: 'wrench', title: ownerName(s.owner) + ' · ' + s.name, sub: st.text, owner: s.owner }); });
   F.docs.forEach(d => { const n = daysTo(d.expires); if (n <= ND()) out.push({ color: n < 0 ? 'var(--red)' : 'var(--orange)', icon: 'doc.text', title: ownerName(d.owner) + ' · ' + d.name, sub: n < 0 ? 'Expired ' + plural(-n, 'day') + ' ago' : n === 0 ? 'Expires today' : 'Expires in ' + plural(n, 'day') + ' · ' + fmt.day(d.expires, 'md'), owner: d.owner }); });
   data.vehicles.forEach(v => { const x = lastInsp(v.id); if (x && x.defects.length && !x.fixed) out.push({ color: 'var(--red)', icon: 'exclamationmark.triangle', title: v.name + ' · ' + plural(x.defects.length, 'defect') + ' reported', sub: x.defects.join(', ') + ' · ' + x.by, owner: v.id }); });
   return out;
 }
-BZ.fleetBadge = () => attention().length;
+BZ.fleetBadge = scope => attention(scope).length;
 const docRows = (owner, re) => F.docs.filter(d => d.owner === owner).map(d => { const n = daysTo(d.expires); return ui.row({ title: d.name, subtitle: n < 0 ? h('span', { style: 'color:var(--red);font-weight:600' }, 'Expired') : n <= ND() ? h('span', { style: 'color:var(--orange);font-weight:600' }, 'Expires in ' + plural(n, 'day')) : 'Expires ' + fmt.day(d.expires, 'md') + ', ' + d.expires.slice(0, 4),
   trailing: h('input.pill-input', { type: 'date', value: d.expires, 'aria-label': d.name + ' expires', onchange: e => { if (e.target.value) { d.expires = e.target.value; re(); } } }) }); });
 const addDoc = async (owner, re) => { const n = await ask('New document', 'e.g. Applicator license', '', 'It gets an expiry date and a reminder ' + ND() + ' days before.'); if (n) { F.docs.push({ id: uid('d'), owner, name: n, expires: D.add(today(), 365) }); re(); } };
@@ -197,14 +206,16 @@ BZ.vehicleSpec = v => ({ title: v.name, render: page => { const re = () => { WD.
         const a = await ui.actionSheet({ title: s.name + ' · ' + v.name, buttons: [{ label: 'Done today at ' + num(F.odo[v.id]) + ' mi', value: 'done' }, { label: 'Change the schedule…', value: 'every' }, { label: 'Delete', value: 'del', role: 'destructive' }] });
         if (a === 'done') { s.last = F.odo[v.id]; s.lastDay = today(); s.lastHours = F.hours[v.id] || 0; ui.toast(s.name + ' recorded', 'checkmark'); re(); } else if (a === 'del') { F.services.splice(F.services.indexOf(s), 1); re(); } else if (a === 'every') pmSheet(s, re); } : null }); }),
       edit && ui.row({ icon: 'plus.circle.fill', iconPlain: true, iconColor: 'var(--green)', title: 'Add a service', tint: true, onTap: async () => { const n = await ask('New service', 'e.g. Brake inspection'); if (!n) return; const s = { id: uid('s'), owner: v.id, name: n, every: 0, everyHours: 0, everyDays: 0, last: F.odo[v.id], lastDay: today(), lastHours: F.hours[v.id] || 0 }; pmSheet(s, () => { if (!F.services.includes(s)) F.services.push(s); re(); }); } })),
-    ui.section({ header: 'Documents', fold: false, footer: 'Registration, insurance, inspections and (in California) the CARB Clean Truck Check every 6 months. A reminder shows ' + ND() + ' days before each one expires; change that in Settings → Compliance and reminders.' }, docRows(v.id, re), edit && ui.row({ icon: 'plus.circle.fill', iconPlain: true, iconColor: 'var(--green)', title: 'Add a document', tint: true, onTap: () => addDoc(v.id, re) })));
+    ui.section({ header: 'Documents', fold: false, footer: 'Registration, insurance, inspections and (in California) the CARB Clean Truck Check every 6 months. A reminder shows ' + ND() + ' days before each one expires; change that in Maintenance → Fleet compliance and reminders.' }, docRows(v.id, re), edit && ui.row({ icon: 'plus.circle.fill', iconPlain: true, iconColor: 'var(--green)', title: 'Add a document', tint: true, onTap: () => addDoc(v.id, re) })));
 } });
-BZ.fleetSpec = () => ({ title: 'Fleet and compliance', render: page => { const re = () => { WD.changed(); page.refresh(); }, att = attention(), drivers = data.users.filter(u => F.docs.some(d => d.owner === u.id)), edit = admin();
+/** scope: 'trucks' (truck documents, services and the pre-trip checklist; Maintenance), 'people' (drivers' licenses and medical cards; HR), or nothing for both. */
+BZ.fleetSpec = scope => ({ title: scope === 'trucks' ? 'Truck documents and inspections' : scope === 'people' ? 'Driver documents' : 'Fleet and compliance', render: page => { const re = () => { WD.changed(); page.refresh(); }, att = attention(scope), drivers = data.users.filter(u => F.docs.some(d => d.owner === u.id)), edit = admin(), T = scope !== 'people', P = scope !== 'trucks';
   return ui.list(
     ui.section({ header: att.length ? 'Needs attention · ' + att.length : 'Needs attention' }, att.length ? att.map(a => ui.row({ icon: a.icon, iconColor: a.color, title: a.title, subtitle: a.sub, chevron: !!q.vehicle(a.owner), onTap: q.vehicle(a.owner) ? () => page.push(BZ.vehicleSpec(q.vehicle(a.owner))) : null })) : ui.row({ icon: 'checkmark.circle.fill', iconPlain: true, iconColor: 'var(--green)', title: 'Everything is up to date' })),
-    ui.section({ header: 'Vehicles', footer: 'Drivers do the pre-trip inspection from the Shift tab before leaving.' }, data.vehicles.filter(v => v.active !== false).map(v => ui.row({ icon: 'truck', iconColor: inspectedToday(v.id) ? 'var(--green)' : 'var(--gray)', title: v.name, subtitle: num(F.odo[v.id] || 0) + ' mi · ' + (inspectedToday(v.id) ? 'inspected today' : 'not inspected today'), chevron: true, onTap: () => page.push(BZ.vehicleSpec(v)) }))),
-    drivers.map(u => ui.section({ header: u.name + ' · documents' }, docRows(u.id, re), edit && ui.row({ icon: 'plus.circle.fill', iconPlain: true, iconColor: 'var(--green)', title: 'Add a license or certificate', tint: true, onTap: () => addDoc(u.id, re) }))),
-    edit && ui.section({ header: 'What the pre-trip inspection checks', footer: 'Tap an item to remove it.' }, F.checklist.map(x => ui.row({ title: x, onTap: async () => { if (await ui.actionSheet({ title: x, buttons: [{ label: 'Remove from the inspection', value: true, role: 'destructive' }] })) { F.checklist.splice(F.checklist.indexOf(x), 1); re(); } } })),
+    T && ui.section({ header: 'Vehicles', footer: 'Drivers do the pre-trip inspection when they clock in, before leaving.' }, data.vehicles.filter(v => v.active !== false).map(v => ui.row({ icon: 'truck', iconColor: inspectedToday(v.id) ? 'var(--green)' : 'var(--gray)', title: v.name, subtitle: num(F.odo[v.id] || 0) + ' mi · ' + (inspectedToday(v.id) ? 'inspected today' : 'not inspected today'), chevron: true, onTap: () => page.push(BZ.vehicleSpec(v)) }))),
+    P && drivers.map(u => ui.section({ header: u.name + ' · documents' }, docRows(u.id, re), edit && ui.row({ icon: 'plus.circle.fill', iconPlain: true, iconColor: 'var(--green)', title: 'Add a license or certificate', tint: true, onTap: () => addDoc(u.id, re) }))),
+    P && scope && !drivers.length && ui.section(null, ui.row({ title: 'No driver documents on file' })),
+    T && edit && ui.section({ header: 'What the pre-trip inspection checks', footer: 'Tap an item to remove it.' }, F.checklist.map(x => ui.row({ title: x, onTap: async () => { if (await ui.actionSheet({ title: x, buttons: [{ label: 'Remove from the inspection', value: true, role: 'destructive' }] })) { F.checklist.splice(F.checklist.indexOf(x), 1); re(); } } })),
       ui.row({ icon: 'plus.circle.fill', iconPlain: true, iconColor: 'var(--green)', title: 'Add an item', tint: true, onTap: async () => { const n = await ask('Inspection item', 'e.g. Spill kit'); if (n) { F.checklist.push(n); re(); } } })));
 } });
 const myRoute = () => (S.shift && S.shift.routeId && q.route(S.shift.routeId)) || q.routes().find(r => r.driverId === (S.me && S.me.id)) || null;
@@ -251,9 +262,11 @@ function addExpense(page) { const f = { kind: 'Fuel', amount: '', note: '', rece
 BZ.mileSpec = () => ({ title: 'Mileage and expenses', trailing: () => ME.tab === 'exp' ? [{ icon: 'plus', label: 'New expense', onTap: p => addExpense(p) }] : [], render: page => {
   const all = canApprove(), mine = myRoute(), routes = all || !mine ? q.routes() : [mine], days = Array.from({ length: 7 }, (_, i) => D.add(today(), -i));
   const body = () => { if (ME.tab === 'miles') { const rows = days.map(d => ({ d, parts: routes.map(r => ({ r, mi: milesFor(r.id, d) })).filter(x => x.mi > 0) })).filter(x => x.parts.length), total = rows.reduce((s, x) => s + x.parts.reduce((a, b) => a + b.mi, 0), 0);
+      const fuel = WD.fuelCostPerMile ? rows.reduce((s, x) => s + x.parts.reduce((a, b) => a + b.mi * WD.fuelCostPerMile(b.r.vehicleId), 0), 0) : 0;   // the fuel price is set in Maintenance
       return ui.list(ui.section({ header: 'Last 7 days · ' + (all || !mine ? 'all routes' : q.routeName(mine)), footer: 'Measured by GPS while location tracking is on, and estimated from the stop order when it isn’t.' },
           rows.map(x => ui.row({ title: fmt.day(x.d), subtitle: x.parts.map(p => h('div.hstack', { style: 'gap:5px' }, ui.dot(q.routeColor(p.r.id)), q.routeName(p.r) + ' · ' + p.mi.toFixed(1) + ' mi')), detail: x.parts.reduce((a, b) => a + b.mi, 0).toFixed(1) + ' mi' })),
-          ui.row({ title: h('b', 'Total'), detail: h('b', total.toFixed(1) + ' mi') })),
+          ui.row({ title: h('b', 'Total'), detail: h('b', total.toFixed(1) + ' mi') }),
+          fuel > 0 && ui.row({ title: 'Estimated fuel', subtitle: 'At ' + (WD.fuelPriceText ? WD.fuelPriceText() : '') + ', by each truck’s fuel economy', detail: money(fuel) })),
         ui.section({ header: 'Reimbursement', footer: M.own ? 'For people who drive their own vehicle, such as sales reps. Paid with payroll.' : 'Switch on if anyone drives their own vehicle for work, such as a sales rep. Company trucks only need the miles.' },
           ui.toggleRow({ title: 'Pay mileage for personal vehicles', value: M.own, onChange: v => { if (!admin()) return ui.toast('Ask an admin to change this', 'lock'); M.own = v; WD.changed(); page.refresh(); } }),
           M.own && h('div.row', h('div.row-main', h('div.row-title', 'Rate per mile')), h('input.jb-rate', { type: 'text', inputmode: 'decimal', 'aria-label': 'Rate per mile', disabled: !admin(), value: '$' + M.rate.toFixed(2), onchange: e => { const v = parseFloat(e.target.value.replace(/[^0-9.]/g, '')); if (!isNaN(v)) M.rate = v; WD.changed(); page.refresh(); } })),
@@ -275,24 +288,24 @@ BZ.perfSpec = () => ({ title: 'Route performance', render: page => { if (!(WD.ca
     return { rid, done: doneJ.length, skipped: js.filter(j => j.status === 'skipped').length, off: js.filter(j => WD.calledOff(j)).length, revenue: doneJ.reduce((s, j) => s + rev(j), 0), unbilled: doneJ.filter(j => !rev(j) && j.type !== 'meet' && j.type !== 'creditCard').length, mins, miles, days: dset.length }; };
   const rows = q.routes().map(r => stat(r.id)), sum = k => rows.reduce((s, x) => s + x[k], 0), top = Math.max(1, ...rows.map(x => x.revenue)), per = (a, b, f) => b ? f(a / b) : '—';
   const kpi = (v, t) => h('div', h('b', v), h('span', t));
-  return [h('div.bz-seg', ui.segmented([{ value: 7, label: 'Last 7 days' }, { value: 30, label: 'Last 30 days' }], PF.days, v => { PF.days = v; page.refresh(); })),
+  /* The date range stays at the top while the report scrolls (.rc-sticky is in rc-money.js). */
+  return [h('div.bz-seg.rc-sticky', { style: 'padding-bottom:8px' }, ui.segmented([{ value: 7, label: 'Last 7 days' }, { value: 30, label: 'Last 30 days' }], PF.days, v => { PF.days = v; page.refresh(); })),
     ui.list(ui.section({ header: 'All routes · ' + fmt.day(from, 'md') + ' – ' + fmt.day(today(), 'md') }, h('div.bz-kpi', kpi(money(sum('revenue')).replace(/\.\d\d$/, ''), 'Billed'), kpi(String(sum('done')), 'Stops completed'), kpi(per(sum('revenue'), sum('done'), money), 'Per stop'), kpi(per(sum('revenue'), sum('mins') / 60, v => money(v).replace(/\.\d\d$/, '')), 'Per hour on site'), kpi(per(sum('revenue'), sum('miles'), money), 'Per mile'), kpi(String(sum('skipped') + sum('off')), 'Skipped or called off'))),
+      /* Completed stops with nothing billed and service notes not yet on a master invoice: tap for the list and to bill them (rc-money.js). */
+      WD.rc && WD.rc.perfBillingSection && WD.rc.perfBillingSection(page, from, today()),
       rows.sort((a, b) => b.revenue - a.revenue).map(x => ui.section({ header: h('span.hstack', { style: 'gap:6px' }, ui.dot(q.routeColor(x.rid)), q.routeName(x.rid) + ' · ' + plural(x.days, 'day')) },
         ui.row({ title: money(x.revenue) + ' billed', subtitle: plural(x.done, 'stop') + ' completed' + (x.skipped ? ' · ' + x.skipped + ' skipped' : '') + (x.off ? ' · ' + x.off + ' called off' : ''), detail: per(x.revenue, x.done, money) + ' a stop' }),
         h('div.bz-bar', ui.progress(x.revenue / top), h('small', h('span', per(x.revenue, x.mins / 60, v => money(v).replace(/\.\d\d$/, '')) + ' per hour on site · ' + fmt.dur(Math.round(x.mins)) + ' on site'), h('span', per(x.revenue, x.miles, money) + ' per mile · ' + num(x.miles) + ' mi'))),
-        x.unbilled > 0 && ui.row({ icon: 'exclamationmark.circle', iconPlain: true, iconColor: 'var(--orange)', title: plural(x.unbilled, 'completed stop') + ' not billed', subtitle: 'Money left on the route' }))),
+        x.unbilled > 0 && ui.row({ icon: 'exclamationmark.circle', iconPlain: true, iconColor: 'var(--orange)', title: plural(x.unbilled, 'completed stop') + ' not billed', subtitle: 'Money left on the route · see them and bill', chevron: !!(WD.rc && WD.rc.unbilledSpec), onTap: WD.rc && WD.rc.unbilledSpec ? () => page.push(WD.rc.unbilledSpec({ from, to: today(), routeId: x.rid })) : null }))),
       h('div', { style: 'padding:10px 4px 0' }, ui.note('Billed is what was invoiced or collected for stops completed in these dates. Time on site is from arrival to departure; miles are from the shop, through the stops, and back.')))];
 } });
 
 /* ================= Where it all lives ================= */
+/* Fleet compliance, the load sheet and mileage and expenses live in Maintenance → Fleet setup (rc-ops.js). */
 const ENTRIES = () => [
   ['briefcase', 'var(--indigo)', 'Business type and wording', BZ.industryName(), BZ.wordingSpec, 'Your industry, the wording on invoices, starter items'],
   ['checklist', 'var(--green)', 'Service checklists', plural(Object.values(data.checklists).reduce((s, l) => s + l.length, 0), 'item'), BZ.checklistSpec, 'Steps and required photos for each job type'],
-  ['square.and.pencil', 'var(--blue)', 'Custom fields', plural(data.customFields.length, 'field'), BZ.fieldsSpec, 'Your own fields on customers and jobs'],
-  ['truck', 'var(--orange)', 'Fleet and compliance', BZ.fleetBadge() ? plural(BZ.fleetBadge(), 'item') + ' need attention' : 'Up to date', BZ.fleetSpec, 'Pre-trip inspections, maintenance, expiring documents and licenses'],
-  ['shippingbox', 'var(--teal)', 'Load sheet and truck capacity', '', () => BZ.loadSpec(), 'What each truck carries today and where it fills up'],
-  ['gauge', 'var(--purple)', 'Mileage and expenses', '', BZ.mileSpec, 'Miles by route and day, expenses with receipts'],
-  ['chart.bar', 'var(--red)', 'Route performance', '', BZ.perfSpec, 'Billed per stop, per hour and per mile, by route']];
+  ['square.and.pencil', 'var(--blue)', 'Custom fields', plural(data.customFields.length, 'field'), BZ.fieldsSpec, 'Your own fields on customers and jobs']];   /* Route performance moved to Reports (rc-money.js). */
 BZ.hubSection = row => ui.section({ header: 'Your kind of business', footer: 'For any business that runs routes: service, delivery or sales.' }, ENTRIES().map(e => row(...e)));
 BZ.homeSpec = () => ({ title: 'Your kind of business', render: page => ui.list(BZ.hubSection((ic, color, title, detail, spec, sub) => ui.row({ icon: ic, iconColor: color, title, subtitle: [detail && h('div', { style: 'color:var(--label);font-weight:500' }, detail), sub && h('div', sub)], chevron: true, onTap: () => page.push(spec()) }))) });
 
@@ -308,7 +321,7 @@ if (WD.screens.shift && WD.screens.shift.root) { const root = WD.screens.shift.r
 
 const openSet = spec => { WD.nav.switchTab('settings'); WD.nav.push(spec); };
 WD.panel.addJump('Business type and wording', () => openSet(BZ.wordingSpec()));
-WD.panel.addJump('Fleet and compliance', () => openSet(BZ.fleetSpec()));
+WD.panel.addJump('Fleet and compliance', () => { WD.nav.switchTab('maintenance'); WD.nav.push(BZ.fleetSpec('trucks')); });
 WD.panel.addJump('Load sheet', () => { WD.nav.switchTab('board'); WD.nav.push(BZ.loadSpec(S.board.day)); });
-WD.panel.addJump('Route performance', () => openSet(BZ.perfSpec()));
+WD.panel.addJump('Route performance', () => { WD.nav.switchTab('reports'); WD.nav.push(BZ.perfSpec()); });
 })();

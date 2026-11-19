@@ -63,6 +63,8 @@ function root() {
   /* The root is a hub: one row per group with a search over every setting. Each group's rows are built here and shown one tap away. */
   return { title: 'Settings', large: true, render: page => ui.hub(page, () => {
     const me = S.me, o = org(), n = S.pending.length, issues = S.pending.filter(x => x.status === 'conflict' || x.status === 'failed').length, push = s => page.push(s);
+    /* A row that opens another module's page; `flag` (a permission) greys it out with “Ask an admin” for people without it. */
+    const lnk = (flag, ic, color, title, subtitle, spec) => { const o2 = { icon: ic, iconColor: color, title, subtitle, chevron: true, onTap: () => push(spec()) }; return ui.row(flag ? gated(flag, o2) : o2); };
     return [
       ui.section(ui.row({ class: 'st-profile', leading: ui.avatar(me.name, { size: 58 }), title: me.name, subtitle: h('span', me.email, h('span.st-meta', roleBadge(me.role), o.name)), chevron: true, onTap: () => push(accountSpec()) })),
       WD.rc && WD.rc.displaySection(push),
@@ -70,32 +72,43 @@ function root() {
         ui.row({ icon: 'building', iconColor: 'var(--indigo)', title: 'Company', subtitle: 'Switch between your companies', detail: o.name, chevron: true, onTap: () => push(orgsSpec()) }),
         WD.rc && WD.rc.companyRows(push, gated, () => push(integrationsSpec()), INTEG.filter(connected).length),
         ui.row({ icon: 'lock', iconColor: 'var(--gray)', title: 'Sign-in and security', detail: (WD.signInPolicies.find(x => x.value === S.signInPolicy) || {}).label, chevron: true, onTap: () => WD.admin && push(WD.admin.signInSpec()) }),
-        WD.r8 && ui.row(gated('settings.manage', { icon: 'share', iconColor: 'var(--teal)', title: 'Export and backup', subtitle: 'Customers, jobs, invoices, CRM and settings as files you keep', chevron: true, onTap: () => push(WD.r8.exportSpec()) })),
-        ui.row({ icon: 'chart.bar', iconColor: 'var(--blue)', title: 'Reports', subtitle: 'Invoices, sales by month and year, revenue by service', chevron: true, onTap: () => WD.nav.switchTab('reports') })),
+        WD.r8 && ui.row(gated('settings.manage', { icon: 'share', iconColor: 'var(--teal)', title: 'Export and backup', subtitle: 'Customers, jobs, invoices, CRM and settings as files you keep', chevron: true, onTap: () => push(WD.r8.exportSpec()) }))),
       WD.rc && WD.rc.commsSection(push, gated),
       ui.section({ header: 'Routes and board', footer: 'Single-route portrait view shows 1 or 3 days from the active day. Landscape always shows 7.' },
         ui.row({ icon: 'route', iconColor: 'var(--blue)', title: 'Routes', detail: q.visibleRoutes().length + ' of ' + data.routes.length + ' shown', chevron: true, onTap: () => push(routesSpec()) }),
         ui.pickerRow({ icon: 'arrow.triangle.turn.up.right', iconColor: 'var(--green)', title: 'Directions app', subtitle: 'Opens for Navigate and Directions', value: S.prefs.mapsApp, options: WD.MAPS_APPS, onChange: v => { S.prefs.mapsApp = v; WD.changed(); ui.toast('Directions open in ' + WD.workflow.mapsName(), 'checkmark'); } }),
-        ui.row({ icon: 'columns', iconColor: 'var(--teal)', title: 'Single route', trailing: h('div.st-seg', ui.segmented([{ value: 1, label: '1 day' }, { value: 3, label: '3 days' }], S.board.dayCount, v => { S.board.dayCount = v; WD.changed(); })) })),
+        ui.row({ icon: 'columns', iconColor: 'var(--teal)', title: 'Single route', trailing: h('div.st-seg', ui.segmented([{ value: 1, label: '1 day' }, { value: 3, label: '3 days' }], S.board.dayCount, v => { S.board.dayCount = v; WD.changed(); })) }),
+        WD.co && lnk('settings.manage', 'route', 'var(--blue)', 'Routing assumptions', 'Start time, time to get rolling, drive time, arrival windows, called-off jobs', () => WD.co.routingSpec()),
+        WD.ops && lnk('settings.manage', 'timer', 'var(--orange)', 'Time on site', 'Formulas for stops with no history, purge jobs, and each truck’s pace', () => WD.ops.siteSpec()),
+        WD.ops && lnk('settings.manage', 'calendar', 'var(--red)', 'Holidays and schedule changes', 'Mark a holiday and approve where its jobs move; one-time moves', () => WD.ops.schedSpec()),
+        WD.co && lnk('settings.manage', 'barcode', 'var(--indigo)', 'Barcode scanning', 'Containers at each stop; hard drive serial numbers by job', () => WD.co.barcodeSpec()),
+        lnk(null, 'checklist', 'var(--indigo)', 'Field workflow', 'Arrival, Complete stop, invoices, job titles, shift limit', () => WD.workflow.workflowSpec()),
+        WD.r13 && lnk('settings.manage', 'sparkles', 'var(--purple)', 'AI route monitoring', WD.r13.routeAILabel(), () => WD.r13.routeAISpec()),
+        ui.row({ icon: 'wrench', iconColor: 'var(--gray)', title: 'Trucks, locations and disposal sites', subtitle: 'Managed in Maintenance', chevron: true, onTap: () => WD.nav.switchTab('maintenance') })),
+      ui.section({ header: 'Jobs' },
+        WD.admin && lnk(null, 'tag', 'var(--pink)', 'Job types, fields and sub-categories', 'What each job type asks for and requires; non-paper purge sub-categories', () => WD.admin.typesSpec()),
+        WD.biz && lnk('settings.manage', 'checklist', 'var(--green)', 'Service checklists', 'Steps and required photos for each job type', () => WD.biz.checklistSpec()),
+        WD.biz && lnk('settings.manage', 'square.and.pencil', 'var(--blue)', 'Custom fields', 'Your own fields on customers and jobs', () => WD.biz.fieldsSpec()),
+        WD.r11 && lnk('settings.manage', 'arrow.left.arrow.right', 'var(--purple)', 'Pickup-and-delivery pairs', 'Two linked stops: pick up at one, drop off at the other; pricing for the pair', () => WD.r11.pairsSpec()),
+        WD.admin && lnk('settings.manage', 'square.and.pencil', 'var(--teal)', 'Import jobs', 'Calendar file (.ics), Excel or CSV', () => WD.admin.importSpec())),
+      WD.co && ui.section({ header: 'CRM' },
+        lnk('settings.manage', 'funnel', 'var(--purple)', 'CRM and leads', 'Features, lead sources, territories, referral thank-you, follow-up wording', () => WD.co.crmSpec()),
+        WD.r13 && lnk('settings.manage', 'sparkles', 'var(--purple)', 'AI lead assistant', WD.r13.leadAILabel(), () => WD.r13.leadAISpec()),
+        WD.r13 && lnk('settings.manage', 'phone.fill', 'var(--green)', 'AI phone agent', WD.r13.phoneAILabel(), () => WD.r13.phoneAISpec()),
+        ui.row({ icon: 'signature', iconColor: 'var(--indigo)', title: 'Contracts', subtitle: 'Service agreements are in the Contracts section', chevron: true, onTap: () => WD.nav.switchTab('contracts') })),
+      ui.section({ header: 'HR', footer: 'Everything about the people who work here: who they are and what they may do, their hours and pay period, time off, and the licenses and clearances they hold.' },
+        ui.row(gated('users.manage', { icon: 'person.2', iconColor: 'var(--green)', title: 'Team and roles', subtitle: 'Invite people, roles and permissions', detail: String(data.users.filter(u => u.status === 'active').length), chevron: true, onTap: () => push(teamSpec()) })),
+        ui.row({ icon: 'dollarsign.circle', iconColor: 'var(--green)', title: 'Payroll: pay period, payday and overtime', subtitle: WD.timeclock ? 'Over ' + data.timeRules.daily.hours + ' h/day · ' + data.timeRules.weekly.hours + ' h/wk · breaks · location stays' : '', chevron: true, onTap: () => WD.timeclock && push(WD.timeclock.rulesSpec()) }),
+        WD.timeclock && WD.can('hr.manage') && ui.row({ icon: 'clock', iconColor: 'var(--orange)', title: 'Hours and time cards', subtitle: 'Everyone’s hours, overtime and corrections', chevron: true, onTap: () => push(WD.timeclock.timesheetsSpec()) }),
+        WD.can('hr.manage') && ui.row({ icon: 'calendar', iconColor: 'var(--red)', title: 'Time off', subtitle: 'Requests from the team', detail: (n => n ? n + ' to approve' : '')(data.timeOff.filter(t => t.status === 'pending').length), chevron: true, onTap: () => push(WD.x.timeOffSpec()) }),
+        WD.co && lnk('settings.manage', 'checkmark.circle', 'var(--red)', 'Time-off approval', 'Approve requests automatically, with your message', () => WD.co.timeOffSpec()),
+        WD.r11 && lnk('settings.manage', 'person.badge.plus', 'var(--indigo)', 'Skills, licenses and clearances', 'What each person holds: CDL, prison clearances, hard drives. Matched to jobs', () => WD.r11.skillsSpec('people')),
+        WD.r11 && lnk('jobs.edit', 'bell', 'var(--red)', 'License and clearance reminders', 'Driver’s licenses, medical cards and clearances coming up for renewal', () => WD.r11.complianceSpec('people')),
+        WD.can('tracking.view_live') && ui.row({ icon: 'location.fill', iconColor: 'var(--blue)', title: 'Location tracking consent', subtitle: 'Who has agreed to be tracked while clocked in', chevron: true, onTap: () => push(trackingSpec()) })),
       ui.section({ header: 'Sync', footer: S.offline ? 'You’re offline. Changes are saved on this iPhone and sync when the connection returns.' : null },
         ui.row({ icon: 'cloud', iconColor: 'var(--teal)', title: 'Offline data', subtitle: 'Jobs, customers, GPS coordinates and the map saved on this iPhone', chevron: true, onTap: () => push(WD.x.offlineSpec()) }),
-        ui.row({ icon: 'sync', iconColor: issues ? 'var(--orange)' : 'var(--gray)', title: 'Pending changes', badge: issues ? ui.badge(issues + ' to review', 'var(--orange)') : null, detail: n ? String(n) : 'None', chevron: true, onTap: openPending })),
-      WD.co && ui.section({ header: 'Company settings', footer: 'Every assumption the app makes can be changed: start time, time to get rolling, pay period and payday, time-off approval, on-my-way notices, barcodes, bookkeeping, reviews and the CRM.' },
-        ui.row(gated('settings.manage', { icon: 'gearshape', iconColor: 'var(--blue)', title: 'Settings and assumptions', subtitle: 'Routing, time on site, holidays, confirmations, calls and texts, items and fees, invoicing, payroll', chevron: true, onTap: () => push(WD.co.hubSpec()) })),
-        WD.biz && ui.row(gated('settings.manage', { icon: 'briefcase', iconColor: 'var(--indigo)', title: 'Business type and wording', subtitle: WD.biz.industryName() + ' · checklists, custom fields, fleet, load and reports', chevron: true, onTap: () => push(WD.biz.homeSpec()) })),
-        ui.row(gated('settings.manage', { icon: 'star', iconColor: 'var(--orange)', title: 'Reviews and feedback', subtitle: 'Follow-up text, review sites, QR code', chevron: true, onTap: () => push(WD.co.reviewsSpec()) })),
-        ui.row(gated('settings.manage', { icon: 'funnel', iconColor: 'var(--purple)', title: 'CRM and leads', subtitle: 'Features, lead sources, territories', chevron: true, onTap: () => push(WD.co.crmSpec()) }))),
-      WD.r11 && WD.r11.settingsSection(push, gated),
-      ui.section('Administration',
-        ui.row(gated('settings.manage', { icon: 'calendar', iconColor: 'var(--blue)', title: 'Google Calendar mirror', badge: S.googleMirror.errors ? ui.badge(String(S.googleMirror.errors), 'var(--red)', true) : null, detail: S.googleMirror.enabled ? 'On' : 'Off', chevron: true, onTap: () => push(mirrorSpec()) })),
-        ui.row(gated('users.manage', { icon: 'person.2', iconColor: 'var(--green)', title: 'Team and roles', detail: String(data.users.filter(u => u.status === 'active').length), chevron: true, onTap: () => push(teamSpec()) })),
-        ui.row(gated('contracts.manage', { icon: 'signature', iconColor: 'var(--indigo)', title: 'Service agreements', detail: (n => n ? n + ' unsigned' : '')(data.agreements.filter(a => a.status === 'sent' || a.status === 'viewed').length), chevron: true, onTap: () => push(WD.x.agreementsSpec()) })),
-        WD.can('hr.manage') && ui.row({ icon: 'calendar', iconColor: 'var(--red)', title: 'Time off', detail: (n => n ? n + ' to approve' : '')(data.timeOff.filter(t => t.status === 'pending').length), chevron: true, onTap: () => push(WD.x.timeOffSpec()) }),
-        ui.row({ icon: 'truck', iconColor: 'var(--orange)', title: 'Vehicles', subtitle: 'Capacity, what each truck can do, GPS, registration and inspections', detail: String(data.vehicles.filter(v => v.active !== false).length), chevron: true, onTap: () => push(vehiclesSpec()) }),
-        ui.row({ icon: 'checklist', iconColor: 'var(--indigo)', title: 'Field workflow', subtitle: 'Arrival, Complete stop, invoices, job titles, shift limit', chevron: true, onTap: () => push(WD.workflow.workflowSpec()) }),
-        ui.row({ icon: 'tag', iconColor: 'var(--pink)', title: 'Job types and fields', subtitle: 'Fields asked and required, by job type and customer type', chevron: true, onTap: () => WD.admin && push(WD.admin.typesSpec()) }),
-        ui.row(gated('settings.manage', { icon: 'square.and.pencil', iconColor: 'var(--teal)', title: 'Import jobs', subtitle: 'Calendar file (.ics), Excel or CSV', chevron: true, onTap: () => WD.admin && push(WD.admin.importSpec()) })),
-        ui.row({ icon: 'clock', iconColor: 'var(--orange)', title: 'Time clock and overtime', detail: WD.timeclock ? 'Over ' + data.timeRules.daily.hours + ' h/day · ' + data.timeRules.weekly.hours + ' h/wk' : '', chevron: true, onTap: () => WD.timeclock && push(WD.timeclock.rulesSpec()) })),
+        ui.row({ icon: 'sync', iconColor: issues ? 'var(--orange)' : 'var(--gray)', title: 'Pending changes', badge: issues ? ui.badge(issues + ' to review', 'var(--orange)') : null, detail: n ? String(n) : 'None', chevron: true, onTap: openPending }),
+        ui.row(gated('settings.manage', { icon: 'calendar', iconColor: 'var(--blue)', title: 'Google Calendar mirror', badge: S.googleMirror.errors ? ui.badge(String(S.googleMirror.errors), 'var(--red)', true) : null, detail: S.googleMirror.enabled ? 'On' : 'Off', chevron: true, onTap: () => push(mirrorSpec()) }))),
       ui.section('Privacy',
         ui.row({ icon: 'location.fill', iconColor: 'var(--blue)', title: 'Location tracking', detail: S.tracking.consent ? 'Agreed' : 'Not agreed', chevron: true, onTap: () => push(trackingSpec()) }),
         ui.row({ icon: 'hand.raised', iconColor: 'var(--indigo)', title: 'Privacy policy', trailing: icon('arrow.up.right', 17, 'var(--label3)'), onTap: safari }),
@@ -104,7 +117,7 @@ function root() {
       ui.section({ header: 'About', showFooter: true, footer: 'The prototype checks for a newer version each time it opens and offers to update. The tutorial shows once after each update.' }, ui.row({ title: 'Version', detail: WD.version + ' (prototype)' }), ui.row({ icon: 'arrow.clockwise', iconPlain: true, title: 'Check for updates', subtitle: 'Loads the newest published version if this one is behind', tint: true, onTap: () => WD.app.checkForUpdates() }), ui.row({ icon: 'sparkles', iconPlain: true, title: 'Show the tutorial', subtitle: 'What’s new in version ' + WD.version, tint: true, onTap: () => WD.x.tutorial() }), ui.row({ title: 'Acknowledgements', chevron: true, onTap: () => push(ackSpec()) })),
       ui.section(ui.row({ title: 'Sign out', destructive: true, center: true, onTap: signOut })),
       h('div.st-ver', 'RouteClerk ' + WD.version + ' (prototype)', (WD.olderVersions || []).length ? [' · ', h('button', { onclick: e => olderVersions(e.currentTarget) }, 'Older versions')] : null)];
-  }, { placeholder: 'Search settings', icons: { Display: ['sun', 'var(--indigo)'], Company: ['building', 'var(--indigo)'], 'Routes and board': ['route', 'var(--blue)'], Sync: ['sync', 'var(--teal)'], 'Company settings': ['gearshape', 'var(--blue)'], 'Add-ons': ['square.grid', 'var(--purple)'], Administration: ['person.2', 'var(--green)'], Privacy: ['hand.raised', 'var(--indigo)'], About: ['info.circle', 'var(--gray)'] } }) };
+  }, { placeholder: 'Search settings', icons: { Display: ['sun', 'var(--indigo)'], Company: ['building', 'var(--indigo)'], 'Routes and board': ['route', 'var(--blue)'], Jobs: ['tag', 'var(--pink)'], CRM: ['funnel', 'var(--purple)'], HR: ['person.2', 'var(--green)'], Sync: ['sync', 'var(--teal)'], Privacy: ['hand.raised', 'var(--indigo)'], About: ['info.circle', 'var(--gray)'] } }) };
 }
 /* Each earlier release is kept on the published site under v/<version>/, with a link back to the newest. */
 function olderVersions(anchor) {
@@ -431,7 +444,7 @@ const connected = x => x.via ? INTEG[0].connected : x.connected;
 const integBadge = x => x.via ? ui.badge(connected(x) ? 'Via ' + x.via : 'Off', connected(x) ? 'var(--indigo)' : 'var(--gray)') : ui.badge(x.connected ? 'Connected' : 'Not connected', x.connected ? 'var(--green)' : 'var(--gray)');
 const integrationsSpec = () => ({ title: 'Integrations', render: page => !WD.can('settings.manage') ? locked() : ui.list(
   ui.section({ footer: 'Tokens are stored encrypted on the server. Only their last characters are shown.' }, INTEG.map(x => ui.row({ icon: x.icon, iconColor: x.color, title: x.name,
-    subtitle: x.connected && x.lastSync ? 'Synced ' + lower(fmt.rel(x.lastSync)) : null, trailing: integBadge(x), chevron: true, onTap: () => page.push(integrationSpec(x)) })))) });
+    subtitle: x.connected && x.lastSync ? 'Synced ' + lower(fmt.rel(x.lastSync)) : null, trailing: integBadge(x), chevron: true, onTap: () => page.push(x.open ? x.open() : integrationSpec(x)) })))) });
 function integrationSpec(x) {
   return { title: x.name, render: page => ui.list(
     h('div.st-member', h('div.row-icon.st-big', { style: { background: x.color } }, icon(x.icon, 34)), h('div.title2', x.name), integBadge(x)),
@@ -458,7 +471,7 @@ const ACK = [['Supabase Swift', 'MIT License'], ['Google Sign-In for iOS', 'Apac
 const ackSpec = () => ({ title: 'Acknowledgements', render: () => ui.list(ui.section({ footer: 'Maps and directions by Apple Maps.' }, ACK.map(([title, sub]) => ui.row({ title, subtitle: sub })))) });
 
 /* ---------- Registration ---------- */
-WD.screens.settings = { root, openPending, integrationSpec, integrationsSpec, openTeam: () => openIn(teamSpec()), openMirror: () => openIn(mirrorSpec()), openTracking: () => openIn(trackingSpec()) };
+WD.screens.settings = { root, openPending, integrationSpec, integrationsSpec, vehiclesSpec: () => vehiclesSpec(), teamSpec: () => teamSpec(), routesSpec: () => routesSpec(), mirrorSpec: () => mirrorSpec(), trackingSpec: () => trackingSpec(),openTeam: () => openIn(teamSpec()), openMirror: () => openIn(mirrorSpec()), openTracking: () => openIn(trackingSpec()) };
 const tab = WD.app.tabs.find(t => t.id === 'settings'); if (tab) tab.badge = () => S.pending.length;
 WD.panel.addJump('Pending changes', openPending);
 WD.panel.addJump('Team & roles', WD.screens.settings.openTeam);
