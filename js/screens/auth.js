@@ -191,11 +191,13 @@ function createPage(from) {
       stages: ['Creating your workspace…', 'Setting up ' + trucks + ' route' + (trucks === 1 ? '' : 's') + '…', importNow ? 'Importing Google calendars (dry run)…' : 'Preparing an empty board…', 'Starting your free trial…'],
       done: p => { data.orgs.push(org); S.org = org; WD.app.setRole('owner'); trialPage(p, org); } });
   }
+  /* 5.2: a new company goes from here into the AI setup interview (r16-biz.js); the what's-new tour is for existing users. */
+  const firstRun = () => { try { localStorage.setItem('wd.tour', WD.version); } catch (e) { /* private mode */ } WD.app.signIn(); if (WD.onboard) setTimeout(() => WD.onboard.open(), 600); };
   function trialPage(from2, org) {
     from2.push({ title: '', navbar: false, render: () => h('div.au-welcome', icon('checkmark.circle.fill', 76, 'var(--green)'),
       h('div.title2', { style: { marginTop: '20px' } }, 'Your 14-day trial has started'),
       h('div.au-tag', { style: { marginTop: '8px' } }, org.name + ' is ready. After the trial it’s $29 per truck per month — ' + trucks + (trucks === 1 ? ' truck' : ' trucks') + ' is $' + 29 * trucks + '. No card needed until then.'),
-      h('div.au-actions', ui.button('Next: connect your tools', { onTap: p => WD.admin ? WD.admin.connectPage(from2, () => WD.app.signIn()) : WD.app.signIn() }),
+      h('div.au-actions', ui.button('Next: connect your tools', { onTap: p => WD.admin ? WD.admin.connectPage(from2, firstRun) : firstRun() }),
         h('div.au-legal', importNow ? 'Your import report will be ready on the web dashboard in a few minutes.' : 'Add routes and invite your team from Settings.'))) });
   }
 }

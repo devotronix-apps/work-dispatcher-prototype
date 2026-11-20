@@ -33,15 +33,17 @@ WD.addIcons({
 
 WD.css(`
 .cl-why { display: inline-flex; align-items: center; gap: 5px; margin-top: 6px; padding: 3px 10px; border-radius: 12px; background: color-mix(in srgb, var(--green) 16%, transparent); color: var(--label); font-size: 12px; font-weight: 600; }
-.cl-autowhy { text-align: center; font-size: 12px; color: var(--label2); margin: -2px 0 4px; min-height: 15px; }
+.cl-autowhy { text-align: center; font-size: 12px; color: var(--label2); margin: 4px 0 0; height: 16px; line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 5.2: the number, the match line and up to two matches sit in a zone of fixed height above the pad, so typing never moves the pad. */
+.cl-zone { height: 160px; padding-top: 2px; overflow: hidden; } .cl-zone .cl-hits { gap: 4px; } .cl-zone .cl-hit { min-height: 44px; padding: 4px 12px; }
 .cl-dial { padding-top: 8px; }
 .cl-kp { max-width: 340px; margin: 0 auto; text-align: center; }
-.cl-from { appearance: none; border: 0; background: var(--fill3); color: var(--label); border-radius: 17px; min-height: 36px; padding: 0 14px; font-size: 14px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; margin-top: 12px; }
+.cl-from { max-width: 100%; white-space: nowrap; overflow: hidden; appearance: none; border: 0; background: var(--fill3); color: var(--label); border-radius: 17px; min-height: 36px; padding: 0 14px; font-size: 14px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; margin-top: 12px; }
 .cl-from b { font-weight: 600; } .cl-from .ic { color: var(--label2); }
-.cl-num { font-size: 34px; font-weight: 400; letter-spacing: .5px; min-height: 40px; line-height: 40px; margin-top: 2px; color: var(--label); cursor: text; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cl-num.empty { color: var(--label3); font-size: 17px; letter-spacing: -.2px; }
-.cl-sub { font-size: 14px; color: var(--tint); min-height: 20px; line-height: 20px; }
-.cl-hits { min-height: 52px; margin: 6px 0 8px; display: flex; flex-direction: column; gap: 6px; }
+.cl-num { font-size: 34px; font-weight: 400; letter-spacing: .5px; min-height: 40px; line-height: 40px; margin-top: 0; color: var(--label); cursor: text; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cl-num.blank { color: var(--label3); font-size: 17px; letter-spacing: -.2px; }
+.cl-sub { font-size: 14px; color: var(--tint); min-height: 18px; line-height: 18px; }
+.cl-hits { margin: 0; display: flex; flex-direction: column; gap: 6px; }
 .cl-hit { appearance: none; border: 0; background: var(--cell); border-radius: 12px; min-height: 48px; padding: 6px 12px; display: flex; align-items: center; gap: 10px; text-align: left; cursor: pointer; color: var(--label); width: 100%; }
 .cl-hit .m { flex: 1; min-width: 0; } .cl-hit .n { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .cl-hit .p { font-size: 13px; color: var(--label2); }
 .cl-pad { display: grid; grid-template-columns: repeat(3, 66px); gap: 8px 26px; justify-content: center; }
@@ -49,7 +51,7 @@ WD.css(`
 .cl-key small { font-size: 12px; font-weight: 600; letter-spacing: 2px; color: var(--label2); height: 14px; line-height: 14px; margin-right: -2px; }
 .cl-key:active { background: var(--fill); }
 .cl-pad.mini { grid-template-columns: repeat(3, 56px); gap: 8px 18px; } .cl-pad.mini .cl-key { width: 56px; height: 56px; font-size: 24px; } .cl-pad.mini small { display: none; }
-.cl-go { display: grid; grid-template-columns: repeat(3, 72px); gap: 0 26px; justify-content: center; margin-top: 12px; align-items: center; }
+.cl-go { display: grid; grid-template-columns: repeat(3, 72px); gap: 0 26px; justify-content: center; margin-top: 8px; align-items: center; }
 .cl-callbtn { appearance: none; border: 0; width: 64px; height: 64px; border-radius: 50%; background: var(--green); color: #fff; display: grid; place-items: center; cursor: pointer; }
 .cl-callbtn:disabled { opacity: .45; } .cl-callbtn:active { opacity: .7; }
 .cl-del { appearance: none; border: 0; background: none; color: var(--label2); width: 72px; height: 72px; display: grid; place-items: center; cursor: pointer; }
@@ -350,7 +352,7 @@ function keypadView(page) {
   const autoWhy = h('div.cl-autowhy');
   const del = h('button.cl-del', { 'aria-label': 'Delete', onclick: () => { UI.typed = UI.typed.slice(0, -1); sync(); } }, icon('delete.left', 28));
   function sync() { const t = UI.typed, n = t.replace(/\D/g, '');
-    disp.textContent = t ? (/[*#]/.test(t) || n.length > 10 ? t : fmt.phoneTyping(t)) : 'Enter a number'; disp.classList.toggle('empty', !t); del.style.visibility = t ? 'visible' : 'hidden'; callBtn.disabled = n.length < 3;
+    disp.textContent = t ? (/[*#]/.test(t) || n.length > 10 ? t : fmt.phoneTyping(t)) : 'Enter a number'; disp.classList.toggle('blank', !t); del.style.visibility = t ? 'visible' : 'hidden'; callBtn.disabled = n.length < 3;
     const found = []; if (n.length >= 2) for (const c of data.customers || []) { if (c.archived) continue; const p = (c.contacts || []).find(x => dg(x.phone).includes(n)); if (p) found.push({ c, p }); if (found.length >= 12) break; }
     if (isAuto) { const pk = n.length >= 3 ? C.pickLine(t) : null; fromB.textContent = pk ? pk.line.label + ' · ' + fmt.phone(pk.line.number) : 'Automatic · local number'; autoWhy.textContent = pk ? 'Automatic: ' + pk.why : 'Automatic: the number they called us on, or the closest local one'; }
     const exact = found.find(x => dg(x.p.phone) === dg(t)); sub.textContent = exact ? exact.p.name + ' · ' + exact.c.name : found.length > 2 ? plural(found.length, 'match') + (found.length >= 12 ? ' or more' : '') : '';
@@ -358,12 +360,16 @@ function keypadView(page) {
   sync();
   return h('div.cl-kp',
     h('button.cl-from', { onclick: e => ui.menu(e.currentTarget, [{ header: 'Call from' }, { label: 'Automatic', subtitle: 'The number they called us on, or the closest local one', checked: isAuto, onTap: () => { UI.from[org.id] = 'auto'; page.refresh(); } }].concat(lines.map((l, i) => ({ label: l.label + ' · ' + fmt.phone(l.number), checked: i === idx, onTap: () => { UI.from[org.id] = i; page.refresh(); } })))) }, 'Call from', fromB, icon('chevron.up.chevron.down', 13)), isAuto && autoWhy,
-    disp, sub, hits, pad(k => { if (UI.typed.length < 15) { UI.typed += k; sync(); } }), h('div.cl-go', h('span'), callBtn, del));
+    h('div.cl-zone', disp, sub, hits), pad(k => { if (UI.typed.length < 15) { UI.typed += k; sync(); } }), h('div.cl-go', h('span'), callBtn, del));
 }
-function recentView(page) { const cs = list().filter(c => !c.archived).slice(0, 25);
+/* 5.2: Calls is one segment with an Inbox (what still needs someone) and All, and an agent filter shared with Texts (r16.js). */
+const TS = () => WD.staff, agentOK = c => !TS() || TS().agentOK(c.by);
+function callsView(page) { const T = TS(), n = C.reviewCount(); if (!T) return [recentView(page)];
+  return [T.liveStrip(), T.boxBar('callBox', n, page, T.agentNames()), T.box('callBox') === 'inbox' ? reviewView(page) : recentView(page)]; }
+function recentView(page) { const cs = list().filter(c => !c.archived && agentOK(c)).slice(0, 25);
   return cs.length ? ui.section({ footer: 'Tap a call to call back from the same line. ⓘ opens the call. The call log has every call and the filters.' }, cs.map(c => callRow(c, { onTap: () => C.callBack(c), info: () => page.push(C.detailSpec(c.id)) })),
     ui.row({ title: 'Open the call log', tint: true, center: true, onTap: () => page.push(C.logSpec()) })) : ui.empty({ icon: 'phone', title: 'No calls yet', text: 'Calls on your Quo numbers show here.' }); }
-function reviewView(page) { const st = ST(), cs = list().filter(c => isOpen(c, st)), edit = WD.can('crm.edit');
+function reviewView(page) { const st = ST(), cs = list().filter(c => isOpen(c, st) && agentOK(c)), edit = WD.can('crm.edit');
   return [C.aiCard(s => page.push(s)),
     cs.length ? [h('div.footnote.secondary', { style: 'margin:12px 4px 0' }, plural(cs.length, 'call') + ' not answered or under ' + st.threshold + ' s. Each stays here until someone resolves it' + (st.autoResolve ? ' or calls back.' : '.')),
       cs.map(c => { const y = why(c, st); return h('div.cl-rev', h('div.cl-rev-top', { onclick: () => page.push(C.detailSpec(c.id)) }, dirIcon(c),
@@ -374,9 +380,11 @@ function reviewView(page) { const st = ST(), cs = list().filter(c => isOpen(c, s
     : ui.empty({ icon: 'checkmark.circle', title: 'Nothing to review', text: 'Missed calls, voicemails and calls under ' + st.threshold + ' s show here until someone resolves them.' })]; }
 function root() { return { title: 'Dialer', trailing: page => [{ label: 'Call log', onTap: () => page.push(C.logSpec()) }], render: page => {
   if (!WD.can('crm.view')) return ui.empty({ icon: 'lock', title: 'The dialer needs customer access', text: 'Ask an admin to change your role.' });
-  const n = C.reviewCount(); if (!['keypad', 'recent', 'review'].includes(UI.seg)) UI.seg = 'keypad';
-  return ui.list(h('div.cl-dial', ui.segmented([{ value: 'keypad', label: 'Keypad' }, { value: 'recent', label: 'Recent' }, { value: 'review', label: 'Needs review' + (n ? ' · ' + n : '') }], UI.seg, v => { UI.seg = v; page.refresh(); })),
-    UI.seg === 'keypad' ? keypadView(page) : UI.seg === 'recent' ? recentView(page) : reviewView(page)); } }; }
+  const n = C.reviewCount(), T = TS(), tn = T && WD.texts ? WD.texts.inboxCount() : 0; if (UI.seg === 'recent' || UI.seg === 'review') { if (T) T.ui.callBox = UI.seg === 'review' ? 'inbox' : 'all'; UI.seg = 'calls'; }
+  if (!['keypad', 'calls', 'texts', 'team'].includes(UI.seg) || (!T && UI.seg !== 'calls')) UI.seg = 'keypad';
+  return ui.list(h('div.cl-dial', ui.segmented([{ value: 'keypad', label: 'Keypad' }, { value: 'calls', label: 'Calls' + (n ? ' · ' + n : '') }].concat(T ? [{ value: 'texts', label: 'Texts' + (tn ? ' · ' + tn : '') }, { value: 'team', label: 'Team' }] : []), UI.seg, v => { UI.seg = v; page.refresh(); })),
+    UI.seg === 'keypad' ? keypadView(page) : UI.seg === 'calls' ? callsView(page) : UI.seg === 'texts' ? T.textsView(page) : T.teamView(page)); } }; }
+C.ui = UI;
 WD.screens.dialer = { root };
 
 /* ================= Call log ================= */
@@ -557,7 +565,8 @@ C.settingsSpec = () => ({ title: 'Phone and calls', render: page => {
       ui.pickerRow({ title: 'A call is short under', disabled: !admin, value: st.threshold, options: [10, 15, 20, 30, 45, 60].map(v => ({ value: v, label: v + ' seconds' })), onChange: v => { st.threshold = v; re(); } }),
       ui.toggleRow({ title: 'Count short calls we placed', subtitle: 'Outbound calls under ' + st.threshold + ' s are flagged too', value: !!st.outShort, disabled: !admin, onChange: v => { st.outShort = v; re(); } }),
       ui.toggleRow({ title: 'Resolve when called back', subtitle: 'Calling a flagged number back and talking for ' + st.threshold + ' s or more clears the flag', value: st.autoResolve !== false, disabled: !admin, onChange: v => { st.autoResolve = v; re(); } }),
-      ui.row({ title: 'Flagged now', detail: String(C.reviewCount()), chevron: true, onTap: () => page.push(C.logSpec({ flagged: true })) })),
+      ui.pickerRow({ title: 'A text is waiting after', disabled: !admin, value: st.textWait || 30, options: [10, 15, 30, 60, 120].map(v => ({ value: v, label: v + ' minutes' })), onChange: v => { st.textWait = v; re(); } }),
+    ui.row({ title: 'Flagged now', detail: String(C.reviewCount()), chevron: true, onTap: () => page.push(C.logSpec({ flagged: true })) })),
     ui.section({ header: 'More', fold: false },
       ui.row({ icon: 'phone.fill', iconColor: 'var(--green)', title: 'Businesses and area codes', subtitle: 'Which business an incoming call opens', chevron: true, onTap: () => WD.orgs && WD.orgs.areaSpec && page.push(WD.orgs.areaSpec()) }),
       ui.row({ icon: 'list.bullet', iconColor: 'var(--blue)', title: 'Call log', subtitle: plural(cs.length, 'call') + ' on ' + plural((org.lines || []).length, 'number'), chevron: true, onTap: () => page.push(C.logSpec()) })));

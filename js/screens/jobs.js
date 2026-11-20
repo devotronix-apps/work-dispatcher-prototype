@@ -88,7 +88,8 @@ function details(job, p) {
     line('calendar', fmt.day(job.day, 'long')),
     line('list.bullet', job.allDay ? 'Note for the day (not a stop)' : WD.calledOff(job) ? 'Not on the stop list, the map or AutoRoute' + (job.rescheduledTo ? ' · moved to ' + fmt.day(job.rescheduledTo) : '') : (p => 'Stop ' + p.n + ' of ' + p.of + ' on the list')(q.position(job))),
     job.offWindow && !WD.closed[job.status] && line('exclamationmark.triangle', 'Outside its time window: ' + job.offWindow),
-    job.recurring && line('repeat', job.recurring.rule));
+    job.recurring && line('repeat', job.recurring.rule),
+    WD.staff && WD.staff.jobAudit && WD.staff.jobAudit(job));
 
   const setStatus = (s, note) => api.setStatus(job.id, s, note);
   const skip = () => skipFlow(job);
