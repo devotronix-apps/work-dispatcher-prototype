@@ -91,7 +91,9 @@ const SOURCES = {
 };
 const COLUMNS = [['Service date', 'day', 'Nov 17, 2026'], ['Customer', 'title', 'Harlow & Finch Law'], ['Address', 'address', '210 Mercer St, Suite 400'], ['Phone', 'phone', '(512) 555-0142'], ['Route', 'route', 'North'], ['Containers', 'items', '4 consoles'], ['Frequency', 'freq', 'Weekly'], ['Notes', 'notes', 'Check in at reception']];
 const TARGETS = [['day', 'Date'], ['title', 'Customer / title'], ['address', 'Address'], ['phone', 'Phone'], ['email', 'Email'], ['route', 'Route'], ['items', 'Containers'], ['freq', 'Frequency'], ['po', 'PO number'], ['notes', 'Notes'], ['skip', 'Don’t import']];
-function importSpec() {
+/** Settings → Company → Import (5.0, r14-money.js) is the one place to bring data in; this job import is one of its paths. */
+function importSpec() { return WD.money && WD.money.importSpec ? WD.money.importSpec() : jobImportSpec(); }
+function jobImportSpec() {
   return { title: 'Import jobs', render: page => ui.list(
     ui.section({ header: 'Moving from another program?', footer: 'Nothing is saved until you review a dry run. Imported customers are matched to existing ones by name, phone and address.' },
       Object.entries(SOURCES).map(([k, s]) => ui.row({ icon: s.icon, iconColor: s.color, title: s.title, subtitle: s.about, chevron: true, onTap: () => pickFile(page, k) })),
@@ -138,10 +140,9 @@ function connectPage(from, done) {
       ui.section({ header: 'Integrations', footer: 'Connect the services you already use. Each one asks for its own sign-in or API key.' },
         list.map(x => ui.row({ icon: x.icon, iconColor: x.color, title: x.name, subtitle: x.pitch || x.about, trailing: x.connected ? ui.badge('Connected', 'var(--green)') : ui.button('Connect', { kind: 'tinted', small: true, block: false, onTap: async e => { e.stopPropagation(); if (await ui.run('Connecting ' + x.name + '…', () => { x.connected = true; x.lastSync = +WD.now(); }, { done: 'Connected' })) page.refresh(); } }) })))),
     h('div.au-foot', ui.button('Continue', { onTap: done }), ui.button('Skip for now', { kind: 'plain', onTap: async () => {
-      await ui.alert({ title: 'Connect any time', message: 'Open Settings → Integrations to connect OneStep GPS, Invoice Ninja, Quo, Gmail or the leads sheet. Settings → Import jobs brings in a calendar file or spreadsheet. Each page has step-by-step instructions.' }); done(); } }))) });
+      await ui.alert({ title: 'Connect any time', message: 'Open Settings → Integrations to connect OneStep GPS, Invoice Ninja, Quo, Gmail or the leads sheet. Settings → Company → Import brings in a calendar file, a spreadsheet or your previous program. Each page has step-by-step instructions.' }); done(); } }))) });
 }
 
-WD.admin = { signInSpec, typesSpec, custTypesSpec, custTypesSection, importSpec, connectPage };
-WD.panel.addJump('Import jobs', () => { WD.nav.switchTab('settings'); WD.nav.push(importSpec()); });
+WD.admin = { signInSpec, typesSpec, custTypesSpec, custTypesSection, importSpec, jobImportSpec, connectPage };
 WD.panel.addJump('Job type fields', () => { WD.nav.switchTab('settings'); WD.nav.push(typesSpec()); });
 })();

@@ -283,6 +283,45 @@ function openEditor(o = {}) {
   let page = null, matchBox = null, suggestBox = null, recBox = null, timer = null, dirty = false;
   const fill = c => { const l = c.locations[0], p = c.contacts[0] || {}; Object.assign(f, { customerId: c.id, title: c.name, address: l.address, notes: l.notes, type: WD.jobTypeFor(c), items: WD.copyItems(l.items), bizOpen: l.bizOpen, bizClose: l.bizClose, located: l.located !== false, x: l.x, y: l.y, po: WD.workflow.poFor(c, f.day).po, contract: c.contract || '', sig: WD.sigPolicy(c), lunchFrom: l.lunchFrom || '', lunchUntil: l.lunchUntil || '', closedDays: (l.closedDays || []).slice(), callAhead: l.callAhead || 0, contact: p.name || '', phone: p.phone ? fmt.phone(p.phone) : '', ext: p.ext || '', email: p.email || '', billingEmail: c.billingEmail || '', custType: c.custType || 'business' }); dirty = true; };
   if (isNew && o.customerId && q.customer(o.customerId)) fill(q.customer(o.customerId));
+  /* Prefill for a new job from another screen (Price Calc, the planning map, a call): applied after the defaults and the customer, so it wins.
+     o: {address, x, y, title, contactName, phone, email, notes, purge: {std: 20}, items: [...], price, banner, startAt}. Route and day stay editable. */
+  if (isNew) {
+    const pre = ['address', 'title', 'contactName', 'phone', 'email', 'notes', 'purge', 'items', 'price', 'banner'].some(k => o[k] != null && o[k] !== '');
+    if (o.title) f.title = String(o.title);
+    if (o.address) { f.address = String(o.address); const hit = addressSuggestions(f.address).find(x => !x.typed && x.address.toLowerCase() === f.address.trim().toLowerCase());
+      if (o.x != null && o.y != null) Object.assign(f, { located: true, x: o.x, y: o.y }); else if (hit && hit.l && hit.l.x != null) Object.assign(f, { located: true, x: hit.l.x, y: hit.l.y }); else Object.assign(f, { located: /\d/.test(f.address), x: null, y: null }); }
+    if (o.contactName) f.contact = String(o.contactName);
+    if (o.phone) f.phone = fmt.phoneValid(o.phone) ? fmt.phone(o.phone) : String(o.phone);
+    if (o.email) f.email = String(o.email);
+    if (o.notes) f.notes = [f.notes, String(o.notes)].filter(Boolean).join('\n');
+    if (o.purge) { if (!o.type) f.type = 'purge'; f.purge = { std: 0, stairs: 'none', haul: false, ...(f.purge || {}), ...o.purge }; if (f.type === 'purge' && !f.items.some(i => i.id === 'box')) f.items = f.items.concat({ id: 'box', qty: 0, rate: (data.priceBook.find(x => x.id === 'box') || { rate: 8 }).rate }); }
+    if (Array.isArray(o.items)) f.items = WD.copyItems(o.items);
+    if (o.price != null && o.price !== '') f.estTotal = o.price;
+    if (o.banner) f.banner = String(o.banner);
+    if (f.type === 'purge' && !f.purge) f.purge = { std: (f.items.find(i => i.id === 'box') || {}).qty || 0, stairs: 'none', haul: false };
+    if (pre) dirty = true;
+  }
+  /* Calendar scheduling (Settings → Scheduling style): every job has a start time. An exact-time job starts at its exact time. */
+  const cal = () => !!(WD.r14 && WD.r14.calendar && WD.r14.calendar()), ops2 = () => WD.ops2 || {};
+  f.startAt = job ? job.startAt || job.exactAt || '' : o.startAt || '';
+  const planMin = () => f.type === 'purge' && f.purge ? WD.purgeEstimate(f.purge).minutes || f.dur : f.durOverride || f.dur;
+  /* Hard drive crusher: switched on by itself when drives are added and that day's truck can't shred them (WD.ops2.crusher). Once a person
+     changes the switch, their choice is kept; an existing job that already has drives is treated as decided. */
+  let crusherAuto = !!f.crusher, crusherManual = !!(job && f.hdd > 0);
+  const crusherTouched = () => { if (!!f.crusher !== crusherAuto) crusherManual = true; };
+  const syncCrusher = () => { crusherTouched(); const c = ops2().crusher ? ops2().crusher(f.routeId, f.day) : null; if (f.hdd <= 0) { f.crusher = crusherAuto = false; crusherManual = false; return c; }
+    if (c && !crusherManual) f.crusher = crusherAuto = !!c.need; return c; };
+  const crusherText = c => !c ? '' : c.offsite ? c.text : !!f.crusher === !!c.need ? c.text : c.need ? c.truck + ' can’t shred hard drives and no crusher is going' : 'A crusher is going anyway · ' + c.truck + ' shreds hard drives on site';
+  /** Rebuild the page but keep the control that was tapped exactly where it is on screen, even when rows appear or go away above it. */
+  const stay = key => { const sel = '[data-k="' + key + '"]', a = page.body.querySelector(sel), y = a && a.getBoundingClientRect().top; page.refresh(); const b = page.body.querySelector(sel); if (a && b) page.body.scrollTop += (b.getBoundingClientRect().top - y) / (WD.scale ? WD.scale() : 1); };
+  /** A count with a field and − / + that updates itself in place: tapping several times in a row never rebuilds the page, so nothing pauses or moves.
+      after(value, was) updates whatever depends on the count. Returns [field, stepper]. */
+  const liveCount = (get, set, min, max, label, after) => {
+    const put = v => { const was = get(); v = Math.min(max, Math.max(min, isNaN(v) ? min : v)); field.value = String(v); if (v === was) return; set(v); dirty = true; minus.disabled = v <= min; plus.disabled = v >= max; after && after(v, was); };
+    const field = h('input.numfield', { type: 'text', inputmode: 'numeric', 'aria-label': label, value: String(get()), onfocus: e => e.target.select(), onkeydown: e => { if (e.key === 'Enter') e.target.blur(); }, onchange: e => put(parseInt(e.target.value.replace(/\D/g, ''), 10)) });
+    const minus = h('button', { 'aria-label': 'One fewer: ' + label, disabled: get() <= min, onclick: () => put(get() - 1) }, '−'), plus = h('button', { 'aria-label': 'One more: ' + label, disabled: get() >= max, onclick: () => put(get() + 1) }, '+');
+    return [field, h('div.stepper', minus, plus)];
+  };
   const blurAndRefresh = () => { if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); page.refresh(); };
   const syncSave = () => { const b = page.navbar.querySelector('.nav-trail .nav-btn'); if (b) b.disabled = !f.title.trim(); };
   const asks = k => WD.asks(f.type, k);
@@ -301,7 +340,7 @@ function openEditor(o = {}) {
   function suggest(text) {
     if (!suggestBox) return; const items = addressSuggestions(text);
     suggestBox.replaceChildren(items.length ? h('div', h('div.cells', { style: 'margin-top:8px' }, items.map(x => ui.row({ icon: x.typed ? 'pencil' : 'mappin', iconPlain: true, iconColor: x.typed ? 'var(--label2)' : 'var(--red)', title: x.title, subtitle: x.sub,
-      onTap: () => { f.address = x.address; if (x.typed) { f.located = /\d/.test(x.address); f.x = null; } else { f.located = true; f.x = x.l.x; f.y = x.l.y; } dirty = true; blurAndRefresh(); } }))),
+      onTap: () => { f.address = x.address; if (x.typed) { f.located = /\d/.test(x.address); f.x = null; } else { f.located = true; f.x = x.l.x; f.y = x.l.y; } dirty = true; suggestBox.replaceChildren(); blurAndRefresh(); } }))),
       h('div.section-footer', 'Prototype: suggestions are simulated. The app searches Apple Maps (biased toward your location), so any real address — like one in another city — comes up.')) : '');
   }
   function drawRecs() {
@@ -330,6 +369,13 @@ function openEditor(o = {}) {
     /* A day marked as a holiday, “do not schedule” or “large purge jobs only” (Holidays and schedule changes) warns before a job is put on it. */
     const mark = !f.allDay && (isNew || job.day !== f.day || job.routeId !== f.routeId) && WD.dayMark && WD.dayMark(f.routeId, f.day);
     if (mark && !(mark.kind === 'purgeOnly' && f.type === 'purge') && !(await ui.actionSheet({ title: fmt.day(f.day, 'long') + ' is marked “' + mark.label + '”', message: mark.kind === 'holiday' ? 'The company is closed that day.' : mark.kind === 'purgeOnly' ? q.routeName(f.routeId) + ' is being kept for large purge jobs that day.' : q.routeName(f.routeId) + ' is not taking jobs that day.', buttons: [{ label: 'Schedule it anyway', value: true }], cancel: 'Pick another day' }))) return;
+    /* Calendar scheduling: a job needs its start time. */
+    if (cal() && !f.allDay && !f.startAt) return ui.alert({ title: 'Start time is required', message: 'This business schedules by time. Choose when the job starts under Schedule.' });
+    /* AI Premium: the route is near or over capacity that day. Offers other days and routes with room, or “Schedule anyway” (r14-ops.js). */
+    if (!f.allDay && (isNew || job.day !== f.day || job.routeId !== f.routeId) && ops2().capacityGate) {
+      const g = await ops2().capacityGate({ routeId: f.routeId, day: f.day, title: f.title.trim(), addMin: planMin(), point: f.located && f.x != null ? { x: f.x, y: f.y } : null, job });
+      if (!g) return; if (g !== true) { f.routeId = g.routeId; f.day = g.day; f.pos = 0; syncCrusher(); }
+    }
     f.items = f.items.filter(i => i.id !== 'hdd'); if (f.hdd > 0 && !f.allDay) f.items.push({ id: 'hdd', qty: f.hdd, rate: hddRate() });
     if (f.type === 'purge' && f.purge) { const e = WD.purgeEstimate(f.purge); if (e.minutes) f.dur = e.minutes;
       const box = f.items.find(i => i.id === 'box');
@@ -346,7 +392,9 @@ function openEditor(o = {}) {
       data.customers.push(newCustomer); f.customerId = newCustomer.id;
     } else if (f.customerId && q.customer(f.customerId) && asks('signature')) q.customer(f.customerId).signature = f.sig;
     if (f.customerId && q.customer(f.customerId)) { const l = q.customer(f.customerId).locations[0]; if (l) Object.assign(l, { lunchFrom: f.lunchFrom, lunchUntil: f.lunchUntil, closedDays: f.closedDays.slice(), callAhead: f.callAhead }); }
-    const fields = { title: f.title.trim(), address: f.address.trim(), notes: f.notes, routeId: f.routeId, day: f.day, allDay: f.allDay, dur: f.dur, type: f.type, containers, items: WD.copyItems(f.items), bizOpen: f.bizOpen, bizClose: f.bizClose, custFrom: f.custFrom, custUntil: f.custUntil, custStrict: f.custStrict, customerId: f.customerId, locationId: null, located: f.located, x: f.x, y: f.y, po: f.po.trim(), contract: f.contract.trim(), phone: f.customerId ? '' : phone, ext: f.customerId ? '' : ext, email: f.customerId ? '' : f.email.trim().toLowerCase(), contactName: f.customerId ? '' : f.contact.trim(), custType: custTypeOf(), cityZip: f.cityZip.trim(), windowBy: f.windowBy, needsWindow: f.needsWindow && !(f.custFrom || f.custUntil), purge: f.type === 'purge' && f.purge ? { ...f.purge } : null, lunchFrom: f.lunchFrom, lunchUntil: f.lunchUntil, closedDays: f.closedDays.slice(), callAhead: f.callAhead, flags: { ...f.flags }, hddScan: f.hdd > 0 ? !!f.hddScan : null, ...(WD.r11 ? WD.r11.editorFields(f) : {}) };
+    const fields = { title: f.title.trim(), address: f.address.trim(), notes: f.notes, routeId: f.routeId, day: f.day, allDay: f.allDay, dur: f.dur, type: f.type, containers, items: WD.copyItems(f.items), bizOpen: f.bizOpen, bizClose: f.bizClose, custFrom: f.custFrom, custUntil: f.custUntil, custStrict: f.custStrict, customerId: f.customerId, locationId: null, located: f.located, x: f.x, y: f.y, po: f.po.trim(), contract: f.contract.trim(), phone: f.customerId ? '' : phone, ext: f.customerId ? '' : ext, email: f.customerId ? '' : f.email.trim().toLowerCase(), contactName: f.customerId ? '' : f.contact.trim(), custType: custTypeOf(), cityZip: f.cityZip.trim(), windowBy: f.windowBy, needsWindow: f.needsWindow && !(f.custFrom || f.custUntil), purge: f.type === 'purge' && f.purge ? { ...f.purge } : null, lunchFrom: f.lunchFrom, lunchUntil: f.lunchUntil, closedDays: f.closedDays.slice(), callAhead: f.callAhead, flags: { ...f.flags }, hddScan: f.hdd > 0 ? !!f.hddScan : null, ...(WD.r11 ? WD.r11.editorFields(f) : {}), startAt: f.allDay ? '' : f.startAt || '', ...(f.estTotal != null ? { estTotal: f.estTotal } : {}) };
+    if (f.hdd <= 0 || f.allDay) fields.crusher = false;
+    const byTime = (rid, day) => { if (cal() && ops2().sortByTime) ops2().sortByTime(rid, day); };
     const series = job ? seriesJobs(job, scope) : [], me = S.me.name, changes = job ? WD.x.diffJob(job, fields) : [];
     if (job && !job.allDay && !fields.allDay && job.routeId === fields.routeId && job.day === fields.day) { const cur = q.position(job), to = f.pos || cur.of; if (to !== cur.n) changes.push({ label: 'Stop', from: String(cur.n), to: String(to) }); }
     let firstMade = null;
@@ -355,9 +403,10 @@ function openEditor(o = {}) {
       if (job) {
         const from = { routeId: job.routeId, day: job.day }; Object.assign(job, from, fields, { routeId: from.routeId, day: from.day, recurring: wasRecurring && scope === 'This job' ? job.recurring : recurring });
         if (fields.allDay) { job.routeId = fields.routeId; job.day = fields.day; job.seq = 0; WD.renumber(from.routeId, from.day); } else WD.placeJob(job, fields.routeId, fields.day, f.pos ? f.pos - 1 : Infinity); job.events.push({ at: +WD.now(), actor: me, text: 'Edited' + (scope !== 'This job' ? ' (' + scope.toLowerCase() + ')' : ''), changes }); if (fields.address || fields.cityZip) job.addrIgnored = false;
+        byTime(from.routeId, from.day); byTime(job.routeId, job.day);
         series.forEach(j => Object.assign(j, { title: fields.title, address: fields.address, notes: fields.notes, dur: fields.dur, allDay: fields.allDay, type: fields.type, containers: fields.containers, items: WD.copyItems(fields.items), purge: fields.purge, needsWindow: fields.needsWindow, po: fields.po, contract: fields.contract, recurring: recurring || j.recurring })); series.forEach(j => { if (j.routeId !== fields.routeId) WD.placeJob(j, fields.routeId, j.day, Infinity); });
       } else {
-        const make = (day, pos) => { const j = WD.makeJob({ ...fields, items: WD.copyItems(fields.items), day, recurring, seq: fields.allDay ? 0 : null, attachments: f.attachments.slice(), events: [{ at: +WD.now(), actor: me, text: 'Created' + (noAddr ? ' · saved without ' + (noAddr === 'No address' ? 'an address' : 'a city or ZIP') : '') }] }); firstMade = firstMade || j; if (pos && !j.allDay) WD.placeJob(j, j.routeId, day, pos - 1); }; make(f.day, f.pos);
+        const make = (day, pos) => { const j = WD.makeJob({ ...fields, items: WD.copyItems(fields.items), day, recurring, seq: fields.allDay ? 0 : null, attachments: f.attachments.slice(), events: [{ at: +WD.now(), actor: me, text: 'Created' + (noAddr ? ' · saved without ' + (noAddr === 'No address' ? 'an address' : 'a city or ZIP') : '') }] }); firstMade = firstMade || j; if (pos && !j.allDay) WD.placeJob(j, j.routeId, day, pos - 1); byTime(j.routeId, day); }; make(f.day, f.pos);
         if (recurring) { const stepDays = { daily: 1, weekly: 7, monthly: 28 }[f.repeat] * f.interval, max = f.ends === 'count' ? f.count : 60; for (let i = 1; i < max && i * stepDays <= 548; i++) { const day = D.add(f.day, i * stepDays); if (f.ends === 'until' && day > f.until) break; make(day); } }
       }
     } });
@@ -380,23 +429,30 @@ function openEditor(o = {}) {
     const purge = f.type === 'purge', ids = purge ? ['box'] : WD.CONTAINERS, pricing = asks('pricing');
     const get = id => f.items.find(i => i.id === id), setQty = (id, n) => { let it = get(id); if (!it) f.items.push(it = { id, qty: 0, rate: data.priceBook.find(x => x.id === id).rate }); it.qty = Math.max(0, n); f.items = f.items.filter(i => i.qty > 0 || !WD.CONTAINERS.includes(i.id)); dirty = true; };
     return ids.map(id => { const it = get(id), n = it ? it.qty : 0, pb = data.priceBook.find(x => x.id === id);
-      const rate = pricing && n > 0 && h('input.jb-rate', { type: 'text', inputmode: 'decimal', 'aria-label': ITEM_LABEL[id] + ' rate', value: '$' + (it.rate != null ? it.rate : pb.rate), oninput: e => { const v = parseFloat(e.target.value.replace(/[^0-9.]/g, '')); it.rate = isNaN(v) ? 0 : v; dirty = true; } });
+      /* The rate field and its label are always built and only shown while the count is above zero, so − / + never has to rebuild the page. */
+      const rate = pricing && (purge ? n > 0 : true) && h('input.jb-rate', { type: 'text', inputmode: 'decimal', 'aria-label': ITEM_LABEL[id] + ' rate', value: '$' + (it && it.rate != null ? it.rate : pb.rate), style: { display: n > 0 ? '' : 'none' }, oninput: e => { const v = parseFloat(e.target.value.replace(/[^0-9.]/g, '')), cur = get(id); if (cur) cur.rate = isNaN(v) ? 0 : v; dirty = true; } });
       if (purge) return purgeRows(p, it, rate);
-      return h('div.row.jb-item', h('div.row-main', h('div.row-title', ITEM_LABEL[id]), pricing && n > 0 && h('div.row-sub', 'Rate each')), rate, ui.numField(n, 0, 500, v => { setQty(id, v); p.refresh(); }, ITEM_LABEL[id]), ui.stepper(n, 0, 500, v => { setQty(id, v); p.refresh(); }));
+      const sub = pricing && h('div.row-sub', { style: { display: n > 0 ? '' : 'none' } }, 'Rate each');
+      return h('div.row.jb-item', { 'data-k': 'item-' + id }, h('div.row-main', h('div.row-title', ITEM_LABEL[id]), sub), rate,
+        liveCount(() => (get(id) || { qty: 0 }).qty, v => setQty(id, v), 0, 500, ITEM_LABEL[id], v => { if (!rate) return; const cur = get(id); rate.style.display = sub.style.display = v > 0 ? '' : 'none'; if (v > 0 && cur) rate.value = '$' + (cur.rate != null ? cur.rate : pb.rate); }));
     });
   }
   /** Purge: what the customer has (any mix of box sizes, bins, pallets, gaylords, cabinets), stairs and haul-away, and the time and price estimate they add up to. */
   function purgeRows(p, it, rate) {
-    const P = data.purgeRules, pd = f.purge = f.purge || { std: 0, stairs: 'none', haul: false }, e = WD.purgeEstimate(pd), pb = id => data.priceBook.find(x => x.id === id).rate;
+    const P = data.purgeRules, pd = f.purge = f.purge || { std: 0, stairs: 'none', haul: false }, pb = id => data.priceBook.find(x => x.id === id).rate;
     const count = ([id, title, sub, k]) => h('div.row.jb-item', h('div.row-main', h('div.row-title', title), h('div.row-sub', typeof k === 'string' && ['pallet', 'gaylord', 'cabinet'].includes(k) ? '≈ ' + P[k] + ' boxes each' : sub)),
-      h('input.jb-count', { type: 'text', inputmode: 'numeric', 'aria-label': title, value: pd[id] ? String(pd[id]) : '', placeholder: '0', oninput: ev => { pd[id] = parseInt(ev.target.value.replace(/\D/g, ''), 10) || 0; dirty = true; }, onchange: () => p.refresh() }));
-    const PP = data.purgePricing, byBin = PP.method === 'bin', bins = WD.purgeBins(e.boxes), boxRate = it ? it.rate : pb('box'), extras = WD.purgeExtras(pd, e.billable), price = WD.purgeItems(pd, e, boxRate).reduce((s2, x) => s2 + x.qty * x.rate, 0);
-    return [WD.PURGE_UNITS.map(count),
-      h('div.row', h('div.row-main', h('div.row-title', 'Stairs'), h('div.row-sub', 'Adds about ' + Math.round(P.stairsMin * 10) + ' min per 10 boxes · +' + fmt.money(pb('stairsDown'), true) + '/box down, +' + fmt.money(pb('stairsUp'), true) + '/box up')), h('div', { style: 'width:170px;flex:none' }, ui.segmented([{ value: 'none', label: 'None' }, { value: 'down', label: 'Down' }, { value: 'up', label: 'Up' }], pd.stairs || 'none', v => { pd.stairs = v; dirty = true; p.refresh(); }))),
-      ui.toggleRow({ title: 'Haul away the empty boxes', subtitle: '+' + fmt.money(pb('haul'), true) + '/box · adds about ' + P.haulSec + ' seconds a box', value: !!pd.haul, onChange: v => { pd.haul = v; dirty = true; p.refresh(); } }),
-      h('div.row.jb-est', h('div.row-main', h('div.row-title', e.boxes ? '≈ ' + e.billable + ' boxes · ' + (byBin ? bins + (bins === 1 ? ' bin · ' : ' bins · ') : '') + (e.guess ? e.low + '–' + e.high + ' min' : e.minutes + ' min') + ' on site' : 'Enter what they have'),
+      h('input.jb-count', { type: 'text', inputmode: 'numeric', 'aria-label': title, value: pd[id] ? String(pd[id]) : '', placeholder: '0', oninput: ev => { pd[id] = parseInt(ev.target.value.replace(/\D/g, ''), 10) || 0; dirty = true; drawEst(); } }));
+    const PP = data.purgePricing, byBin = PP.method === 'bin';
+    /* The estimate line is redrawn by itself as counts, stairs and haul-away change: the rest of the page stays where it is. */
+    const estRow = () => { const e = WD.purgeEstimate(pd), bins = WD.purgeBins(e.boxes), boxRate = it ? it.rate : pb('box'), extras = WD.purgeExtras(pd, e.billable), price = WD.purgeItems(pd, e, boxRate).reduce((s2, x) => s2 + x.qty * x.rate, 0);
+      return h('div.row.jb-est', h('div.row-main', h('div.row-title', e.boxes ? '≈ ' + e.billable + ' boxes · ' + (byBin ? bins + (bins === 1 ? ' bin · ' : ' bins · ') : '') + (e.guess ? e.low + '–' + e.high + ' min' : e.minutes + ' min') + ' on site' : 'Enter what they have'),
         e.boxes > 0 && h('div.row-sub', e.guess ? h('span', { style: 'color:var(--orange);font-weight:600' }, 'Rough count (' + e.why + '). Planned at ' + e.minutes + ' min; confirm the count on site.') : 'Exact counts are usually close. Planned at ' + e.minutes + ' min.'),
-        e.boxes > 0 && asks('pricing') && h('div.row-sub', 'Estimated ' + fmt.money(price) + ' · ' + (byBin ? fmt.money(PP.binFlat) + ' for up to ' + PP.binIncluded + (PP.binIncluded === 1 ? ' bin' : ' bins') + (bins > PP.binIncluded ? ' + ' + (bins - PP.binIncluded) + ' × ' + fmt.money(PP.binExtra) : '') + ' · ' + data.purgeRules.bin65 + ' boxes to a bin' : WD.purgeItems(pd, e, boxRate).filter(x => /^box/.test(x.id)).map(x => x.qty + (x.id === 'boxLegal' ? ' legal' : x.id === 'boxXL' ? ' extra-large' : '') + ' × ' + fmt.money(x.rate, true)).join(' + ')) + (extras.length ? ' + ' + extras.map(x => ({ stairsDown: 'stairs down', stairsUp: 'stairs up', haul: 'haul-away' })[x.id]).join(' + ') : ''))), byBin ? null : rate)];
+        asks('pricing') && h('div.row-sub', (e.boxes > 0 ? 'Estimated ' : 'Starts at ') + fmt.money(price) + ' · ' + (byBin ? fmt.money(PP.binFlat) + ' for up to ' + PP.binIncluded + (PP.binIncluded === 1 ? ' bin' : ' bins') + (bins > PP.binIncluded ? ' + ' + (bins - PP.binIncluded) + ' × ' + fmt.money(PP.binExtra) : '') + ' · ' + data.purgeRules.bin65 + ' boxes to a bin' : WD.purgeItems(pd, e, boxRate).filter(x => /^box/.test(x.id)).map(x => x.qty + (x.id === 'boxLegal' ? ' legal' : x.id === 'boxXL' ? ' extra-large' : '') + ' × ' + fmt.money(x.rate, true)).join(' + ')) + (extras.length ? ' + ' + extras.map(x => ({ stairsDown: 'stairs down', stairsUp: 'stairs up', haul: 'haul-away' })[x.id]).join(' + ') : ''))), byBin ? null : rate); };
+    let est = estRow(); const drawEst = () => { const n = estRow(); est.replaceWith(n); est = n; if (rate) rate.style.display = ''; };
+    return [WD.PURGE_UNITS.map(count),
+      h('div.row', h('div.row-main', h('div.row-title', 'Stairs'), h('div.row-sub', 'Adds about ' + Math.round(P.stairsMin * 10) + ' min per 10 boxes · +' + fmt.money(pb('stairsDown'), true) + '/box down, +' + fmt.money(pb('stairsUp'), true) + '/box up')), h('div', { style: 'width:170px;flex:none' }, ui.segmented([{ value: 'none', label: 'None' }, { value: 'down', label: 'Down' }, { value: 'up', label: 'Up' }], pd.stairs || 'none', v => { pd.stairs = v; dirty = true; drawEst(); }))),
+      ui.toggleRow({ title: 'Haul away the empty boxes', subtitle: '+' + fmt.money(pb('haul'), true) + '/box · adds about ' + P.haulSec + ' seconds a box', value: !!pd.haul, onChange: v => { pd.haul = v; dirty = true; drawEst(); } }),
+      est];
   }
   /** Heads-up details the driver sees right after the job title (Settings → Field workflow chooses which show). */
   function headsUp(p) {
@@ -417,7 +473,11 @@ function openEditor(o = {}) {
     trailing: () => [{ label: isNew ? 'Add' : 'Save', bold: true, disabled: !f.title.trim(), onTap: save }],
     onClose: () => clearTimeout(timer),
     render(p) {
-      page = p; matchBox = h('div.jb-match'); suggestBox = h('div'); recBox = h('div');
+      /* The match and address-suggestion boxes are kept across rebuilds, and the route suggestions are drawn before the page is put back,
+         so a rebuild never collapses a section and lets everything below it jump. */
+      page = p; matchBox = matchBox || h('div.jb-match'); suggestBox = suggestBox || h('div'); recBox = h('div');
+      if (f.customerId) matchBox.replaceChildren(); if (!f.address.trim()) suggestBox.replaceChildren();
+      const crush = syncCrusher(), calOn = cal();
       const cust = q.customer(f.customerId), set = (k, v, re) => { f[k] = v; dirty = true; if (re) p.refresh(); };
       const unit = { daily: 'day', weekly: 'week', monthly: 'month' }[f.repeat], type = q.jobType(f.type), showWindow = asks('window') || f.custFrom || f.custUntil || f.needsWindow;
       function positionRow() {
@@ -426,8 +486,9 @@ function openEditor(o = {}) {
         return ui.pickerRow({ title: 'Position', value: f.pos, options, onChange: v => set('pos', +v, true) });
       }
       const inp = (label, k, o2 = {}) => ui.inputRow({ label, value: f[k], onInput: v => { f[k] = v; dirty = true; }, ...o2 });
-      setTimeout(drawRecs, 0);
+      drawRecs();
       return ui.list(
+        f.banner && h('div', { style: 'padding:0 4px 10px' }, ui.note(f.banner + (f.estTotal != null && !String(f.banner).includes(String(f.estTotal)) ? ' · estimated total ' + (typeof f.estTotal === 'number' ? fmt.money(f.estTotal) : f.estTotal) : ''))),
         f.customerId && WD.badDebtBanner && WD.badDebtBanner(f.customerId),
         ui.section({ header: 'Job', footer: cust ? null : 'Type a name, phone, email or address to find an existing customer.' },
           ui.pickerRow({ title: 'Job type', value: f.type, icon: 'tag', iconColor: type.color, options: WD.shownJobTypes(f.type).map(t => ({ value: t.id, label: t.title })), onChange: v => { if (v === 'purge' && !f.items.some(i => i.id === 'box')) f.items = [{ id: 'box', qty: 0, rate: 8 }]; if (v === 'purge' && !f.purge) f.purge = { std: (f.items.find(i => i.id === 'box') || {}).qty || 0, stairs: 'none', haul: false }; set('type', v, true); } }),
@@ -447,18 +508,26 @@ function openEditor(o = {}) {
         ui.section('Schedule',
           ui.pickerRow({ title: 'Route', value: f.routeId, options: q.routes().filter(r => r.writable).map(r => ({ value: r.id, label: q.routeName(r) })), onChange: v => { f.pos = 0; set('routeId', v, true); } }),
           ui.dateRow({ title: 'Date', value: f.day, onChange: v => { f.pos = 0; set('day', v, true); } }),
+          /* AI Premium: says so as soon as a route and day that are near or over capacity are chosen, with other days and routes that have room. */
+          !f.allDay && ops2().capInline && ops2().capInline(f.routeId, f.day, { addMin: planMin(), point: f.located && f.x != null ? { x: f.x, y: f.y } : null, job, onUse: (rid, day) => { f.routeId = rid; f.day = day; f.pos = 0; dirty = true; p.refresh(); } }),
           ui.toggleRow({ title: 'Note only', subtitle: 'Shows at the top of the day, not as a stop', value: f.allDay, onChange: v => set('allDay', v, true) }),
-          !f.allDay && positionRow()),
+          /* Calendar scheduling asks for a start time and shows when the job ends; stop-order scheduling asks for the place in the list. */
+          !f.allDay && calOn && (row => { if (!f.startAt) { const t = row.querySelector('.row-title'); if (t) Object.assign(t.style, { color: 'var(--red)', fontWeight: '600' }); } row.dataset.k = 'start'; return row; })(ui.quarterRow({ title: 'Start time', subtitle: f.startAt ? 'Ends ' + fmt.time(fmt.fromHHMM(f.startAt) + planMin()) + ' · ' + planMin() + ' min' : 'Required', value: f.startAt, onChange: v => { f.startAt = v; if (f.exactAt && v) f.exactAt = v; dirty = true; stay('start'); } })),
+          !f.allDay && calOn && f.startAt && ops2().overlapRow && ops2().overlapRow({ routeId: f.routeId, day: f.day, startAt: f.startAt, dur: planMin(), job }),
+          !f.allDay && !calOn && positionRow()),
         (asks('freq') || f.repeat !== 'none') && ui.section({ header: 'Frequency of service', footer: f.repeat === 'none' ? null : ruleLabel(f) + '. Each visit is created ahead of time for the next 18 months.' },
           ui.pickerRow({ title: 'Repeat', value: f.repeat, options: REPEATS, onChange: v => set('repeat', v, true) }),
-          f.repeat !== 'none' && ui.row({ title: 'Every', detail: f.interval + ' ' + unit + (f.interval > 1 ? 's' : ''), trailing: ui.stepper(f.interval, 1, 12, v => set('interval', v, true)) }),
+          f.repeat !== 'none' && (row => { row.dataset.k = 'every'; return row; })(ui.row({ title: 'Every', detail: f.interval + ' ' + unit + (f.interval > 1 ? 's' : ''), trailing: ui.stepper(f.interval, 1, 12, v => { f.interval = v; dirty = true; stay('every'); }) })),
           f.repeat !== 'none' && ui.pickerRow({ title: 'Ends', value: f.ends, options: [{ value: 'never', label: 'Never' }, { value: 'count', label: 'After a number of visits' }, { value: 'until', label: 'On a date' }], onChange: v => set('ends', v, true) }),
-          f.repeat !== 'none' && f.ends === 'count' && ui.row({ title: 'Visits', detail: f.count, trailing: ui.stepper(f.count, 1, 60, v => set('count', v, true)) }),
+          f.repeat !== 'none' && f.ends === 'count' && (row => { row.dataset.k = 'visits'; return row; })(ui.row({ title: 'Visits', detail: f.count, trailing: ui.stepper(f.count, 1, 60, v => { f.count = v; dirty = true; stay('visits'); }) })),
           f.repeat !== 'none' && f.ends === 'until' && ui.dateRow({ title: 'Last visit by', value: f.until, onChange: v => set('until', v) })),
         asks('items') && ui.section({ header: f.type === 'purge' ? 'Boxes' : 'Containers', footer: f.type === 'creditCard' || (cust && cust.cardOnFile) ? 'Card-on-file jobs are charged automatically when the stop is completed.' : asks('pricing') ? 'Rates start from ' + (cust ? cust.name + '’s pricing' : 'the price book') + ' and print on the invoice. Changes here apply to this job.' : null }, itemsRows(p)),
-        WD.r11 && WD.r11.editorSections(f, p, () => { dirty = true; }, linked()),
+        WD.r11 && WD.r11.editorSections(f, p, () => { dirty = true; crusherTouched(); }, linked()),
         !f.allDay && f.type !== 'meet' && ui.section({ header: 'Hard drives', fold: true, folded: true, footer: f.hdd > 0 ? (f.hddScan ? 'The driver scans each drive’s barcode or serial number before it is destroyed, and the numbers print on the invoice.' : 'Drives are counted and destroyed without scanning. Some customers need the serial numbers recorded; switch scanning on for those.') + ' ' + fmt.money(hddRate(), true) + ' each to start; change the price on the invoice or the customer.' : 'Add a count if this job includes hard drives to destroy.' },
-          ui.row({ icon: 'barcode', iconColor: 'var(--indigo)', title: 'Hard drives to destroy', subtitle: 'Type the number or use − / +', trailing: h('span.hstack', ui.numField(f.hdd, 0, 5000, v => { f.hdd = v; dirty = true; p.refresh(); }, 'Hard drives to destroy'), ui.stepper(f.hdd, 0, 5000, v => { f.hdd = v; dirty = true; p.refresh(); })) }),
+          /* The count updates in place. Only going from none to some (or back) rebuilds, because rows appear; the row stays where it was tapped. */
+          (row => { row.dataset.k = 'hdd'; return row; })(ui.row({ icon: 'barcode', iconColor: 'var(--indigo)', title: 'Hard drives to destroy', subtitle: f.hdd > 0 && crush ? h('span', { style: { color: crush.offsite || !crush.need || f.crusher ? 'var(--label2)' : 'var(--red)', fontWeight: '500' } }, crusherText(crush)) : 'Type the number or use − / +',
+            trailing: h('span.hstack', liveCount(() => f.hdd, v => { f.hdd = v; }, 0, 5000, 'Hard drives to destroy', (v, was) => { if ((v > 0) !== (was > 0)) { syncCrusher(); stay('hdd'); } })) })),
+          f.hdd > 0 && crush && !crush.offsite && (row => { row.dataset.k = 'crusher'; return row; })(ui.toggleRow({ title: 'Send a hard drive crusher with the driver', value: !!f.crusher, onChange: v => { f.crusher = v; crusherManual = true; crusherAuto = v; dirty = true; stay('crusher'); } })),
           f.hdd > 0 && ui.toggleRow({ title: 'Scan each drive', subtitle: 'Barcode or serial number, for this job', value: !!f.hddScan, onChange: v => { f.hddScan = v; dirty = true; p.refresh(); } })),
         asks('hours') && ui.section({ header: 'Office hours', fold: true, folded: true, footer: 'When the business is open. AutoRoute never plans a stop outside these hours.' },
           ui.quarterRow({ title: 'Opens', value: f.bizOpen, onChange: v => set('bizOpen', v) }), ui.quarterRow({ title: 'Closes', value: f.bizClose, onChange: v => set('bizClose', v) })),
@@ -687,7 +756,7 @@ async function openAutoRoute(routeId, o = {}) {
 }
 
 WD.addressSuggestions = addressSuggestions;
-WD.screens.jobs = { openDetails, openEditor, openReassign, openSearch, openAutoRoute, skipFlow, callOff, copyTo, pickDay };
+WD.screens.jobs = { recommend, openDetails, openEditor, openReassign, openSearch, openAutoRoute, skipFlow, callOff, copyTo, pickDay };
 const firstToday = pred => data.jobs.filter(j => j.day === D.today() && !j.allDay && pred(j)).sort(q.order)[0];
 WD.panel.addJump('Job details', () => { WD.nav.switchTab('board'); const j = firstToday(x => x.status === 'arrived') || firstToday(() => true); if (j) openDetails(j.id); });
 WD.panel.addJump('New job', () => { WD.nav.switchTab('board'); openEditor({ day: D.today(), routeId: 'r1' }); });

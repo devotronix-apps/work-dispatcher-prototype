@@ -388,3 +388,27 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .chip { min-height: 36px; position: relative; } .chip::after { content: ""; position: absolute; left: 0; right: 0; top: -4px; bottom: -4px; }
 .badge.solid { background: color-mix(in srgb, var(--c, var(--gray)) 78%, #000); }
 .toast { white-space: normal; width: max-content; max-width: 340px; line-height: 18px; }
+
+/* ---------- 5.0: parked businesses, six-tab bar, the desktop website ---------- */
+.tabview.parked, .sheet.parked, .sheet-backdrop.parked { visibility: hidden !important; pointer-events: none !important; }
+.tabbar { box-shadow: inset 0 2.5px 0 var(--org, transparent); }
+.tabbar.n6 .tab, .tabbar.n7 .tab { font-size: 11px; letter-spacing: -.3px; } .tabbar.n7 .tab .ic { width: 25px !important; height: 25px !important; }
+.side-org { display: none; }
+.phone.desktop { width: 1304px; height: 824px; border-radius: 20px; }
+.phone.desktop .screen { width: 1280px; height: 800px; border-radius: 9px; --top-inset: 0px; }
+.phone.desktop .statusbar, .phone.desktop .home-indicator { display: none; }
+.phone.desktop .tabpanes { left: 212px; bottom: 0; }
+.phone.desktop .tabbar { right: auto; top: 0; width: 212px; height: auto; flex-direction: column; gap: 2px; padding: 12px 10px; border-top: 0; border-right: .5px solid var(--sep); overflow-y: auto; box-shadow: inset 3px 0 0 var(--org, transparent); }
+.phone.desktop .tab { flex: none; flex-direction: row; justify-content: flex-start; gap: 11px; height: 40px; min-height: 40px; padding: 0 12px; border-radius: 9px; font-size: 15px; font-weight: 500; letter-spacing: -.2px; }
+.phone.desktop .tab .ic { width: 21px !important; height: 21px !important; }
+.phone.desktop .tab.active { background: var(--fill3); }
+.phone.desktop .tab .tab-badge { position: static; margin-left: auto; }
+.phone.desktop .side-org { display: flex; align-items: center; gap: 9px; border: 0; background: none; color: var(--label); font-size: 16px; font-weight: 700; letter-spacing: -.3px; padding: 6px 10px 14px; text-align: left; cursor: pointer; }
+.phone.desktop .side-org small { display: block; font-size: 12px; font-weight: 500; color: var(--label2); }
+.phone.desktop .side-org i { width: 12px; height: 12px; border-radius: 4px; background: var(--org, var(--tint)); flex: none; }
+.phone.desktop .sheet { left: 50%; right: auto; width: 640px; margin-left: -320px; top: 36px; bottom: 36px; border-radius: 18px; --bottom-inset: 0px; }
+.phone.desktop .sheet.medium, .phone.desktop .sheet.small { top: auto; }
+.phone.desktop #root.pushed-back { transform: none; border-radius: 0; }
+.phone.desktop .page-body:not(.noscroll) > .list, .phone.desktop .page-body:not(.noscroll) > .large-title, .phone.desktop .page-body:not(.noscroll) > div:not(.wide) { max-width: 860px; margin-left: auto; margin-right: auto; }
+.phone.desktop .page-body > .wide { max-width: none; }
+.phone.desktop .banner { left: auto; right: 18px; width: 380px; }

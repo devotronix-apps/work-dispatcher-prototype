@@ -17,7 +17,8 @@ Then open <http://localhost:8765>. Add `?skip` to the address to start past the 
 The panel beside the phone (a **Controls** button on narrower windows) drives the prototype:
 
 - **Preview as** switches the signed-in role (owner, dispatcher, office, driver) so you can see what each permission set shows.
-- **Service plan** switches between Starter, Pro and Premium to show which AI features each includes.
+- **Device** switches between the iPhone app and the desktop website; **Business** switches between the two demo businesses.
+- **Service plan** switches between Starter and Pro; **AI Premium** switches the paid AI add-on off, on trial, paid or ended, and sets the trial length.
 - **Appearance** and **Network** switch light/dark and online/offline. Offline job changes queue up and sync when you go back online.
 - **Next job change hits a conflict** makes the next saved change come back as a conflict to resolve under Settings → Pending changes.
 - **Simulate** triggers things that would come from elsewhere: a dispatcher moving a job, an incoming call, a driver arriving at a stop.
@@ -28,6 +29,26 @@ Completing a stop: **Complete** works from any status (no need for Start driving
 Board and map colors: the job type fills each card and pin (purge yellow, government indigo, card-on-file blue, setup red, meet-the-truck pink, route service graphite) and the route's calendar color rims it. Skipped, canceled, rescheduled and postponed jobs stay on the list with a line through the title and a label; canceled, rescheduled and postponed ones (`WD.calledOff`) sink to the bottom with no stop number and are left off the map and out of AutoRoute. Dropping to the bottom is a setting (`data.workflow.sinkCalledOff`, `WD.sinks`).
 
 Jobs have no scheduled times: each route's day is an ordered list, and stop 1 is done first. Cards leave the address off and show the key facts (containers or boxes, window, time on site); pinch on the board (or ⌘/ctrl-scroll, or Card detail in the board’s ⋯ menu) to switch between less and more detail. Every card carries all three levels and the board’s `lvl0`–`lvl2` class picks one, so pinching never rebuilds the list. AutoRoute recommends when to leave the truck's parking place for a day that hasn't started, which you can accept or replace with your own time, and gives a window to each stop marked **Needs a window**. On the board, drag a job up or down to reorder it or into another column to reassign it, and tap a column's empty space (or **Add stop**) to add a job at the end. Notes for the day sit above the list. The prototype clock starts at 10:24 AM; other drivers' trucks move and complete their stops on their own, faster than real life, so the board and map change while you watch.
+
+## What changed in 5.0
+
+- **Device** (panel): *iPhone app* or *Desktop website* (`S.desktop`, `WD.app.setDesktop`). The desktop screen is 1280 × 800 with the sections in a sidebar; list pages are capped at 860px unless their root element has the class `wide`. Board, CRM, Invoices and the call log have desktop layouts.
+- **Business** (panel, Menu, Settings → Business): two businesses, each with its own data. `WD.app.switchOrg(id)` parks the business in front (its tab view and open sheets are hidden, not rebuilt) and brings the other back exactly as it was; `WD.orgs` in `r14.js` swaps the contents of `WD.data` on the `orgSwap` event. Because `data`'s contents change, modules read `data.customers`, `data.jobs` and their own `data.*` collections at use time and seed them lazily.
+- **AI Premium** (`WD.aip`, `data.aiPremium`): a paid add-on with a free trial whose length the panel sets ("set by RouteClerk"). `WD.aip.on()`; `WD.aip.block(build)` returns nothing when it is off, so AI Premium features are hidden, not locked. `WD.aip.feature(name, where, text)` lists a feature on the sign-up page. The old Premium tier's features are gated the same way (`RC.ai`).
+- **Bottom bar**: four shortcuts by default, up to six (`app.BAR_DEFAULT`, `app.BAR_MAX`). Default `board office dialer shift`; the Map is in the Menu and inside Dispatch (`S.board.view = 'board' | 'map'`).
+- **Settings rows from other files**: `WD.r14.addSetting(group, (push, gated) => row)`; groups `AI Premium`, `Company`, `Routes and board`, `Jobs`, `CRM`.
+- **Scheduling style**: `data.sched.mode = 'order' | 'calendar'` (`WD.r14.calendar()`); in calendar mode jobs carry `startAt`.
+
+| File | Contents |
+|---|---|
+| `js/screens/r14.js` | `WD.aip` (AI Premium), `WD.orgs` (businesses: `dataOf(id)`, `findCaller(number, {to})`, `areaSpec()`), `WD.r14` (settings registry, scheduling style) |
+| `js/screens/r14-calls.js` | `WD.calls` and the Dialer tab (`WD.screens.dialer`): keypad and in-call sheet, the call log with filters, resolve and archive (`logSpec(preset)`), calls flagged for review (`reviewCount()`), AI call review (`reviewSpec()`), `incoming({number, to})` which opens the right business, Settings → Phone and calls. Data: `data.calls`, `data.callSettings` |
+| `js/screens/r14-crm.js` | `WD.crm2`: Customer needs (`data.inquiries`, request types, company documents), key accounts (`c.vip`, `c.estValue`), AI pipeline review and its log (`data.aiActions`), low-value auto-reply rules, the desktop dashboard, board and spreadsheet, new agreement requests (`data.agreementRequests`) |
+| `js/screens/r14-ops.js` | `WD.ops2`: route capacity (`capacity(routeId, day)`, the pop-up when a job is created on a full day), hard drive crusher rule and the off-site setting, calendar-mode helpers and the desktop time grid, Shift's day synopsis, jobs with no address and helping other routes (`data` stop requests, approval setting), the AI route review and its implementation plan (`data.routePlans`) |
+| `js/screens/r14-price.js` | `WD.price`: the purge price list (base tier, per-unit rate, extra lines; wraps `WD.purgeItems`), `initialPurge(n)`, customer match by address, recommended days and best fit for Price Calc |
+| `js/screens/r14-money.js` | `WD.money`: suggested price changes and the AI pricing audit, built-in invoicing settings, the customer email preview (`emailPreview`), the customer portal preview (`portalSpec(customerId)`, Stripe test payments, autopay), invoice tracking, forms and documents designer (`formsSpec()`), import (`importSpec`), maintenance files and the shop-email inbox |
+
+New job prefill: `WD.screens.jobs.openEditor({customerId, routeId, day, type, address, title, contactName, phone, email, notes, purge, items, price, banner, startAt})`. `WD.screens.map.create()` returns an embeddable map. `WD.rc.openStatement(c, {all: true})` lists every invoice.
 
 ## Layout rules (4.3)
 
@@ -113,7 +134,7 @@ A page is a spec object:
 - `ui.sheet(spec, {detent: 'large'|'medium'|'small'})` presents a modal sheet with its own stack → `{close(result), push(spec), closed: Promise}`. Inside it, `page.dismiss(result)` closes the sheet; give sheets a `Cancel`/`Done` nav button.
 - `page.refresh()`, `page.setTitle()`, `page.push(spec)`, `page.pop()`, `page.body`, `page.el`.
 - After changing `WD.state` or `WD.data`, call `WD.changed()`; visible pages re-render (a page with a focused text field is skipped so typing is not interrupted — keep form values in closure variables, not in the DOM).
-- Destinations are the screen tabs in `WD.app.tabs` (`board map office shift`; `office` is the CRM tab) plus the sections in `WD.app.menu` (`services contracts products customers invoices reports calc maintenance settings`). Each person chooses up to four for the bottom bar (`S.prefs.bar`, default `board map office shift`) and the order of the rest in the Menu (`S.prefs.order`, `S.prefs.hidden`) in Settings → Display → Tabs and menu (`WD.rc.sectionsSpec`, `WD.app.setLayout(fn)`, `app.barIds()`, `app.menuItems()`); the choice is kept in this browser. The last tab, `more`, is the menu: it opens the chosen section's `WD.screens.<id>.root()` in its own stack. `WD.nav.switchTab('<id>')` opens a destination from code wherever it lives (`'crm'` is the CRM tab). `can` is a permission flag or a function; `tab.badge` / `menuItem.badge = () => number` adds a badge.
+- Destinations are the screen tabs in `WD.app.tabs` (`board map office shift`; `office` is the CRM tab) plus the sections in `WD.app.menu` (`services contracts products customers invoices reports calc maintenance settings`). Each person chooses up to six for the bottom bar (`S.prefs.bar`, default the four `board office dialer shift`) and the order of the rest in the Menu (`S.prefs.order`, `S.prefs.hidden`) in Settings → Display → Tabs and menu (`WD.rc.sectionsSpec`, `WD.app.setLayout(fn)`, `app.barIds()`, `app.menuItems()`); the choice is kept in this browser. The last tab, `more`, is the menu: it opens the chosen section's `WD.screens.<id>.root()` in its own stack. `WD.nav.switchTab('<id>')` opens a destination from code wherever it lives (`'crm'` is the CRM tab). `can` is a permission flag or a function; `tab.badge` / `menuItem.badge = () => number` adds a badge.
 
 ### Feedback and fake network
 

@@ -65,13 +65,16 @@ function root() {
     const me = S.me, o = org(), n = S.pending.length, issues = S.pending.filter(x => x.status === 'conflict' || x.status === 'failed').length, push = s => page.push(s);
     /* A row that opens another module's page; `flag` (a permission) greys it out with “Ask an admin” for people without it. */
     const lnk = (flag, ic, color, title, subtitle, spec) => { const o2 = { icon: ic, iconColor: color, title, subtitle, chevron: true, onTap: () => push(spec()) }; return ui.row(flag ? gated(flag, o2) : o2); };
+    const X14 = group => WD.r14 ? WD.r14.rows(group, push, gated) : null, aiOn = !WD.aip || WD.aip.on();
     return [
       ui.section(ui.row({ class: 'st-profile', leading: ui.avatar(me.name, { size: 58 }), title: me.name, subtitle: h('span', me.email, h('span.st-meta', roleBadge(me.role), o.name)), chevron: true, onTap: () => push(accountSpec()) })),
       WD.rc && WD.rc.displaySection(push),
+      WD.aip && WD.aip.settingsSection(push, X14('AI Premium')),
       ui.section('Company',
-        ui.row({ icon: 'building', iconColor: 'var(--indigo)', title: 'Company', subtitle: 'Switch between your companies', detail: o.name, chevron: true, onTap: () => push(orgsSpec()) }),
+        ui.row({ icon: 'building', iconColor: 'var(--indigo)', title: 'Business', subtitle: 'Switch between the businesses you work for', detail: o.name, chevron: true, onTap: () => push(orgsSpec()) }),
         WD.rc && WD.rc.companyRows(push, gated, () => push(integrationsSpec()), INTEG.filter(connected).length),
         ui.row({ icon: 'lock', iconColor: 'var(--gray)', title: 'Sign-in and security', detail: (WD.signInPolicies.find(x => x.value === S.signInPolicy) || {}).label, chevron: true, onTap: () => WD.admin && push(WD.admin.signInSpec()) }),
+        X14('Company'),
         WD.r8 && ui.row(gated('settings.manage', { icon: 'share', iconColor: 'var(--teal)', title: 'Export and backup', subtitle: 'Customers, jobs, invoices, CRM and settings as files you keep', chevron: true, onTap: () => push(WD.r8.exportSpec()) }))),
       WD.rc && WD.rc.commsSection(push, gated),
       ui.section({ header: 'Routes and board', footer: 'Single-route portrait view shows 1 or 3 days from the active day. Landscape always shows 7.' },
@@ -83,18 +86,20 @@ function root() {
         WD.ops && lnk('settings.manage', 'calendar', 'var(--red)', 'Holidays and schedule changes', 'Mark a holiday and approve where its jobs move; one-time moves', () => WD.ops.schedSpec()),
         WD.co && lnk('settings.manage', 'barcode', 'var(--indigo)', 'Barcode scanning', 'Containers at each stop; hard drive serial numbers by job', () => WD.co.barcodeSpec()),
         lnk(null, 'checklist', 'var(--indigo)', 'Field workflow', 'Arrival, Complete stop, invoices, job titles, shift limit', () => WD.workflow.workflowSpec()),
-        WD.r13 && lnk('settings.manage', 'sparkles', 'var(--purple)', 'AI route monitoring', WD.r13.routeAILabel(), () => WD.r13.routeAISpec()),
+        X14('Routes and board'),
+        aiOn && WD.r13 && lnk('settings.manage', 'sparkles', 'var(--purple)', 'AI route monitoring', WD.r13.routeAILabel(), () => WD.r13.routeAISpec()),
         ui.row({ icon: 'wrench', iconColor: 'var(--gray)', title: 'Trucks, locations and disposal sites', subtitle: 'Managed in Maintenance', chevron: true, onTap: () => WD.nav.switchTab('maintenance') })),
       ui.section({ header: 'Jobs' },
         WD.admin && lnk(null, 'tag', 'var(--pink)', 'Job types, fields and sub-categories', 'What each job type asks for and requires; non-paper purge sub-categories', () => WD.admin.typesSpec()),
         WD.biz && lnk('settings.manage', 'checklist', 'var(--green)', 'Service checklists', 'Steps and required photos for each job type', () => WD.biz.checklistSpec()),
         WD.biz && lnk('settings.manage', 'square.and.pencil', 'var(--blue)', 'Custom fields', 'Your own fields on customers and jobs', () => WD.biz.fieldsSpec()),
         WD.r11 && lnk('settings.manage', 'arrow.left.arrow.right', 'var(--purple)', 'Pickup-and-delivery pairs', 'Two linked stops: pick up at one, drop off at the other; pricing for the pair', () => WD.r11.pairsSpec()),
-        WD.admin && lnk('settings.manage', 'square.and.pencil', 'var(--teal)', 'Import jobs', 'Calendar file (.ics), Excel or CSV', () => WD.admin.importSpec())),
+        X14('Jobs')),
       WD.co && ui.section({ header: 'CRM' },
         lnk('settings.manage', 'funnel', 'var(--purple)', 'CRM and leads', 'Features, lead sources, territories, referral thank-you, follow-up wording', () => WD.co.crmSpec()),
-        WD.r13 && lnk('settings.manage', 'sparkles', 'var(--purple)', 'AI lead assistant', WD.r13.leadAILabel(), () => WD.r13.leadAISpec()),
-        WD.r13 && lnk('settings.manage', 'phone.fill', 'var(--green)', 'AI phone agent', WD.r13.phoneAILabel(), () => WD.r13.phoneAISpec()),
+        X14('CRM'),
+        aiOn && WD.r13 && lnk('settings.manage', 'sparkles', 'var(--purple)', 'AI lead assistant', WD.r13.leadAILabel(), () => WD.r13.leadAISpec()),
+        aiOn && WD.r13 && lnk('settings.manage', 'phone.fill', 'var(--green)', 'AI phone agent', WD.r13.phoneAILabel(), () => WD.r13.phoneAISpec()),
         ui.row({ icon: 'signature', iconColor: 'var(--indigo)', title: 'Contracts', subtitle: 'Service agreements are in the Contracts section', chevron: true, onTap: () => WD.nav.switchTab('contracts') })),
       ui.section({ header: 'HR', footer: 'Everything about the people who work here: who they are and what they may do, their hours and pay period, time off, and the licenses and clearances they hold.' },
         ui.row(gated('users.manage', { icon: 'person.2', iconColor: 'var(--green)', title: 'Team and roles', subtitle: 'Invite people, roles and permissions', detail: String(data.users.filter(u => u.status === 'active').length), chevron: true, onTap: () => push(teamSpec()) })),
@@ -117,7 +122,7 @@ function root() {
       ui.section({ header: 'About', showFooter: true, footer: 'The prototype checks for a newer version each time it opens and offers to update. The tutorial shows once after each update.' }, ui.row({ title: 'Version', detail: WD.version + ' (prototype)' }), ui.row({ icon: 'arrow.clockwise', iconPlain: true, title: 'Check for updates', subtitle: 'Loads the newest published version if this one is behind', tint: true, onTap: () => WD.app.checkForUpdates() }), ui.row({ icon: 'sparkles', iconPlain: true, title: 'Show the tutorial', subtitle: 'What’s new in version ' + WD.version, tint: true, onTap: () => WD.x.tutorial() }), ui.row({ title: 'Acknowledgements', chevron: true, onTap: () => push(ackSpec()) })),
       ui.section(ui.row({ title: 'Sign out', destructive: true, center: true, onTap: signOut })),
       h('div.st-ver', 'RouteClerk ' + WD.version + ' (prototype)', (WD.olderVersions || []).length ? [' · ', h('button', { onclick: e => olderVersions(e.currentTarget) }, 'Older versions')] : null)];
-  }, { placeholder: 'Search settings', icons: { Display: ['sun', 'var(--indigo)'], Company: ['building', 'var(--indigo)'], 'Routes and board': ['route', 'var(--blue)'], Jobs: ['tag', 'var(--pink)'], CRM: ['funnel', 'var(--purple)'], HR: ['person.2', 'var(--green)'], Sync: ['sync', 'var(--teal)'], Privacy: ['hand.raised', 'var(--indigo)'], About: ['info.circle', 'var(--gray)'] } }) };
+  }, { placeholder: 'Search settings', icons: { 'AI Premium': ['sparkles', 'var(--purple)'], Display: ['sun', 'var(--indigo)'], Company: ['building', 'var(--indigo)'], 'Routes and board': ['route', 'var(--blue)'], Jobs: ['tag', 'var(--pink)'], CRM: ['funnel', 'var(--purple)'], HR: ['person.2', 'var(--green)'], Sync: ['sync', 'var(--teal)'], Privacy: ['hand.raised', 'var(--indigo)'], About: ['info.circle', 'var(--gray)'] } }) };
 }
 /* Each earlier release is kept on the published site under v/<version>/, with a link back to the newest. */
 function olderVersions(anchor) {
@@ -155,10 +160,11 @@ function passwordSheet() {
     render: () => ui.list(ui.section({ footer: 'At least 8 characters. Other devices are signed out; this iPhone stays signed in.' }, field('cur', 'Current', true), field('next', 'New'), field('again', 'Confirm'))) }, { detent: 'medium' });
   async function submit() { if (await ui.run('Updating password…', null, { done: 'Password changed' })) sheet.close(); }
 }
-const orgsSpec = () => ({ title: 'Company', render: () => ui.list(ui.section({ footer: 'Routes, jobs and team are separate for each company.' },
+const orgsSpec = () => ({ title: 'Business', render: () => ui.list(ui.section({ showFooter: true, footer: 'Routes, jobs, customers and team are separate for each business. When you switch, the one you leave stays exactly as you left it: the same screen, the same half-filled form. Calls from Quo open the right business by themselves (Settings → Company → Phone and calls).' },
   data.orgs.map(o => { const cur = o.id === org().id; return ui.row({ leading: ui.avatar(o.name, { size: 36, icon: 'building' }), title: o.name, subtitle: [WD.roles[o.role] ? WD.roles[o.role].title : o.role, plural(o.trucks, 'truck'), o.plan].join(' · '),
     trailing: cur ? icon('checkmark', 20, 'var(--tint)') : null, onTap: cur ? null : () => switchOrg(o) }); }))) });
-async function switchOrg(o) { if (await ui.run('Switching to ' + o.name + '…', () => { S.org = o; }, { min: 1200, max: 1800 })) WD.app.showMain('settings'); }
+/* The business you leave is parked exactly as it is (open screens, forms, scroll positions) and comes back that way. */
+async function switchOrg(o) { if (await ui.run('Switching to ' + o.name + '…', null, { min: 500, max: 900 })) { WD.app.switchOrg(o.id); ui.toast('Now in ' + o.name, 'building'); } }
 
 /* ---------- Routes (personal preferences + admin defaults) ---------- */
 function routesSpec() {

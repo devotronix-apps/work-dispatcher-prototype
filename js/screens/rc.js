@@ -52,15 +52,17 @@ const ADDONS = RC.ADDONS = [{ id: 'phone', name: 'AI phone agent', price: 'From 
 PL.addons = { phone: false };
 RC.addon = id => !!PL.addons[id];
 const promoOn = () => !!(PL.promo && PL.promo.until >= D.today());
-RC.tier = () => promoOn() && rank(PL.promo.tier) > rank(PL.tier) ? PL.promo.tier : PL.tier;
+RC.tier = () => { const t = promoOn() && rank(PL.promo.tier) > rank(PL.tier) ? PL.promo.tier : PL.tier; return t === 'premium' ? 'pro' : t; };
 /** Is this AI feature usable right now? Included in the plan (or a running free preview) and not switched off. */
-RC.ai = id => { const f = AI.find(x => x.id === id); return !!f && rank(RC.tier()) >= rank(f.tier) && !PL.off[id]; };
-RC.startPromo = (tier = 'premium', days = 14) => { PL.promo = { tier, until: D.add(D.today(), days), days }; WD.changed(); ui.banner({ title: tierOf(tier).name + ' features unlocked', text: 'Free until ' + fmt.day(PL.promo.until, 'long') + '. Nothing is charged, and they switch off by themselves if you don’t upgrade.', icon: 'sparkles', color: 'var(--purple)', duration: 6000 }); };
+/* 5.0: the top tier became AI Premium, a paid add-on with a free trial (WD.aip in r14.js). Its features are hidden, not locked, without it. */
+const prem = f => f.tier === 'premium', aipOn = () => !!(WD.aip && WD.aip.on());
+RC.ai = id => { const f = AI.find(x => x.id === id); return !!f && (prem(f) ? aipOn() : rank(RC.tier()) >= rank(f.tier)) && !PL.off[id]; };
+RC.startPromo = (tier = 'premium', days = 14) => { if (tier === 'premium' && WD.aip) return WD.aip.startTrial(); PL.promo = { tier, until: D.add(D.today(), days), days }; WD.changed(); ui.banner({ title: tierOf(tier).name + ' features unlocked', text: 'Free until ' + fmt.day(PL.promo.until, 'long') + '. Nothing is charged, and they switch off by themselves if you don’t upgrade.', icon: 'sparkles', color: 'var(--purple)', duration: 6000 }); };
 /** An AI result block: {title, lines: [string | node], action: node}. */
 RC.aiCard = o => h('div.rc-ai', h('div.k', icon('sparkles', 15), o.title || 'AI suggestion'), o.text && h('div', o.text), o.lines && o.lines.length ? h('ul', o.lines.map(l => h('li', l))) : null, o.action);
 /** Show `build()` when the feature is on; otherwise say which plan includes it and offer the free preview. Returns null when an admin switched it off. */
 RC.aiBlock = (id, build) => {
-  const f = AI.find(x => x.id === id); if (!f) return null; if (RC.ai(id)) return build();
+  const f = AI.find(x => x.id === id); if (!f) return null; if (RC.ai(id)) return build(); if (prem(f)) return null;
   if (PL.off[id] && rank(RC.tier()) >= rank(f.tier)) return null;
   const t = tierOf(f.tier), used = PL.promo && !promoOn();
   return h('div.rc-ai.lock', h('div.k', icon('lock', 14), f.name + ' · ' + t.name + ' plan'), h('div', f.text),
@@ -72,24 +74,25 @@ RC.planSpec = () => ({ title: 'Plan and AI features', render: page => {
   const cur = RC.tier(), re = () => { WD.changed(); page.refresh(); };
   return ui.list(note('Features are switched on by plan. From time to time a higher plan’s features are unlocked free for a couple of weeks, so you can see whether they are worth it before paying for them.'),
     ui.section({ header: 'Your plan', fold: false, footer: 'Prototype: choose a plan here (or in the panel beside the phone) to see what each one includes.' },
-      ui.pickerRow({ title: 'Plan', icon: 'creditcard', iconColor: 'var(--green)', value: PL.tier, options: TIERS.map(t => ({ value: t.id, label: t.name })), onChange: v => { PL.tier = v; re(); } }),
+      ui.pickerRow({ title: 'Plan', icon: 'creditcard', iconColor: 'var(--green)', value: PL.tier, options: TIERS.filter(t => t.id !== 'premium').map(t => ({ value: t.id, label: t.name })), onChange: v => { PL.tier = v; re(); } }),
+      WD.aip && WD.aip.planRow(page),
       promoOn() ? ui.row({ icon: 'sparkles', iconColor: 'var(--purple)', title: tierOf(PL.promo.tier).name + ' free preview', subtitle: 'Ends ' + fmt.day(PL.promo.until, 'long') + ' · nothing is charged', trailing: ui.button('End', { kind: 'gray', small: true, block: false, onTap: () => { PL.promo.until = D.add(D.today(), -1); re(); } }) })
-        : rank(PL.tier) < TIERS.length - 1 && ui.row({ icon: 'sparkles', iconColor: 'var(--purple)', title: PL.promo ? 'Free preview ended ' + fmt.day(PL.promo.until, 'md') : 'Try Premium free for 14 days', subtitle: PL.promo ? 'Upgrade to keep the features you tried' : 'Unlocks every feature below. Switches off by itself', tint: !PL.promo, onTap: PL.promo ? null : () => RC.startPromo('premium') })),
-    TIERS.map(t => ui.section({ header: t.name + (t.id === PL.tier ? ' · your plan' : rank(t.id) <= rank(cur) ? ' · included' : ''), fold: false }, AI.filter(f => f.tier === t.id).map(f => { const has = rank(cur) >= rank(f.tier);
+        : rank(PL.tier) < 1 && ui.row({ icon: 'sparkles', iconColor: 'var(--purple)', title: PL.promo ? 'Free preview ended ' + fmt.day(PL.promo.until, 'md') : 'Try Pro free for 14 days', subtitle: PL.promo ? 'Upgrade to keep the features you tried' : 'Unlocks every feature below. Switches off by itself', tint: !PL.promo, onTap: PL.promo ? null : () => RC.startPromo('pro') })),
+    TIERS.filter(t => t.id !== 'premium' || aipOn()).map(t => ui.section({ header: t.id === 'premium' ? 'AI Premium · ' + WD.aip.label() : t.name + (t.id === PL.tier ? ' · your plan' : rank(t.id) <= rank(cur) ? ' · included' : ''), fold: false }, AI.filter(f => f.tier === t.id).map(f => { const has = prem(f) ? aipOn() : rank(cur) >= rank(f.tier);
       return ui.row({ icon: has ? 'sparkles' : 'lock', iconColor: has ? t.color : 'var(--gray)', title: f.name, subtitle: f.text + ' Shows in: ' + f.where + '.', trailing: has ? ui.toggle(!PL.off[f.id], v => { PL.off[f.id] = !v; WD.changed(); }) : tierBadge(f.tier) }); }))),
-    ui.section({ header: 'Paid add-ons', fold: false, showFooter: true, footer: 'Add-ons are billed by use on top of your plan, and can be switched off at any time.' }, ADDONS.map(a => ui.row({ icon: 'phone.fill', iconColor: 'var(--green)', title: a.name, subtitle: a.text + ' ' + a.price + '.',
+    aipOn() && ui.section({ header: 'Paid add-ons', fold: false, showFooter: true, footer: 'Add-ons are billed by use on top of your plan, and can be switched off at any time.' }, ADDONS.map(a => ui.row({ icon: 'phone.fill', iconColor: 'var(--green)', title: a.name, subtitle: a.text + ' ' + a.price + '.',
       trailing: owner() ? ui.toggle(PL.addons[a.id], v => { PL.addons[a.id] = v; re(); ui.toast(a.name + (v ? ' switched on' : ' switched off'), 'checkmark'); }) : ui.badge(PL.addons[a.id] ? 'On' : 'Off', 'var(--gray)') }))));
 } });
 
 /* ================= Settings → Display ================= */
-/* Each person arranges the app for the job they do: up to four sections in the bottom bar, everything else in the Menu, in their order. */
+/* Each person arranges the app for the job they do: four sections in the bottom bar to start with and up to six (app.BAR_MAX), everything else in the Menu, in their order. */
 RC.sectionsSpec = () => ({ title: 'Tabs and menu', render: page => {
   const A = WD.app, bar = A.barIds(), inMenu = A.dests().filter(d => !bar.includes(d.id)), P = S.prefs, order = () => A.menuItems().map(d => d.id), set = fn => { A.setLayout(fn); page.refresh(); };
   const move = (list, i, by) => { const l = list.slice(), j = i + by; if (j < 0 || j >= l.length) return l; [l[i], l[j]] = [l[j], l[i]]; return l; };
   const arrows = (i, n, up, down) => h('div.st-order', h('button.st-arrow', { 'aria-label': 'Move up', disabled: i === 0, onclick: up }, icon('arrow.up', 16)), h('button.st-arrow', { 'aria-label': 'Move down', disabled: i === n - 1, onclick: down }, icon('arrow.down', 16)));
   const shown = A.menuItems(), hiddenOnes = inMenu.filter(d => !shown.includes(d));
   return ui.list(note('Put what you use most in the bottom bar. Someone who invoices all day can put Invoices there; someone who never uses the CRM can swap it for something else. This is your own arrangement: nobody else’s changes.'),
-    ui.section({ header: 'Bottom bar · ' + bar.length + ' of ' + A.BAR_MAX, fold: false, showFooter: true, footer: 'The last place in the bar is always the Menu.' },
+    ui.section({ header: 'Bottom bar · ' + bar.length + ' of ' + A.BAR_MAX, fold: false, showFooter: true, footer: 'The bar starts with ' + A.BAR_DEFAULT + ' shortcuts and holds up to ' + A.BAR_MAX + '. The last place is always the Menu.' + (S.desktop ? ' On the desktop website every section is in the sidebar, so this arrangement applies to the phone app.' : '') },
       bar.map((id, i) => { const d = A.dest(id); return ui.row({ icon: d.icon, iconColor: 'var(--tint)', title: d.title, trailing: h('div.hstack', { style: 'gap:8px' }, arrows(i, bar.length, () => set(p => { p.bar = move(bar, i, -1); }), () => set(p => { p.bar = move(bar, i, 1); })),
         bar.length > 1 && h('button.st-arrow', { 'aria-label': 'Move ' + d.title + ' to the menu', style: 'color:var(--red)', onclick: () => set(p => { p.bar = bar.filter(x => x !== id); }) }, icon('minus', 16))) }); })),
     ui.section({ header: 'Menu', fold: false, showFooter: true, footer: bar.length >= A.BAR_MAX ? 'The bar is full. Move something out of it to make room.' : 'Tap + to move a section into the bottom bar.' },
@@ -156,7 +159,7 @@ RC.companyRows = (push, gated, openIntegrations, connected) => [
   WD.biz && ui.row(gated('settings.manage', { icon: 'briefcase', iconColor: 'var(--indigo)', title: 'Business type and wording', subtitle: WD.biz.industryName() + ' · what things are called on invoices, starter items', chevron: true, onTap: () => push(WD.biz.wordingSpec()) })),
   WD.r11 && ui.row(gated('settings.manage', { icon: 'globe', iconColor: 'var(--blue)', title: 'Country, currency and units', subtitle: WD.locale.currency + ' · ' + (WD.locale.units === 'metric' ? 'metric' : 'miles and pounds'), chevron: true, onTap: () => push(WD.r11.unitsSpec()) })),
   ui.row(gated('settings.manage', { icon: 'creditcard', iconColor: 'var(--green)', title: 'Invoicing and payments', subtitle: PAY.via === 'routeclerk' ? 'RouteClerk' + (PAY.stripe ? ' · Stripe' + (PAY.passFees ? ' · fees passed on' : '') : ' · Stripe not connected') : 'Through Invoice Ninja', chevron: true, onTap: () => push(RC.paySpec(openIntegrations)) })),
-  WD.r11 && ui.row(gated('settings.manage', { icon: 'exclamationmark.circle', iconColor: 'var(--red)', title: 'Unpaid invoice warnings', subtitle: 'When customers and their jobs are flagged', chevron: true, onTap: () => push(WD.r11.unpaidSettingsSpec()) })),
+  /* 5.0: Unpaid invoice warnings is registered by round11.js (on/off) through WD.r14.addSetting */
   WD.r11 && WD.r11.cfg && WD.r11.cfg.inventory && ui.toggleRow({ icon: 'shippingbox', iconColor: 'var(--teal)', title: 'Inventory management', subtitle: WD.r11.cfg.inventory.on ? 'On · counted in Products → Inventory' : 'Off · nothing is counted', value: WD.r11.cfg.inventory.on, disabled: !admin(), onChange: v => { WD.r11.cfg.inventory.on = v; WD.changed(); ui.toast(v ? 'Inventory is in the Products section' : 'Inventory off', 'shippingbox'); } }),
   ui.row(gated('settings.manage', { icon: 'link', iconColor: 'var(--purple)', title: 'Integrations', subtitle: 'Bookkeeping, GPS, phone, email, Google Sheets', detail: connected + ' connected', chevron: true, onTap: openIntegrations })),
   ui.row({ icon: 'sparkles', iconColor: 'var(--purple)', title: 'Plan and AI features', detail: tierOf(PL.tier).name + (promoOn() ? ' · preview' : ''), chevron: true, onTap: () => push(RC.planSpec()) })];
@@ -227,8 +230,7 @@ RC.commsSpec = () => ({ title: 'Client communications', render: page => {
       x.checkinSpec && row('repeat', 'var(--yellow)', 'Purge check-in', 'A reminder months after a one-time purge', x.checkinLabel(), x.checkinSpec)),
     ui.section({ header: 'Billing', fold: false, showFooter: true, footer: 'What goes out about money, and when.' },
       row('bell', 'var(--red)', 'Reminders and collections', 'Payment reminders, past-due and final notices', on + ' on', remindersSpec),
-      row('tray', 'var(--teal)', 'Monthly statements', RC.statementWho(), CM.statement.on ? 'On' : 'Off', statementsSpec),
-      r11.moneySpec && row('dollarsign.circle', 'var(--green)', 'Pricing, letters and agreements', 'Price-change letters and notice, portal fees, contract length', null, r11.moneySpec)),
+      row('tray', 'var(--teal)', 'Monthly statements', RC.statementWho(), CM.statement.on ? 'On' : 'Off', statementsSpec)),   /* 5.0: Pricing and Agreements moved to Settings → Company */
     ui.section({ header: 'Wording and sending', fold: false },
       row('doc.text', 'var(--indigo)', 'Templates and wording', 'Every text, email, letter and document', String((data.templates || []).length), wordingSpec),
       ops.commsSpec && row('phone.fill', 'var(--blue)', 'Calls, texts and email', 'Which number and address messages come from', ops.commsLabel && ops.commsLabel(), ops.commsSpec)));
@@ -277,8 +279,8 @@ WD.screens.products = { root: catalog('product', 'Products', () => data.products
 RC.lineItems = () => data.priceBook.map(x => ({ id: x.id, name: x.name, rate: x.rate })).concat(data.products.map(x => ({ id: x.id, name: x.name, rate: x.rate, product: true })));
 
 /* ================= Panel ================= */
-WD.panel.addSeg('Service plan', () => TIERS.map(t => [t.id, t.name]), () => PL.tier, v => { PL.tier = v; WD.changed(); });
-WD.panel.addAction('Start a free Premium preview', () => RC.startPromo('premium'));
+if (PL.tier === 'premium') PL.tier = 'pro';
+WD.panel.addSeg('Service plan', () => TIERS.filter(t => t.id !== 'premium').map(t => [t.id, t.name]), () => PL.tier, v => { PL.tier = v; WD.changed(); });
 WD.panel.addJump('Display', () => WD.nav.switchTab('settings'));
 WD.panel.addJump('Plan and AI', () => { WD.nav.switchTab('settings'); WD.nav.push(RC.planSpec()); });
 WD.panel.addJump('Client communications', () => { WD.nav.switchTab('settings'); WD.nav.push(RC.commsSpec()); });

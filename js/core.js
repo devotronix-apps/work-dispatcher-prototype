@@ -4,9 +4,9 @@
 'use strict';
 const WD = window.WD = { screens: {}, data: {} };
 /** Prototype version (Settings → About). Bump on every publish; the “what’s new” tutorial shows once per version. */
-WD.version = '4.3';
+WD.version = '5.0';
 /** Earlier releases kept on the published site under v/<version>/ (Settings → Older versions). Add the outgoing version on every publish. */
-WD.olderVersions = ['4.2', '4.1'];
+WD.olderVersions = ['4.3', '4.2', '4.1'];
 const $ = (s, r) => (r || document).querySelector(s);
 
 /* ================= DOM helper ================= */
@@ -529,7 +529,7 @@ function makeStack(o = {}) {
   return stack;
 }
 WD.on('change', () => stacks.forEach(st => {
-  if (!st.el.isConnected) return; const p = st.top(); if (!p || p.spec.live === false) { p && p.spec.onChange && p.spec.onChange(p); return; }
+  if (!st.el.isConnected || st.el.closest('.parked')) return; const p = st.top(); if (!p || p.spec.live === false) { p && p.spec.onChange && p.spec.onChange(p); return; }
   const a = document.activeElement; if (a && p.body.contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return;
   p.refresh();
 }));
@@ -537,7 +537,7 @@ WD.on('change', () => stacks.forEach(st => {
     Returns {close(result), push(spec), closed: Promise<result>, stack}. */
 ui.sheet = (spec, o = {}) => {
   const detent = o.detent || 'large', backdrop = h('div.sheet-backdrop'), el = h('div.sheet.' + detent, h('div.grabber'));
-  let resolve, open = true; const sheet = { el, detent, closed: new Promise(r => resolve = r) };
+  let resolve, open = true; const sheet = { el, backdrop, detent, closed: new Promise(r => resolve = r) };
   const stack = makeStack({ sheet }); sheet.stack = stack; el.appendChild(stack.el);
   sheet.push = s => stack.push(s);
   sheet.close = result => {
@@ -555,7 +555,7 @@ function syncPushedBack() { $('#root').classList.toggle('pushed-back', sheets.so
 ui.closeAllSheets = () => sheets.slice().reverse().forEach(s => s.close());
 
 const app = WD.app = { tabs: [
-  { id: 'board', title: 'Dispatch', icon: 'calendar' }, { id: 'map', title: 'Map', icon: 'map' },
+  { id: 'board', title: 'Dispatch', icon: 'calendar' }, { id: 'map', title: 'Map', icon: 'map' }, { id: 'dialer', title: 'Dialer', icon: 'phone', can: 'crm.view', badge: () => WD.calls && WD.calls.reviewCount ? WD.calls.reviewCount() : 0 },
   /* Customers, CRM and Invoices are one Admin tab with a selector (CRM first). The three keep their own entries, hidden, so their badges and screens still register. */
   { id: 'office', get title() { const s = app.officeSegs(); return s.length === 1 ? OFFICE[s[0]][0] : 'Admin'; }, get icon() { const s = app.officeSegs(); return s.length === 1 ? OFFICE[s[0]][1] : 'briefcase'; }, can: () => app.officeSegs().length > 0, badge: () => app.officeSegs().reduce((n, id) => { const t = app.tabs.find(x => x.id === id); return n + (t && t.badge ? t.badge() : 0); }, 0) },
   { id: 'customers', title: 'Customers', icon: 'person.2', can: 'crm.view', hidden: true }, { id: 'crm', title: 'CRM', icon: 'funnel', can: 'leads.view', hidden: true }, { id: 'invoices', title: 'Invoices', icon: 'doc.text', can: () => WD.can('billing.view') || WD.can('billing.field'), hidden: true }, { id: 'shift', title: 'Shift', icon: 'truck' }, { id: 'settings', title: 'Settings', icon: 'gearshape', hidden: true },
@@ -577,21 +577,44 @@ app.menu = [
 /* Each person arranges the app for their own job (Settings → Display → Tabs and menu): any section can take one of the four places in the
    bottom bar, and everything else is in the Menu, in the order they choose. S.prefs.bar = ids in the bar; S.prefs.order = menu order;
    S.prefs.hidden = sections taken out of the menu. A destination is a screen tab (board, map, office = CRM, shift) or a menu section. */
-app.BAR_MAX = 4; app.defaultBar = ['board', 'map', 'office', 'shift'];
+/* 5.0: the bar starts with four places and a person can add shortcuts up to six (BAR_MAX). The map left the default bar: it is in the Menu and inside Dispatch.
+   On the desktop website (S.desktop) every section gets its own place in the sidebar and the Menu only holds Settings. */
+app.BAR_MAX = 6; app.BAR_DEFAULT = 4; app.defaultBar = ['board', 'office', 'dialer', 'shift'];
 const allowed = d => !d.can || (typeof d.can === 'function' ? d.can() : WD.can(d.can));
 app.dests = () => app.tabs.filter(t => !t.hidden && !t.menu).concat(app.menu).filter(allowed);
 app.dest = id => app.dests().find(d => d.id === id);
-app.barIds = () => { const p = S.prefs || {}, ids = (p.bar || app.defaultBar).filter((id, i, a) => a.indexOf(id) === i && app.dest(id)).slice(0, app.BAR_MAX); return ids.length ? ids : app.dests().slice(0, 1).map(d => d.id); };
+app.barIds = () => { if (S.desktop) return app.dests().filter(d => !d.fixed).map(d => d.id); const p = S.prefs || {}, ids = (p.bar || app.defaultBar).filter((id, i, a) => a.indexOf(id) === i && app.dest(id)).slice(0, app.BAR_MAX); return ids.length ? ids : app.dests().slice(0, 1).map(d => d.id); };
 app.menuItems = () => { const p = S.prefs || {}, bar = app.barIds(), order = p.order || [], at = d => { const i = order.indexOf(d.id); return i < 0 ? 1000 + app.dests().indexOf(d) : i; };
   return app.dests().filter(d => !bar.includes(d.id) && (d.fixed || !(p.hidden || {})[d.id])).sort((a, b) => at(a) - at(b)); };
 app.menuBadge = m => { if (app.tabs.includes(m)) return m.badge ? m.badge() : 0; const t = m.id !== 'customers' && app.tabs.find(x => x.id === m.id && x.hidden); return (m.badge ? m.badge() : 0) + (t && t.badge ? t.badge() : 0); };
 /** Change the bar or the menu (prefs → the tab interface is rebuilt in place, keeping the open screens that still have a place). */
-app.setLayout = change => { S.prefs = S.prefs || {}; change(S.prefs); store.set('wd.layout', JSON.stringify({ bar: S.prefs.bar || null, order: S.prefs.order || null, hidden: S.prefs.hidden || {} })); if (tabState) tabState.syncBar(); WD.changed(); };
+app.setLayout = change => { S.prefs = S.prefs || {}; change(S.prefs); store.set('wd.layout5', JSON.stringify({ bar: S.prefs.bar || null, order: S.prefs.order || null, hidden: S.prefs.hidden || {} })); if (tabState) tabState.syncBar(); WD.changed(); };
 const OFFICE = { crm: ['CRM', 'funnel'], customers: ['Customers', 'person.2'], invoices: ['Invoices', 'doc.text'] };
 /** The Admin tab's views this person may see, in order: CRM, Customers, Invoices. */
 app.officeSegs = () => [WD.can('leads.view') && 'crm'].filter(Boolean);   // Customers and Invoices moved to the menu in 4.0
 app.officeSeg = null; app.officeNames = OFFICE;
 let tabState = null, rootStack = null;
+/* Businesses (5.0). A person who works for several companies keeps a separate, untouched copy of the app for each one: its open screens,
+   scroll positions, half-filled forms and open sheets are parked (hidden, not rebuilt) while another business is in front.
+   app.switchOrg(id) parks the current business and brings the other back exactly as it was left; 'orgSwap' lets data.js-level code swap the
+   company's data before the other business's screens are shown. */
+const parked = {};
+const BOARD0 = () => ({ day: D.today(), mode: 'routes', routeId: null, dayCount: S.desktop ? 7 : 3 });
+const setBoard = b => { Object.keys(S.board).forEach(k => delete S.board[k]); Object.assign(S.board, b); };
+app.parkedOrgs = () => Object.keys(parked);
+app.switchOrg = id => {
+  const to = (WD.data.orgs || []).find(o => o.id === id), from = S.org && S.org.id; if (!to || !tabState || from === id) return false;
+  const view = $('#root > .tabview'), mine = sheets.splice(0);
+  parked[from] = { view, tabState, sheets: mine, board: { ...S.board }, shift: S.shift, pending: S.pending, abandoned: S.abandoned, folded: S.folded };
+  view.classList.add('parked'); mine.forEach(sh => { sh.el.classList.add('parked'); sh.backdrop.classList.add('parked'); });
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  WD.emit('orgSwap', { from, to: id }); S.org = to; S.me = (WD.data.users || []).find(u => u.id === (S.me || {}).id) || S.me;
+  const p = parked[id];
+  if (p) { delete parked[id]; tabState = p.tabState; p.view.classList.remove('parked'); p.sheets.forEach(sh => { sh.el.classList.remove('parked'); sh.backdrop.classList.remove('parked'); sheets.push(sh); });
+    setBoard(p.board); S.shift = p.shift; S.pending = p.pending; S.abandoned = p.abandoned; S.folded = p.folded; }
+  else { setBoard(BOARD0()); S.shift = null; S.pending = []; S.abandoned = []; S.folded = {}; tabState = null; app.showMain(null, true); }
+  syncPushedBack(); syncPanel(); WD.emit('org', id); WD.changed(); return true;
+};
 const nav = WD.nav = {
   /** The stack a push should go to: the top sheet if one is open, else the active tab (or the sign-in flow). */
   current: () => sheets.length ? sheets[sheets.length - 1].stack : tabState ? tabState.stacks[tabState.active] : rootStack,
@@ -601,24 +624,27 @@ const nav = WD.nav = {
   switchTab: id => { if (!tabState) return; if (id === 'crm') { app.officeSeg = id; id = 'office'; WD.emit('officeSeg'); } tabState.go(id); },
   activeTab: () => tabState && tabState.active,
 };
-function clearRoot() { stacks.forEach(st => { if (!st.sheet) stacks.delete(st); }); tabState = null; rootStack = null; $('#root').replaceChildren(); }
+function clearRoot() { Object.keys(parked).forEach(k => { parked[k].sheets.forEach(sh => { sh.el.remove(); sh.backdrop.remove(); stacks.delete(sh.stack); }); delete parked[k]; }); stacks.forEach(st => { if (!st.sheet) stacks.delete(st); }); tabState = null; rootStack = null; $('#root').replaceChildren(); }
 /** Replace the whole app with one navigation stack (used by the sign-in flow). Returns the root page. */
 app.showRoot = spec => { ui.closeAllSheets(); clearRoot(); rootStack = makeStack(); $('#root').appendChild(rootStack.el); return rootStack.push(spec, false); };
 /** Show the signed-in tab interface. */
-app.showMain = tabId => {
-  ui.closeAllSheets(); clearRoot();
+app.showMain = (tabId, keep) => {
+  if (!keep) { ui.closeAllSheets(); clearRoot(); }
   const more = app.tabs.find(t => t.menu), panes = h('div.tabpanes'), bar = h('div.tabbar'), state = tabState = { stacks: {}, active: null, buttons: {} };
   let tabs = [];
   state.cur = 'settings';
   /** (Re)build the bar from the person's layout. Open screens keep their place; a screen that left the bar is closed. */
   state.syncBar = () => {
-    tabs = app.barIds().map(app.dest).concat(more); state.buttons = {}; bar.replaceChildren();
-    tabs.forEach(t => { const b = state.buttons[t.id] = h('button.tab' + (state.active === t.id ? '.active' : ''), { 'aria-label': t.title, onclick: () => t.menu ? state.openMenu(b) : state.select(t.id) }, WD.icon(t.icon, 27), h('span', t.title)); bar.appendChild(b); });
+    tabs = app.barIds().map(app.dest).concat(more); state.buttons = {}; bar.replaceChildren(); bar.className = 'tabbar n' + tabs.length; const many = (WD.data.orgs || []).length > 1; bar.style.setProperty('--org', many && S.org && S.org.color || 'transparent');
+    if (S.desktop) bar.appendChild(h('button.side-org', { 'aria-label': 'Business: ' + (S.org || {}).name, onclick: e => state.orgMenu(e.currentTarget) }, h('i'), h('span', (S.org || {}).name, h('small', many ? 'Switch business' : 'RouteClerk'))));
+    tabs.forEach(t => { const b = state.buttons[t.id] = h('button.tab' + (state.active === t.id ? '.active' : ''), { 'aria-label': t.title, onclick: () => t.menu ? (S.desktop ? state.go('settings') : state.openMenu(b)) : state.select(t.id) }, WD.icon(t.menu && S.desktop ? 'gearshape' : t.icon, 27), h('span', t.menu && S.desktop ? 'Settings' : t.title)); bar.appendChild(b); });
     Object.keys(state.stacks).forEach(id => { if (tabs.some(t => t.id === id) || id === state.active) return; const st = state.stacks[id]; st.el.remove(); stacks.delete(st); delete state.stacks[id]; });
     if (state.cur !== 'settings' && tabs.some(t => t.id === state.cur) && state.active !== 'more') { const old = state.stacks.more; if (old) { old.el.remove(); stacks.delete(old); delete state.stacks.more; } state.cur = 'settings'; }
     state.badges();
   };
-  state.openMenu = anchor => ui.menu(anchor, app.menuItems().map(m => { const n = app.menuBadge(m); return { label: m.title + (n ? '  (' + n + ')' : ''), icon: m.icon, onTap: () => state.go(m.id) }; }).concat('divider', { label: 'Arrange tabs and menu…', icon: 'square.grid', onTap: () => { state.go('settings'); if (WD.rc && WD.rc.sectionsSpec) nav.push(WD.rc.sectionsSpec()); } }));
+  const orgItems = () => (WD.data.orgs || []).filter(o => o.id !== (S.org || {}).id).map(o => ({ label: 'Switch to ' + o.name, icon: 'building', onTap: () => { app.switchOrg(o.id); ui.toast('Now in ' + o.name, 'building'); } }));
+  state.orgMenu = anchor => ui.menu(anchor, orgItems());
+  state.openMenu = anchor => ui.menu(anchor, app.menuItems().map(m => { const n = app.menuBadge(m); return { label: m.title + (n ? '  (' + n + ')' : ''), icon: m.icon, onTap: () => state.go(m.id) }; }).concat('divider', { label: 'Arrange tabs and menu…', icon: 'square.grid', onTap: () => { state.go('settings'); if (WD.rc && WD.rc.sectionsSpec) nav.push(WD.rc.sectionsSpec()); } }, ...(orgItems().length ? ['divider'].concat(orgItems()) : [])));
   /** Open a section wherever it lives: its own tab when it is in the bar, otherwise the Menu tab's stack (a different section replaces that stack). */
   state.go = id => { if (tabs.some(t => t.id === id && !t.menu)) return state.select(id);
     const m = app.dest(id) || app.menu.find(x => x.id === 'settings'), old = state.stacks.more;
@@ -657,6 +683,8 @@ app.setTheme = t => { S.theme = t; screen().dataset.theme = t; store.set('wd.the
 /** Display → Text size. The whole interface is scaled, the way Dynamic Type enlarges an iPhone app. */
 WD.textSizes = [{ value: 0.9, label: 'Small' }, { value: 1, label: 'Default' }, { value: 1.12, label: 'Large' }, { value: 1.25, label: 'Extra large' }, { value: 1.4, label: 'Largest' }];
 app.setTextSize = z => { S.textSize = z = +z || 1; [$('#root'), overlays()].forEach(el => { el.style.zoom = z === 1 ? '' : z; }); store.set('wd.textSize', String(z)); WD.changed(); };
+/** The website on a computer: a wide screen with the sections in a sidebar. Screens read S.desktop to use the extra room. */
+app.setDesktop = on => { S.desktop = !!on; $('#phone').classList.toggle('desktop', S.desktop); store.set('wd.desktop', on ? '1' : '0'); S.board.dayCount = on ? 7 : 3; fit(); if (S.signedIn && tabState) { const at = tabState.active === 'more' ? tabState.cur : tabState.active; app.showMain(at); } syncPanel(); WD.emit('desktop', S.desktop); WD.changed(); };
 app.setOffline = off => { S.offline = off; $('.statusbar').classList.toggle('offline', off); S.pending.forEach(op => { if (op.status === 'queued') op.message = off ? 'Waiting for a connection' : 'Waiting to sync'; }); syncPanel(); WD.changed(); if (!off) WD.api.flush(); WD.emit('network', !off); };
 
 /* ---------- Updates ----------
@@ -758,6 +786,8 @@ function syncPanel() {
     h('h1', 'RouteClerk'), h('p.sub', 'Clickable iPhone prototype of the route business app. Nothing is saved; reload to reset.'),
     h('h2', 'Preview as'), seg([['owner', 'Owner'], ['dispatcher', 'Dispatch'], ['office', 'Office'], ['driver', 'Driver']], S.role, r => app.setRole(r)),
     h('p.sub', { style: 'margin:6px 0 0' }, S.me ? S.me.name + ' · ' + WD.roles[S.role].title : ''),
+    h('h2', 'Device'), seg([[false, 'iPhone app'], [true, 'Desktop website']], !!S.desktop, v => app.setDesktop(v)),
+    (WD.data.orgs || []).length > 1 && S.signedIn ? [h('h2', 'Business'), seg(WD.data.orgs.map(o => [o.id, o.short || o.name]), (S.org || {}).id, v => app.switchOrg(v))] : null,
     h('h2', 'Appearance'), seg([['light', 'Light'], ['dark', 'Dark']], S.theme, t => app.setTheme(t)),
     h('h2', 'Network'), seg([[false, 'Online'], [true, 'Offline']], S.offline, v => app.setOffline(v)),
     panel.segs.map(x => [h('h2', x.title), seg(x.options(), x.get(), v => { x.set(v); syncPanel(); })]),
@@ -770,8 +800,8 @@ function syncPanel() {
 /* ================= Boot ================= */
 function fit() {
   const wrap = $('#phoneScale'), phone = $('#phone'), area = $('.device-area'); if (!wrap || innerWidth <= 480) { if (phone) phone.style.transform = ''; return; }
-  const k = Math.min(1.15, (area.clientHeight - 28) / 876, (area.clientWidth - 28) / 417);
-  phone.style.transform = 'scale(' + k + ')'; wrap.style.width = 417 * k + 'px'; wrap.style.height = 876 * k + 'px';
+  const pw = phone.offsetWidth, ph = phone.offsetHeight, k = Math.min(1.15, (area.clientHeight - 28) / ph, (area.clientWidth - 28) / pw);
+  phone.style.transform = 'scale(' + k + ')'; wrap.style.width = pw * k + 'px'; wrap.style.height = ph * k + 'px';
 }
 function tick() { const t = $('.sb-time'); if (t) t.textContent = F.time(WD.nowMins(), true); }
 app.start = () => {
@@ -779,7 +809,8 @@ app.start = () => {
   S.me = (WD.data.users || []).find(u => u.role === S.role) || { id: 'u0', name: 'You', role: 'owner' };
   S.org = (WD.data.orgs || [])[0] || { id: 'o1', name: 'Company' };
   S.board.day = D.today();
-  try { const L = JSON.parse(store.get('wd.layout') || 'null'); if (L) { S.prefs = S.prefs || {}; if (L.bar) S.prefs.bar = L.bar; if (L.order) S.prefs.order = L.order; S.prefs.hidden = L.hidden || {}; } } catch (e) { /* unreadable layout: defaults */ }
+  try { const L = JSON.parse(store.get('wd.layout5') || 'null'); if (L) { S.prefs = S.prefs || {}; if (L.bar) S.prefs.bar = L.bar; if (L.order) S.prefs.order = L.order; S.prefs.hidden = L.hidden || {}; } } catch (e) { /* unreadable layout: defaults */ }
+  if (store.get('wd.desktop') === '1' && innerWidth > 900) { S.desktop = true; S.board.dayCount = 7; $('#phone').classList.add('desktop'); }
   fit(); addEventListener('resize', fit); tick(); setInterval(tick, 5000);
   const toggle = $('#panelToggle'); if (toggle) toggle.onclick = () => document.body.classList.toggle('panel-open');
   $('.device-area').addEventListener('click', () => document.body.classList.remove('panel-open'));

@@ -42,13 +42,13 @@ const C = X.cfg = data.addons = {
   compliance: { noticeDays: 30, carb: true, carbMonths: 6 },
   disposal: { suggest: true, unloadMin: 25, nonPaper: 'offsite',
     sites: [{ id: 'd1', name: 'Lakemont Paper Recycling', kind: 'recycler', address: '2200 Mill Rd, Lakemont', x: 610, y: 470 }, { id: 'd2', name: 'Westside Fiber Recyclers', kind: 'recycler', address: '75 Depot Ln, Lakemont', x: 205, y: 395 }, { id: 'd3', name: 'Tri-County Landfill', kind: 'landfill', address: '1 Old Quarry Rd, Lakemont', x: 830, y: 690 }] },
-  unpaid: { limit: 2, overdueDays: 30 },
+  unpaid: { limit: 2, overdueDays: 30, on: true, board: true, customers: true, drivers: true },   // on: master switch for the warnings; board / customers / drivers: where they show
   exact: { on: true, color: '#00897B' },
   /* Purge sub-categories for anything that is not paper. They show in their own color so they are never mistaken for a regular purge. */
   materials: [{ id: 'xray', name: 'X-rays and film', color: '#EF6C00' }, { id: 'media', name: 'Hard drives and media', color: '#6D4C41' }, { id: 'textile', name: 'Textiles and uniforms', color: '#AD1457' }, { id: 'product', name: 'Products and other non-paper', color: '#5E35B1' }],
   approvals: { driverPrice: false, requests: [] },
   letters: { days: 30, method: 'email' },
-  portal: { cardPct: 3.5, achPct: 1 },
+  portal: { cardPct: 3.5, cardFixed: 0, achPct: 1, achFixed: 0, achCap: 10 },   // percent + fixed dollars per payment; achCap = the most an ACH fee can be (0 = no cap)
   contract: { term: 12, notice: 60, max: 60 },
 };
 const skill = id => C.skills.list.find(s => s.id === id), mat = id => C.materials.find(m => m.id === id);
@@ -134,13 +134,15 @@ X.checkAssign = async (jobs, routeId, day) => {
 /* Cards and pins: what makes a job stand out. */
 const baseColor = WD.cardColor;
 WD.cardColor = job => job.type === 'dump' ? baseColor(job) : C.exact.on && job.exactAt ? C.exact.color : job.type === 'purge' && job.material && mat(job.material) ? mat(job.material).color : baseColor(job);
-WD.cardClass = job => (hddQty(job) > 0 ? '.hd' : '') + (X.overLimit && job.customerId && X.overLimit(q.customer(job.customerId)) && !WD.closed[job.status] ? '.unpaid' : '');
+/** Are the unpaid-invoice warnings showing? where: 'board' | 'customers' | 'drivers' (none = the master switch alone). Settings → Company → Unpaid invoice warnings. */
+X.warnOn = where => C.unpaid.on !== false && (!where || C.unpaid[where] !== false);
+WD.cardClass = job => (hddQty(job) > 0 ? '.hd' : '') + (X.warnOn('board') && X.overLimit && job.customerId && X.overLimit(q.customer(job.customerId)) && !WD.closed[job.status] ? '.unpaid' : '');
 WD.cardTags = job => { const out = [], flag = (text, cls) => out.push(h('span.bd-flag' + (cls ? '.' + cls : ''), text)), bad = X.issues(job);
   if (hddQty(job) > 0) flag(hddQty(job) + ' hard drive' + (hddQty(job) === 1 ? '' : 's') + (job.crusher ? ' · crusher' : ''));
   if (job.type === 'purge' && job.material && mat(job.material)) flag(mat(job.material).name + (job.handling === 'onsite' ? ' · on site' : ' · pick up'));
   if (job.pair) flag(job.pair.role === 'pickup' ? 'Pickup ①' : 'Delivery ②');
   bad.forEach(i => flag(i.short, i.level));
-  if (X.overLimit && job.customerId && X.overLimit(q.customer(job.customerId))) flag('Unpaid invoices', 'bad');
+  if (X.warnOn('board') && X.overLimit && job.customerId && X.overLimit(q.customer(job.customerId))) flag('Unpaid invoices', 'bad');
   return out; };
 
 const credRow = (u, c, page, edit) => { const s = skill(c.id) || { name: c.id, kind: 'skill' }, n = c.expires ? daysTo(c.expires) : null;
@@ -399,10 +401,25 @@ X.pairsSpec = () => ({ title: 'Pickup-and-delivery pairs', render: page => { if 
 } });
 
 /* ================= Pricing, letters and agreements; unpaid invoices ================= */
-const feeText = () => 'A transaction fee applies to payments made in the portal: ' + C.portal.cardPct + '% for credit or debit cards and ' + (C.portal.achPct ? C.portal.achPct + '% for bank (ACH) payments.' : 'none for bank (ACH) payments.');
-const syncFees = () => { const T = data.agreementTemplate; if (!T || !T.payment) return; const i = T.payment.indexOf('A transaction fee'), k = T.payment.indexOf('Card and bank details'); if (i >= 0 && k > i) T.payment = T.payment.slice(0, i) + feeText() + ' ' + T.payment.slice(k); };
-X.moneySpec = () => ({ title: 'Pricing, letters and agreements', render: page => { if (!admin()) return locked(); const re = () => { WD.changed(); page.refresh(); }, PP = data.purgePricing, pb = id => data.priceBook.find(x => x.id === id), box = pb('box').rate;
-  const pct = (obj, k, title, sub) => ui.row({ title, subtitle: sub, detail: obj[k] + '%', trailing: ui.stepper(Math.round(obj[k] * 4), 0, 40, v => { obj[k] = v / 4; syncFees(); re(); }) });
+/* Portal fees: any percentage plus a fixed amount per payment, for cards and for bank (ACH) payments; ACH can have a cap. */
+const fee$ = n => fmt.money(n, true), feeOf = (pct, fixed) => [pct ? pct + '%' : null, fixed ? fee$(fixed) : null].filter(Boolean).join(' + ');
+const feeText = () => { const P = C.portal, card = feeOf(P.cardPct, P.cardFixed), ach = feeOf(P.achPct, P.achFixed);
+  return 'A transaction fee applies to payments made in the portal: ' + (card ? card + ' for credit or debit cards' : 'none for credit or debit cards') + ' and ' + (ach ? ach + (P.achCap && P.achPct ? ' (at most ' + fee$(P.achCap) + ')' : '') + ' for bank (ACH) payments.' : 'none for bank (ACH) payments.'); };
+/** The fee added to a portal payment of `amount` by 'card' or 'ach'. */
+X.portalFee = (amount, method) => { const P = C.portal, r = n => Math.round(n * 100) / 100; if (method === 'card') return r(amount * P.cardPct / 100 + (P.cardFixed || 0)); const f = r(amount * P.achPct / 100 + (P.achFixed || 0)); return P.achCap && P.achPct ? Math.min(f, r(P.achCap + (P.achFixed || 0))) : f; };
+X.feeText = () => feeText();
+const syncFees = () => { const T = data.agreementTemplate; if (T && T.payment) { const i = T.payment.indexOf('A transaction fee'), k = T.payment.indexOf('Card and bank details'); if (i >= 0 && k > i) T.payment = T.payment.slice(0, i) + feeText() + ' ' + T.payment.slice(k); }
+  /* rc.js charges from data.pay: keep it the same as what the agreement says. */
+  const P = data.pay; if (P) Object.assign(P, { cardPct: C.portal.cardPct, cardFixed: C.portal.cardFixed || 0, achPct: C.portal.achPct, achFixed: C.portal.achFixed || 0, achCap: C.portal.achCap || 0 }); };
+X.syncFees = () => syncFees();
+X.moneySpec = () => ({ title: 'Pricing and Agreements', render: page => { if (!admin()) return locked(); const re = () => { WD.changed(); page.refresh(); }, PP = data.purgePricing, pb = id => data.priceBook.find(x => x.id === id), box = pb('box').rate;
+  /* Fees are typed exactly (2.9, 3.49, 0.30). A value that is not a number, is negative or is over the limit is refused and the field turns red. */
+  const P = C.portal, ex = 150, feeIn = (k, title, sub, unit, max) => { const inp = h('input.r1-num', { type: 'text', inputmode: 'decimal', 'aria-label': title, value: unit === '$' ? Number(P[k] || 0).toFixed(2) : String(P[k] || 0), style: 'width:76px',
+      oninput: e => { const t = e.target.value.trim(), v = Number(t.replace(/[$%\s]/g, '')), bad = t === '' || !isFinite(v) || v < 0 || v > max || !/^[$]?\d*\.?\d{0,3}\s*%?$/.test(t); e.target.style.color = bad ? 'var(--red)' : ''; e.target.dataset.bad = bad ? '1' : ''; },
+      onchange: e => { if (e.target.dataset.bad) { ui.toast(title + ': enter a number from 0 to ' + max + (unit === '%' ? ' (for example 2.9)' : ' (for example 0.30)'), 'exclamationmark.triangle', 3200); e.target.value = unit === '$' ? Number(P[k] || 0).toFixed(2) : String(P[k] || 0); e.target.style.color = ''; e.target.dataset.bad = ''; return; }
+        P[k] = Math.round(Number(e.target.value.replace(/[$%\s]/g, '')) * 1000) / 1000; syncFees(); re(); } });
+    return h('div.row', h('div.row-main', h('div.row-title', title), sub && h('div.row-sub', sub)), unit === '$' && h('span.secondary', { style: 'margin-right:4px' }, '$'), inp, unit === '%' && h('span.secondary', { style: 'margin-left:4px' }, '%')); };
+  const worked = m => fmt.money(ex, true) + ' + ' + fmt.money(X.portalFee(ex, m), true) + ' = ' + fmt.money(ex + X.portalFee(ex, m), true);
   const rate = (id, title, sub) => h('div.row', h('div.row-main', h('div.row-title', title), sub && h('div.row-sub', sub)), h('input.r1-num', { type: 'text', inputmode: 'decimal', 'aria-label': title, value: String(pb(id).rate), onchange: e => { pb(id).rate = parseFloat(e.target.value.replace(/[^0-9.]/g, '')) || 0; re(); } }));
   return ui.list(
     ui.section({ header: 'Who can change standing prices', fold: false, footer: C.approvals.driverPrice ? 'A driver can change a price on the invoice in front of them. Applying it to all future visits waits for an owner or admin, in Admin → CRM → Tasks.' : 'Anyone who invoices in the field, drivers included, can change a price for this and all future visits. Every change is kept in the customer’s history.' },
@@ -410,8 +427,11 @@ X.moneySpec = () => ({ title: 'Pricing, letters and agreements', render: page =>
     ui.section({ header: 'Price-change letters', fold: false, footer: 'How much notice a price change gives by default, and how the letter goes out. Either can be changed on the change itself.' },
       ui.pickerRow({ title: 'Notice', value: C.letters.days, options: [0, 15, 30, 45, 60, 90].map(n => ({ value: n, label: n ? n + ' days out' : 'Starts right away' })), onChange: v => { C.letters.days = v; re(); } }),
       ui.pickerRow({ title: 'Send letters by', value: C.letters.method, options: [{ value: 'email', label: 'Email' }, { value: 'print', label: 'Print and mail' }, { value: 'both', label: 'Email, and print and mail' }], onChange: v => { C.letters.method = v; re(); } })),
-    ui.section({ header: 'Fees for paying in the portal', fold: false, footer: feeText() + ' The service agreement and the portal show these.' },
-      pct(C.portal, 'cardPct', 'Credit or debit card', 'Added to card payments'), pct(C.portal, 'achPct', 'Bank account (ACH)', 'Added to bank payments')),
+    ui.section({ header: 'Fees for paying in the portal · card', fold: false, showFooter: true, footer: 'On a ' + fmt.money(ex, true) + ' invoice the customer pays ' + fmt.money(ex + X.portalFee(ex, 'card'), true) + ' by card (' + worked('card') + ').' },
+      feeIn('cardPct', 'Card fee, percent', 'Any percentage, for example 2.9 or 3.49', '%', 15), feeIn('cardFixed', 'Card fee, fixed', 'Added to every card payment, for example 0.30', '$', 25)),
+    ui.section({ header: 'Fees for paying in the portal · bank (ACH)', fold: false, showFooter: true, footer: 'On a ' + fmt.money(ex, true) + ' invoice the customer pays ' + fmt.money(ex + X.portalFee(ex, 'ach'), true) + ' from a bank account (' + worked('ach') + ').' + (P.achCap && P.achPct ? ' The percentage part never goes over ' + fmt.money(P.achCap, true) + '.' : '') },
+      feeIn('achPct', 'ACH fee, percent', 'For example 0.8 or 1', '%', 15), feeIn('achFixed', 'ACH fee, fixed', 'Added to every bank payment', '$', 25), feeIn('achCap', 'ACH fee, at most', 'The most the percentage can come to · 0 for no cap', '$', 500)),
+    ui.section({ fold: false, showFooter: true, footer: 'Paid by check or cash the invoice stays ' + fmt.money(ex, true) + '. Check your state’s rules on card surcharges.' }, ui.row({ icon: 'doc.text', iconColor: 'var(--indigo)', title: 'What the agreement and the portal say', subtitle: feeText() })),
     ui.section({ header: 'Service agreements', fold: false, footer: 'New agreements start at this term. After the term either side can cancel with the notice below. Your staff can set a longer term when a customer asks, up to the longest allowed. The customer sees the term when signing and cannot change it.' },
       ui.pickerRow({ title: 'Usual term', value: C.contract.term, options: [12, 24, 36, 48, 60].map(n => ({ value: n, label: n / 12 + (n === 12 ? ' year' : ' years') })), onChange: v => { C.contract.term = v; if (C.contract.max < v) C.contract.max = v; re(); } }),
       ui.pickerRow({ title: 'Longest term allowed', value: C.contract.max, options: [12, 24, 36, 48, 60].filter(n => n >= C.contract.term).map(n => ({ value: n, label: n / 12 + (n === 12 ? ' year' : ' years') })), onChange: v => { C.contract.max = v; re(); } }),
@@ -422,8 +442,13 @@ X.moneySpec = () => ({ title: 'Pricing, letters and agreements', render: page =>
     ui.section({ header: 'More', fold: false }, WD.ops && ui.row({ title: 'Time on site formulas', subtitle: 'Minimum stop time, consoles, bins, stairs and haul-away', chevron: true, onTap: () => page.push(WD.ops.siteSpec()) }), WD.r8 && ui.row({ title: 'Purge pricing', subtitle: 'By the box or by the bin', chevron: true, onTap: () => page.push(WD.r8.pricingSpec()) }), WD.ops && ui.row({ title: 'Items, services and fees', chevron: true, onTap: () => page.push(WD.ops.itemsSpec()) })));
 } });
 X.approvalsOn = () => C.approvals.driverPrice;
-X.unpaidSettingsSpec = () => ({ title: 'Unpaid invoices', render: page => { if (!admin()) return locked(); const U = C.unpaid, re = () => { WD.changed(); page.refresh(); };
-  return ui.list(note('When the app starts warning about a customer who hasn’t paid.'),
+X.unpaidSettingsSpec = () => ({ title: 'Unpaid invoice warnings', render: page => { if (!admin()) return locked(); const U = C.unpaid, re = () => { WD.changed(); page.refresh(); }, on = U.on !== false;
+  return ui.list(note('Whether the app warns about a customer who hasn’t paid, where, and when it starts.'),
+    ui.section({ header: 'Warnings', fold: false, showFooter: true, footer: on ? 'Switch a place off to keep the warning away from the people who use it. The Unpaid invoices report and the balance on each customer always stay.' : 'Off: no striped job cards, no warning line on Dispatch, no overdue marker on customers and no past-due flag for drivers. The Unpaid invoices report and each customer’s balance still show what is owed.' },
+      ui.toggleRow({ icon: 'exclamationmark.triangle', iconColor: on ? 'var(--red)' : 'var(--gray)', title: 'Unpaid invoice warnings', subtitle: on ? 'On' : 'Off everywhere', value: on, onChange: v => { U.on = v; re(); ui.toast(v ? 'Unpaid invoice warnings are on' : 'Unpaid invoice warnings are off', 'checkmark'); } }),
+      on && ui.toggleRow({ title: 'On the board', subtitle: 'Striped job cards and the warning line on Dispatch', value: U.board !== false, onChange: v => { U.board = v; re(); } }),
+      on && ui.toggleRow({ title: 'On the customer list and record', subtitle: 'The Overdue marker beside a customer', value: U.customers !== false, onChange: v => { U.customers = v; re(); } }),
+      on && ui.toggleRow({ title: 'For drivers at the stop', subtitle: 'The past-due flag and the unpaid line on the job', value: U.drivers !== false, onChange: v => { U.drivers = v; re(); } })),
     ui.section({ header: 'Warn about a customer', fold: false, footer: 'A customer with more than this many unpaid invoices gets a warning line on the Dispatch tab, and their jobs show red and yellow stripes so the driver and dispatcher see it before the visit.' },
       ui.row({ title: 'With more than', detail: plural(U.limit, 'unpaid invoice'), trailing: ui.stepper(U.limit, 0, 12, v => { U.limit = v; re(); }) })),
     ui.section({ header: 'Overdue', fold: false, footer: 'An unpaid invoice older than this is overdue. Used by the Overdue marker and the “Overdue invoices” filter on the Customers list.' },
@@ -482,7 +507,7 @@ async function pairJob(job, refresh) {
 }
 /** Extra sections on Job details: window and time on site, what the job needs, inventory used, pairing. */
 X.jobSections = (job, refresh) => { if (job.allDay || job.type === 'dump') return null;
-  const edit = WD.can('jobs.edit') && !job.pending, sm = WD.siteMinutes(job), issues = X.issues(job), needs = X.needsOf(job), d = q.driverFor(job.routeId), v = vehicleFor(job.routeId), c = job.customerId && q.customer(job.customerId), over = c && X.overLimit && X.overLimit(c);
+  const edit = WD.can('jobs.edit') && !job.pending, sm = WD.siteMinutes(job), issues = X.issues(job), needs = X.needsOf(job), d = q.driverFor(job.routeId), v = vehicleFor(job.routeId), c = job.customerId && q.customer(job.customerId), over = c && X.warnOn('drivers') && X.overLimit && X.overLimit(c);
   const win = job.exactAt ? 'Exactly ' + fmt.time(fmt.fromHHMM(job.exactAt)) : job.custFrom || job.custUntil ? (job.custFrom ? shortT(fmt.fromHHMM(job.custFrom)) : 'any') + '–' + (job.custUntil ? shortT(fmt.fromHHMM(job.custUntil)) : 'any') : job.needsWindow ? 'Needs a window' : 'None';
   const uses = INV.on ? X.usesFor(job) : [], closed = !!WD.closed[job.status];
   return [
@@ -513,12 +538,16 @@ const ENTRIES = omit => [
   ['person.2', 'var(--indigo)', 'Skills, licenses and clearances', !C.skills.on ? 'Off' : C.skills.mode === 'block' ? 'Don’t allow a mismatch' : 'Flag a mismatch', () => X.skillsSpec('people'), 'Match people to jobs: CDL, prison clearances, hard drive destruction'],
   ['bell', 'var(--red)', 'Compliance and reminders', (n => n ? plural(n, 'item') + ' coming up' : 'Up to date')(X.expiring(false, 'people').length) + ' · ' + C.compliance.noticeDays + ' days’ notice', () => X.complianceSpec('people'), 'Drivers’ licenses, medical cards and clearances. Truck items are in Maintenance'],
   ['shippingbox', 'var(--teal)', 'Inventory', INV.on ? 'On · warehouse and ' + plural(data.vehicles.filter(v => v.active !== false).length, 'truck') : 'Off', X.inventorySpec, 'Stock on each truck and in the warehouse, used up as jobs are completed'],
-  ['exclamationmark.circle', 'var(--red)', 'Unpaid invoices', 'Warn over ' + C.unpaid.limit + ' · overdue after ' + C.unpaid.overdueDays + ' days', X.unpaidSettingsSpec, 'When customers and their jobs are flagged'],
-  ['dollarsign.circle', 'var(--green)', 'Pricing, letters and agreements', C.letters.days + ' days’ notice · ' + C.contract.term / 12 + '-year term', X.moneySpec, 'Driver price changes, price-change letters, portal fees, contract length, box sizes'],
+  ['exclamationmark.circle', 'var(--red)', 'Unpaid invoice warnings', X.unpaidLabel(), X.unpaidSettingsSpec, 'Turn the warnings on or off, and when customers and their jobs are flagged'],
+  ['dollarsign.circle', 'var(--green)', 'Pricing and Agreements', C.letters.days + ' days’ notice · ' + C.contract.term / 12 + '-year term', X.moneySpec, 'Driver price changes, price-change letters, portal fees, contract length, box sizes'],
   ['arrow.left.arrow.right', 'var(--purple)', 'Pickup-and-delivery pairs', C.pairs.on ? 'On' : 'Off', X.pairsSpec, 'Two linked stops: pick up at one, drop off at the other']].filter(e => !(omit || []).includes(e[2]));
+X.unpaidLabel = () => C.unpaid.on === false ? 'Off' : 'Warn over ' + C.unpaid.limit + ' · overdue after ' + C.unpaid.overdueDays + ' days';
+X.moneyLabel = () => C.letters.days + ' days’ notice · ' + C.contract.term / 12 + '-year term';
+/* In Settings these two are under Company (registered by r14-money.js), so the Add-ons group there leaves them out. */
+const IN_COMPANY = ['Unpaid invoice warnings', 'Pricing and Agreements'];
 X.hubSection = (row, omit) => ui.section({ header: 'Add-ons', fold: false, footer: 'Switch on what your business uses. Everything here can be changed later.' }, ENTRIES(omit).map(e => row(...e)));
 X.settingsSection = (push, gated, omit) => ui.section({ header: 'Add-ons', footer: 'Extras a company switches on or adjusts: international settings, custom job types, skills and clearances, license reminders, inventory and more. Trucks, disposal sites and fleet compliance are in Maintenance. Every other setting is under Settings and assumptions above.' },
-  ENTRIES(omit).map(([ic, color, title, detail, spec, sub]) => ui.row(gated(title === 'Compliance and reminders' ? 'jobs.edit' : 'settings.manage', { icon: ic, iconColor: color, title, subtitle: [detail && h('div', { style: 'color:var(--label);font-weight:500' }, detail), h('div', sub)], chevron: true, onTap: () => push(spec()) }))));
+  ENTRIES(omit).filter(e => !(WD.money && IN_COMPANY.includes(e[2]))).map(([ic, color, title, detail, spec, sub]) => ui.row(gated(title === 'Compliance and reminders' ? 'jobs.edit' : 'settings.manage', { icon: ic, iconColor: color, title, subtitle: [detail && h('div', { style: 'color:var(--label);font-weight:500' }, detail), h('div', sub)], chevron: true, onTap: () => push(spec()) }))));
 
 const openSet = spec => { WD.nav.switchTab('settings'); WD.nav.push(spec); };
 const openMaint = spec => { WD.nav.switchTab('maintenance'); WD.nav.push(spec); };

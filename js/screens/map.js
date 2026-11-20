@@ -78,6 +78,7 @@ WD.css(`
 .mp-fade { position: absolute; left: 0; right: 0; top: 0; height: 56px; background: linear-gradient(var(--mp-land) 35%, transparent); opacity: .85; pointer-events: none; }
 .mp-top { position: absolute; top: 56px; left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }
 .mp-top > * { pointer-events: auto; }
+.mp-embed .mp-top { top: 8px; } .mp-embed .mp-side { top: 60px; } .mp-embed .mp-top:empty { display: none; }
 .mp-day { display: flex; align-items: center; height: 40px; border-radius: 20px; padding: 0 4px; }
 .mp-day button { border: 0; background: none; height: 40px; cursor: pointer; color: var(--tint); display: grid; place-items: center; }
 .mp-day .mp-dbtn { width: 38px; } .mp-day .mp-dlabel { color: var(--label); font-size: 15px; font-weight: 600; letter-spacing: -.24px; padding: 0 6px; min-width: 150px; }
@@ -260,7 +261,10 @@ const mini = (job, n) => h('span.mp-mini' + (DONE[job.status] ? '.done' : ''), {
 
 /* ================= The map page ================= */
 let inst = null;
-function createMap() {
+function createMap(opts) {
+  /* opts.embedded: the map sits inside another screen (Dispatch) that already shows the date, so its own date header is left out and the
+     floating controls move up (class mp-embed). */
+  const embedded = !!(opts && opts.embedded);
   /* The day is the dispatch board's day: one shared date, so switching between Map and Board never shows two different days. */
   const st = { get day() { return S.board.day || D.today(); }, set day(k) { S.board.day = k; }, hidden: new Set(), extra: new Set(), showTrucks: true, sel: null, follow: null, labels: false };
   /* A driver's map starts with only their own route. The other routes are one tap away on the chips. */
@@ -278,7 +282,7 @@ function createMap() {
   const truckEls = new Map(); let pins = [], meShown = false;
   const surface = h('div.mp-surface', svg, h('div.mp-ov', labelLayer, pinLayer, truckLayer));
   const top = h('div.mp-top'), side = h('div.mp-side'), bottom = h('div.mp-bottom');
-  const el = h('div.mp', surface, h('div.mp-fade'), top, side, bottom);
+  const el = h('div.mp' + (embedded ? '.mp-embed' : ''), surface, h('div.mp-fade'), top, side, bottom);
   const unsub = [];
 
   /* ---------- View: scale + world offset, clamped to the 1000 × 1000 world ---------- */
@@ -309,7 +313,7 @@ function createMap() {
     const pts = [[depot.x, depot.y]];
     shownRoutes().forEach(r => q.stops(r.id, st.day).forEach(s => pts.push([s.job.x, s.job.y])));
     liveTrucks().forEach(t => pts.push(posOf(t)));
-    const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]), pt = 150, pb = 175;
+    const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]), pt = embedded ? 64 : 150, pb = embedded ? Math.min(150, H * 0.3) : 175;
     const minx = Math.min(...xs), maxx = Math.max(...xs), miny = Math.min(...ys), maxy = Math.max(...ys);
     const s = Math.min((W - 70) / Math.max(maxx - minx, 80), (H - pt - pb) / Math.max(maxy - miny, 80));
     const v = lookAt((minx + maxx) / 2, (miny + maxy) / 2, clampS(s), pt, pb); animated ? animateTo(v) : apply(v); fitted = true;
@@ -378,7 +382,9 @@ function createMap() {
     truckEls.forEach((e, id) => { const t = truckFor(id); if (t) { const [x, y] = posOf(t); put(e, x, y); } });
     if (meShown && S.shift) { const t = truckFor(S.shift.routeId); if (t) { const [x, y] = posOf(t); put(meEl, x, y); } }
   }
-  const visible = () => el.isConnected && nav.activeTab() === 'map';
+  /* On screen: attached and laid out. The map can be its own screen (a tab, or a section opened from the Menu) or embedded in Dispatch,
+     so this asks the layout instead of the tab id. A parked business keeps its layout but is hidden. */
+  const visible = () => el.isConnected && el.getClientRects().length > 0 && !el.closest('.parked');
   function loop() {
     raf = 0; if (!visible()) return;
     const f = st.follow && truckFor(st.follow);
@@ -404,7 +410,7 @@ function createMap() {
   function drawUI() {
     const routes = chipRoutes(), canLive = WD.can('tracking.view_live'), today = st.day === D.today();
     fill(top, 
-      h('div.mp-day.mp-glass', h('button.mp-dbtn', { 'aria-label': 'Previous day', onclick: () => setDay(D.add(st.day, -1)) }, icon('chevron.left', 19)),
+      !embedded && h('div.mp-day.mp-glass', h('button.mp-dbtn', { 'aria-label': 'Previous day', onclick: () => setDay(D.add(st.day, -1)) }, icon('chevron.left', 19)),
         h('button.mp-dlabel', { onclick: () => setDay(D.today()) }, dayLabel(st.day)), h('button.mp-dbtn', { 'aria-label': 'Next day', onclick: () => setDay(D.add(st.day, 1)) }, icon('chevron.right', 19))),
       routes.length > 1 && h('div.mp-chips', routes.map(r => h('button.mp-chip.mp-glass' + (st.hidden.has(r.id) ? '.off' : ''), { onclick: () => { st.hidden.has(r.id) ? st.hidden.delete(r.id) : st.hidden.add(r.id); st.sel = null; update(); } }, ui.dot(q.routeColor(r)), q.routeName(r)))));
     side.classList.toggle('open', st.labels);
@@ -517,10 +523,12 @@ function createMap() {
     if (job.located && job.x != null) animateTo(lookAt(job.x, job.y, Math.max(view.s, 1.5))); else ui.toast('This address isn’t on the map', 'questionmark.circle');
   }
   const resume = () => { measure(); if (st.day !== shownDay) { shownDay = st.day; st.sel = null; st.follow = null; update(); fit(true); } else update(); };   // the board changed the day meanwhile
-  unsub.push(WD.on('trucks', () => { if (el.isConnected) drawTrucks(); }), WD.on('tab', id => { if (id === 'map') resume(); }));
+  unsub.push(WD.on('trucks', () => { if (el.isConnected) drawTrucks(); }), WD.on('tab', id => { if (id === 'map' || (embedded && visible())) resume(); }));
   if (typeof ResizeObserver !== 'undefined') { ro = new ResizeObserver(() => measure()); ro.observe(el); }
   return {
-    mount() { update(); return el; }, update, resume, focus,
+    mount() { update(); return el; }, update, resume, focus, el,
+    /** Embedded: show exactly these routes (null = every route on the board). The chips still switch routes off and on afterwards. */
+    setRoutes(ids) { st.hidden.clear(); st.extra.clear(); if (ids) { q.routes().forEach(r => { if (!ids.includes(r.id)) st.hidden.add(r.id); else if (!r.visible) st.extra.add(r.id); }); } st.sel = null; st.follow = null; update(); if (measure()) fit(false); },
     destroy() { unsub.forEach(f => f()); cancelAnimationFrame(raf); cancelAnimationFrame(anim); if (ro) ro.disconnect(); },
   };
 }
@@ -546,5 +554,6 @@ function miniMap(o) {
   return h('div.mm', { style: { aspectRatio: String(aspect) } }, svg, o.points.map(p => h('div.mm-p' + (p.cls ? '.' + p.cls : ''), { style: { left: ((p.x - x0) / w * 100).toFixed(2) + '%', top: ((p.y - y0) / hh * 100).toFixed(2) + '%', ...(p.style || {}) }, title: p.title || null }, p.n != null ? p.n : p.icon ? icon(p.icon, 11) : null)), o.caption && h('div.mm-cap', o.caption));
 }
 WD.miniMap = miniMap; WD.pinStyle = pinStyle;
-WD.screens.map = { root, focusJob, trucks: () => { reconcile(); return data.trucks; } };
+/** A live map for another screen to embed (Dispatch's Board ↔ Map switch). The caller mounts it once, calls update()/resume() and destroy(). */
+WD.screens.map = { root, focusJob, create: o => createMap({ embedded: true, ...(o || {}) }), trucks: () => { reconcile(); return data.trucks; } };
 })();

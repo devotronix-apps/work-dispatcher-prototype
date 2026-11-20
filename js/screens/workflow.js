@@ -188,6 +188,7 @@ function noteSpec(n) {
     ui.section('Signature', n.sig && billing().sigView ? h('div.bi-sig', h('div.bi-ink', billing().sigView(n.sig)), h('div.bi-cap', 'Customer Signature · ' + n.signer)) : ui.row({ title: n.signer ? 'Signed by ' + n.signer : 'Signed on paper' })),
     ui.section(null, ui.row({ title: n.masterId ? 'On master invoice ' + (data.masterInvoices.find(m => m.id === n.masterId) || {}).number : 'Waiting for the master invoice', icon: 'tray', iconPlain: true }),
       n.jobId && q.job(n.jobId) && ui.row({ title: 'Open job', tint: true, onTap: () => guard('jobs', 'openDetails', n.jobId) })),
+    WD.money && WD.money.emailPreview && ui.section(null, ui.row({ title: 'Preview the email', subtitle: 'What the customer receives: the service note attached as a PDF and a button to the portal', icon: 'envelope', iconPlain: true, tint: true, chevron: true, onTap: () => WD.money.emailPreview({ kind: 'note', customer: q.customer(n.customerId), rec: n }) })),
     WD.rc && WD.rc.noteActions && WD.rc.noteActions(n)) };
 }
 
@@ -217,10 +218,10 @@ function sendReminder(rec) {
   return ui.run('Sending reminder…', () => { if (data.interactions) data.interactions.push({ id: 'i-rem' + Date.now(), customerId: rec.customerId, type: 'email', dir: 'out', at: +WD.now(), subject: 'Payment reminder — ' + rec.number, snippet: WD.co ? WD.co.fill(WD.co.tpl('payrem').body, WD.co.ctxFor(c, { invoice: rec.number, amount: fmt.money(rec.amount, true) })).replace(/\s+/g, ' ') : 'A friendly reminder that invoice ' + rec.number + ' for ' + fmt.money(rec.amount, true) + ' is ' + (rec.status === 'Overdue' ? 'past due.' : 'due soon.'), from: 'billing@discountshred.example', to: (c && (c.billingEmail || (c.contacts[0] || {}).email)) || '' }); }, { done: 'Reminder sent' });
 }
 async function chargeCard(rec, job) {
-  const ok = await ui.actionSheet({ title: 'Charge ' + fmt.money(rec.amount, true) + '?', message: 'Visa ending 4242 on file in Stripe, through Invoice Ninja.', buttons: [{ label: 'Charge ' + fmt.money(rec.amount, true), value: true }] });
+  const ok = await ui.actionSheet({ title: 'Charge ' + fmt.money(rec.amount, true) + '?', message: 'Visa ending 4242 on file in Stripe' + (WD.money && WD.money.builtIn && WD.money.builtIn() ? '.' : books() ? ', through ' + books() + '.' : '.'), buttons: [{ label: 'Charge ' + fmt.money(rec.amount, true), value: true }] });
   if (ok && await ui.run('Charging card…', null, { done: 'Payment received' })) applyPaid(rec, job, 'Card on file (Stripe)', rec.amount);
 }
-/** Rows for an unpaid invoice: mark paid, send reminder, charge card on file, open in Invoice Ninja. */
+/** Rows for an unpaid invoice: mark paid, send reminder, charge card on file, preview the customer’s email, open in the bookkeeping program. */
 function invoiceActionRows(rec, job, o = {}) {
   if (!rec) return [];
   const unpaid = rec.status !== 'Paid' && !(WD.invClosed && WD.invClosed(rec)), field = canInvoice(), manage = WD.can('billing.manage'), mi = rec.masterId && data.masterInvoices.find(m => m.id === rec.masterId);
@@ -228,10 +229,11 @@ function invoiceActionRows(rec, job, o = {}) {
   return [view && ui.row({ title: 'View invoice', subtitle: mi ? mi.noteIds.length + ' service notes · as the customer receives it' : 'As the customer receives it', icon: 'doc.text', iconPlain: true, tint: true, chevron: true, onTap: view }),
     WD.r9 && WD.r9.editRow(rec, job),
     unpaid && field && ui.row({ title: 'Mark paid…', subtitle: 'Card, check, cash or other', icon: 'dollarsign.circle', iconPlain: true, tint: true, onTap: () => markPaid(rec, job) }),
-    unpaid && field && ui.row({ title: 'Send reminder', icon: 'envelope', iconPlain: true, tint: true, onTap: () => sendReminder(rec) }),
+    unpaid && field && ui.row({ title: 'Send reminder', icon: 'envelope', iconPlain: true, tint: true, onTap: async () => { if (await sendReminder(rec)) rec.lastSent = +WD.now(); } }),
+    WD.money && WD.money.emailPreview && ui.row({ title: 'Preview the email', subtitle: 'What the customer receives: the invoice attached as a PDF and a button to the portal', icon: 'envelope', iconPlain: true, tint: true, chevron: true, onTap: () => WD.money.emailPreview({ kind: 'invoice', customer: q.customer(rec.customerId), rec }) }),
     unpaid && manage && ui.row({ title: 'Charge card on file', icon: 'creditcard', iconPlain: true, tint: true, onTap: () => chargeCard(rec, job) }),
     rec.paidVia && ui.row({ icon: 'sync', iconPlain: true, iconColor: 'var(--green)', title: 'Paid in ' + rec.paidVia, subtitle: 'Found when payment status was checked, and marked paid here' }),
-    books() && ui.row({ title: 'Open in ' + books(), icon: 'arrow.up.right', iconPlain: true, tint: true, onTap: () => ui.toast('Opening ' + rec.number + ' in ' + books() + '…', 'arrow.up.right') })];
+    books() && !(WD.money && WD.money.builtIn && WD.money.builtIn()) && ui.row({ title: 'Open in ' + books(), icon: 'arrow.up.right', iconPlain: true, tint: true, onTap: () => ui.toast('Opening ' + rec.number + ' in ' + books() + '…', 'arrow.up.right') })];
 }
 
 /* ================= Invoices list ================= */
@@ -264,9 +266,11 @@ function invoicesSpec(o) {
       if (IV.scope === 'mine') list = list.filter(r => recRoute(r) === route);
       if (WD.rc && WD.rc.invMatch) list = list.filter(WD.rc.invMatch);
       if (s) list = list.filter(r => { const num = r.number.toLowerCase().replace(/\s+/g, ''), c = q.customer(r.customerId); return num.includes(s) || (digits.length >= 2 && num.replace(/\D/g, '').includes(digits)) || (c && c.name.toLowerCase().includes(IV.query.toLowerCase())); });
+      /* 5.0 (r14-money.js): summary tiles and the aging bar filter the list, a sort order, bulk select, and a wide table on the desktop website. */
+      const M = WD.money && WD.money.inv, inv5 = M && IV.kind === 'invoices', base = list; if (inv5) list = M.sort(M.filter(list));
       const open = list.filter(r => r.status !== 'Paid' && !(WD.invClosed && WD.invClosed(r))).reduce((t, r) => t + r.amount, 0), alerts = WD.can('billing.view') && !s ? poAlerts() : [];
       const ownRoute = S.shift || q.routes().some(r => r.driverId === (S.me && S.me.id));
-      return [h('div.wf-inv-seg', ui.segmented([{ value: 'invoices', label: 'Invoices' }, { value: 'notes', label: 'Service notes' }], IV.kind, v => { IV.kind = v; IV.limit = 40; page.refresh(); })),
+      const out = [h('div.wf-inv-seg', ui.segmented([{ value: 'invoices', label: 'Invoices' }, { value: 'notes', label: 'Service notes' }], IV.kind, v => { IV.kind = v; IV.limit = 40; page.refresh(); })),
         /* One row of filters: route, dates, status, and the payment-status check. The route used to take a second selector and a row of its own. */
         (bar => { if (!bar) return null; const re = () => { IV.limit = 40; page.refresh(); };
           const rp = h('button.rc-pill' + (IV.scope === 'mine' ? '.on' : ''), { 'aria-label': 'Route', onclick: () => ui.menu(rp, [{ header: 'Route' }, { label: 'All routes', checked: IV.scope === 'all', onTap: () => { IV.scope = 'all'; re(); } },
@@ -275,17 +279,21 @@ function invoicesSpec(o) {
           bar.prepend(rp); bar.classList.add('scroll');
           if (IV.kind === 'invoices' && WD.co && WD.co.hasBooks && WD.co.hasBooks()) { const bk = h('button.rc-pill', { 'aria-label': 'Payment status', onclick: () => ui.menu(bk, [{ node: (WD.co.booksSection() || h('div')).querySelector('.row') || h('div') }]) }, icon('sync', 14), 'Payments'); bar.appendChild(bk); }
           return bar; })(WD.rc && WD.rc.filterBar && WD.rc.filterBar(WD.rc.invFilter, () => { IV.limit = 40; page.refresh(); }, { status: true })),
+        inv5 && M.head(page, base, list),
+        inv5 && S.desktop && list.length ? M.table(page, list, IV, r => openInvoiceRec(r)) : null,
         ui.list(
           /* Off-site destruction: a compact row while any load is waiting to be confirmed destroyed (billing.js). */
           !s && billing().destructionEntry && billing().destructionEntry(sp => page.push(sp)),
           IV.kind === 'notes' && notesList(page, s),
           IV.kind === 'invoices' && alerts.length > 0 && ui.section({ header: 'Purchase orders to fix', fold: true, folded: true }, alerts.map(x => h('div', h('div.footnote', { style: 'padding:10px 16px 0;font-weight:600' }, x.c.name), alertRow(x.a, () => guard('customers', 'openDetail', x.c.id))))),
-          IV.kind !== 'invoices' ? null : list.length ? ui.section({ header: (s ? list.length + (list.length === 1 ? ' match' : ' matches') : 'Newest first') + (open ? ' · ' + fmt.money(open) + ' open' : ''), footer: 'Every invoice created' + (books() ? ', from ' + books() : '') + ', newest first. Invoices paid there are marked paid here automatically. Search by invoice number (“2417” finds INV-2417) or customer.' },
+          IV.kind !== 'invoices' || (inv5 && S.desktop && list.length) ? null : list.length ? ui.section({ header: (s || (inv5 && M.filtered()) ? list.length + (list.length === 1 ? ' match' : ' matches') : inv5 ? M.sortLabel() : 'Newest first') + (open ? ' · ' + fmt.money(open) + ' open' : ''), footer: 'Every invoice created' + (books() ? ', from ' + books() : '') + ', newest first. Invoices paid there are marked paid here automatically. Search by invoice number (“2417” finds INV-2417) or customer.' },
             list.slice(0, IV.limit).map(r => { const c = q.customer(r.customerId), rt = recRoute(r);
-              return ui.row({ icon: r.master ? 'tray' : 'doc.text', iconColor: r.master ? 'var(--brown)' : 'var(--indigo)', title: c ? c.name : r.number, subtitle: h('span', h('b.rc-date', fmt.day(r.day, 'md') + ', ' + r.day.slice(0, 4)), h('span.rc-num', ' · ' + r.number + (IV.scope === 'all' && rt ? ' · ' : '')), IV.scope === 'all' && rt ? h('span.cu-route', ui.dot(q.routeColor(rt)), q.routeName(rt)) : null),
-                badge: (st => ui.badge(st, INV_COLOR[st] || 'var(--orange)'))(WD.rc && WD.rc.invStatus ? WD.rc.invStatus(r) : r.status), detail: fmt.money(r.amount), chevron: true, onTap: () => openInvoiceRec(r) }); }),
+              return ui.row({ icon: inv5 && M.selecting() ? null : r.master ? 'tray' : 'doc.text', leading: inv5 && M.selecting() ? M.check(r) : null, iconColor: r.master ? 'var(--brown)' : 'var(--indigo)', title: c ? c.name : r.number, subtitle: h('span', h('b.rc-date', fmt.day(r.day, 'md') + ', ' + r.day.slice(0, 4)), h('span.rc-num', ' · ' + r.number + (IV.scope === 'all' && rt ? ' · ' : '')), IV.scope === 'all' && rt ? h('span.cu-route', ui.dot(q.routeColor(rt)), q.routeName(rt)) : null),
+                badge: (st => ui.badge(st, INV_COLOR[st] || 'var(--orange)'))(WD.rc && WD.rc.invStatus ? WD.rc.invStatus(r) : r.status), detail: fmt.money(r.amount), chevron: true, onTap: () => { if (inv5 && M.selecting()) { M.toggle(r); page.refresh(); } else openInvoiceRec(r); } }); }),
             list.length > IV.limit && ui.row({ title: 'Show more', tint: true, center: true, onTap: () => { IV.limit += 60; page.refresh(); } }))
-          : ui.empty({ icon: 'doc.text', title: s ? 'No invoices match' : 'No invoices', text: s ? 'Nothing matches “' + IV.query + '”' + (IV.scope === 'mine' ? ' on this route. Try All routes.' : '.') : WD.rc && WD.rc.invFilterOn && WD.rc.invFilterOn() ? 'Nothing matches the date and status filters' + (IV.scope === 'mine' ? ' on this route.' : '.') : 'Invoices appear here as they’re created.' }))];
+          : ui.empty({ icon: 'doc.text', title: s ? 'No invoices match' : 'No invoices', text: s ? 'Nothing matches “' + IV.query + '”' + (IV.scope === 'mine' ? ' on this route. Try All routes.' : '.') : WD.rc && WD.rc.invFilterOn && WD.rc.invFilterOn() ? 'Nothing matches the date and status filters' + (IV.scope === 'mine' ? ' on this route.' : '.') : inv5 && M.filtered() ? 'Nothing matches the tile you chose. Tap it again to see every invoice.' : 'Invoices appear here as they’re created.' }))];
+      /* The desktop website uses the full width for the table; the root needs the class `wide`. */
+      return inv5 && S.desktop ? h('div.wide.mny-wide', out) : out;
     } };
 }
 

@@ -67,6 +67,8 @@ function contractsRoot() {
       return ui.list(
         h('div.r13-stats', stat('wait', wait.length, 'To sign', 'var(--orange)'), stat('draft', drafts.length, 'Drafts', 'var(--gray)'), stat('signed', signed.length, 'Signed', 'var(--green)'), stat('renew', ren.length, 'Renewals', 'var(--red)')),
         show('wait') && st.filter !== 'all' && !wait.length ? ui.section(null, ui.row({ title: 'Nothing is waiting for a signature' })) : null,
+        /* New agreement requests (r14-crm.js): the tracker that replaces the new-contracts spreadsheet. */
+        st.filter === 'all' && !st.text && WD.crm2 && WD.crm2.requestsSection ? WD.crm2.requestsSection(page) : null,
         show('wait') && wait.filter(match).length > 0 && ui.section({ header: 'Waiting for a signature', fold: false, showFooter: true, footer: 'Drivers see these on the customer’s next job and can collect the signature in person.' }, wait.filter(match).map(row)),
         st.filter === 'all' && !st.text && canAg() && need.length > 0 && ui.section({ header: 'From the CRM · no agreement yet', fold: false, showFooter: true, footer: 'Leads that have been quoted or scheduled for recurring service. Starting an agreement here shows on the lead in the CRM.' },
           need.slice(0, 6).map(c => ui.row({ leading: ui.avatar(c.name, { size: 36 }), title: c.name, subtitle: (c.containers || (c.locations[0] || {}).containers || 'Recurring service') + ' · ' + c.freq, badge: lcBadge(c),

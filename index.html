@@ -59,7 +59,13 @@
 <script src="js/screens/rc-ops.js"></script>
 <script src="js/screens/rc-money.js"></script>
 <script src="js/screens/r13.js"></script>
-<script>WD.app.start();</script>
+<script src="js/screens/r14.js"></script>
+<script src="js/screens/r14-calls.js"></script>
+<script src="js/screens/r14-crm.js"></script>
+<script src="js/screens/r14-ops.js"></script>
+<script src="js/screens/r14-price.js"></script>
+<script src="js/screens/r14-money.js"></script>
+<script>WD.orgs.snapshot(); WD.app.start();</script>
 <script>
 /* Offline: a service worker keeps a copy of the prototype so it opens with no connection. It asks the network first, so a new version always wins. */
 if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register('sw.js').catch(function () {});

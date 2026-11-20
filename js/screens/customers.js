@@ -240,8 +240,8 @@ function custSettingsSpec() {
     return ui.list(WD.admin && WD.admin.custTypesSection ? WD.admin.custTypesSection(page) : null,
       ui.section({ header: 'More for customers', fold: false },
         WD.biz && WD.biz.fieldsSpec && ui.row({ icon: 'square.and.pencil', iconColor: 'var(--blue)', title: 'Custom fields', subtitle: 'Your own fields on the customer record', chevron: true, onTap: () => page.push(WD.biz.fieldsSpec()) }),
-        WD.r11 && WD.r11.unpaidSettingsSpec && ui.row({ icon: 'exclamationmark.circle', iconColor: 'var(--red)', title: 'Unpaid invoice warnings', subtitle: U ? 'Warn over ' + U.limit + ' unpaid · overdue after ' + U.overdueDays + ' days' : null, chevron: true, onTap: () => page.push(WD.r11.unpaidSettingsSpec()) }),
-        WD.admin && WD.admin.importSpec && ui.row({ icon: 'list.bullet', iconColor: 'var(--green)', title: 'Import customers and jobs', subtitle: 'From a spreadsheet or a calendar file', chevron: true, onTap: () => page.push(WD.admin.importSpec()) }))); } };
+        WD.r11 && WD.r11.unpaidSettingsSpec && ui.row({ icon: 'exclamationmark.circle', iconColor: 'var(--red)', title: 'Unpaid invoice warnings', subtitle: U ? (U.on === false ? 'Off' : 'Warn over ' + U.limit + ' unpaid · overdue after ' + U.overdueDays + ' days') : null, chevron: true, onTap: () => page.push(WD.r11.unpaidSettingsSpec()) }),
+        WD.admin && WD.admin.importSpec && ui.row({ icon: 'list.bullet', iconColor: 'var(--green)', title: 'Import customers and jobs', subtitle: 'From a file or from the program you used before', chevron: true, onTap: () => page.push(WD.admin.importSpec()) }))); } };
 }
 /** Customer types offered in a picker: hidden ones are left out unless the record already has it. */
 const custTypeOptions = cur => WD.custTypes.filter(t => !t.hidden || t.id === cur).map(t => ({ value: t.id, label: t.title }));
@@ -269,7 +269,7 @@ function searchView() {
 }
 /* The markers at the right of a customer: the amount owed above "Balance due", and below it the overdue amount above "Overdue". Balance is dark blue on light blue; overdue is the red badge style. */
 const mark = (amount, label, late) => h('span.cu-mark' + (late ? '.late' : ''), h('b', fmt.money(amount)), label);
-const custRow = c => { const bill = WD.can('billing.view'), owed = bill ? owedBy(c) : 0, late = bill ? overdueOf(c).reduce((s, i) => s + i.amount, 0) : 0;
+const custRow = c => { const bill = WD.can('billing.view'), owed = bill ? owedBy(c) : 0, warn = !(WD.r11 && WD.r11.warnOn) || WD.r11.warnOn('customers'), late = bill && warn ? overdueOf(c).reduce((s, i) => s + i.amount, 0) : 0;   // the Overdue marker is one of the unpaid-invoice warnings (Settings → Company)
   return ui.row({ class: 'cu-crow', leading: avatar(c), title: h('span.cu-name-row', c.name, c.successful && icon('star.fill', 13, 'var(--yellow)'), c.hidden && ui.badge('Hidden', 'var(--gray)'), badDebtBadge(c)),
     subtitle: [h('div', c.locations[0] ? c.locations[0].address.replace(/, Lakemont$/, '') : ''), ownerView() && h('div.cu-totals', c.stats.jobs + (c.stats.jobs === 1 ? ' job' : ' jobs') + ' done · ' + fmt.money(c.stats.invoiced) + ' invoiced')],
     badge: owed > 0 || late > 0 ? h('span.cu-marks', owed > 0 && mark(owed, 'Balance due'), late > 0 && mark(late, 'Overdue', true)) : null, chevron: true, onTap: () => openDetail(c.id) }); };
@@ -520,11 +520,17 @@ function custInvoices(cid, unpaid) {
         : ui.empty({ icon: 'doc.text', title: st.unpaid ? 'Nothing unpaid' : 'No invoices yet', text: st.unpaid ? 'Every invoice for this customer is paid.' : 'The first invoice marks this customer successful.' }))]; } };
 }
 function billingSection(c) {
-  const invs = invoicesFor(c.id), open = invs.filter(stillOwed).reduce((s, i) => s + i.amount, 0);
-  return ui.section({ header: 'Invoices', footer: (open ? fmt.money(open) + ' open · ' : '') + 'Synced from Invoice Ninja' }, invs.length ? invs.slice(0, 4).map(invRow) : ui.row({ title: 'No invoices yet', subtitle: 'The first invoice marks this customer successful.' }),
+  const invs = invoicesFor(c.id), open = invs.filter(stillOwed).reduce((s, i) => s + i.amount, 0), M = WD.money || {}, st = WD.rc && WD.rc.openStatement, ap = M.autopayText && M.autopayText(c);
+  /* The footer names where invoices are created: built in, or the bookkeeping program chosen in Settings → Company → Invoicing. */
+  return [ui.section({ header: 'Invoices', footer: (open ? fmt.money(open) + ' open · ' : '') + (M.sourceText ? M.sourceText() : 'Synced from Invoice Ninja') }, invs.length ? invs.slice(0, 4).map(invRow) : ui.row({ title: 'No invoices yet', subtitle: 'The first invoice marks this customer successful.' }),
     invs.length > 4 && ui.row({ title: 'All invoices', detail: String(invs.length), chevron: true, onTap: () => WD.nav.push(custInvoices(c.id, false)) }),
-    WD.rc && WD.rc.openStatement && ui.row({ icon: 'envelope', iconPlain: true, title: 'Create statement…', subtitle: open ? 'Every unpaid invoice on one page, with the invoices attached if you like' : 'Nothing is unpaid right now', tint: true, onTap: () => WD.rc.openStatement(c) }),
-    WD.rc && WD.rc.newInvoice && WD.can('billing.manage') && ui.row({ icon: 'plus.circle.fill', iconPlain: true, iconColor: 'var(--green)', title: 'New invoice', tint: true, onTap: () => WD.rc.newInvoice(c.id) }));
+    WD.rc && WD.rc.newInvoice && WD.can('billing.manage') && ui.row({ icon: 'plus.circle.fill', iconPlain: true, iconColor: 'var(--green)', title: 'New invoice', tint: true, onTap: () => WD.rc.newInvoice(c.id) })),
+    st && ui.section({ header: 'Statements', fold: false, footer: 'A statement of everything lists paid invoices too, with each payment, so the customer can compare it with their own records.' },
+      ui.row({ icon: 'envelope', iconPlain: true, title: 'Send statement · unpaid invoices only', subtitle: open ? 'Every unpaid invoice on one page, with the invoices attached if you like' : 'Nothing is unpaid right now', tint: true, onTap: () => WD.rc.openStatement(c) }),
+      ui.row({ icon: 'doc.text', iconPlain: true, title: 'Send statement · all invoices', subtitle: 'Paid and unpaid, to find a discrepancy', tint: true, onTap: () => WD.rc.openStatement(c, { all: true }) })),
+    M.portalSpec && WD.can('billing.view') && ui.section({ header: 'Customer portal and autopay', fold: false, footer: 'The portal is where the customer sees invoices, pays, saves a card or bank account and turns on autopay. They open it from the button in every invoice email.' },
+      ui.row({ icon: 'creditcard', iconColor: ap ? 'var(--green)' : 'var(--gray)', title: ap ? 'Autopay on · ' + ap : 'Autopay is off', subtitle: ap ? 'Each new invoice is charged automatically on its due date' : 'The customer turns it on in the portal' }),
+      ui.row({ icon: 'arrow.up.right', iconPlain: true, title: 'Open the customer portal (preview)', subtitle: 'What ' + ((c.contacts[0] || {}).name || 'the customer') + ' sees', tint: true, chevron: true, onTap: () => WD.nav.push(M.portalSpec(c.id)) }))];
 }
 function pay(inv, method) {
   const c = q.customer(inv.customerId), j = inv.jobId && q.job(inv.jobId);
@@ -537,7 +543,7 @@ function invoicePage(invId) {
     render: () => {
       const inv = data.invoices.find(x => x.id === invId); if (!inv || !(WD.can('billing.view') || WD.can('billing.field'))) return ui.empty({ icon: 'lock', title: 'Billing is hidden', text: 'You need billing access to see invoices.' });
       const c = q.customer(inv.customerId), lines = linesFor(inv), pays = data.payments.filter(p => p.invoiceId === inv.id);
-      return [h('div.cu-head', c && h('div.title3', { style: 'font-weight:700' }, c.name), h('div.headline', { style: 'margin:2px 0 6px' }, longDate(inv.day)), h('div.cu-amount', fmt.money(inv.amount, true)), ui.badge(invStatus(inv), INV_COLOR[invStatus(inv)] || 'var(--orange)'), h('div.footnote', inv.number + (stillOwed(inv) ? ' · Due ' + fmt.day(D.add(inv.day, 30), 'md') : ''))),
+      return [h('div.cu-head', c && h('div.title3', { style: 'font-weight:700' }, c.name), h('div.headline', { style: 'margin:2px 0 6px' }, longDate(inv.day)), h('div.cu-amount', fmt.money(inv.amount, true)), ui.badge(invStatus(inv), INV_COLOR[invStatus(inv)] || 'var(--orange)'), h('div.footnote', inv.number + (stillOwed(inv) ? ' · Due ' + fmt.day(D.add(inv.day, 30), 'md') : '')), stillOwed(inv) && inv.status !== 'Draft' && WD.money && WD.money.autopayNote && WD.money.autopayNote(inv)),
         WD.rc && WD.rc.closedNote && WD.rc.closedNote(inv),
         ui.list(ui.section({ header: 'Lines', footer: 'Prices from the price book.' }, lines.map(l => ui.row({ title: l.name, subtitle: l.qty + ' × ' + fmt.money(l.rate, true), detail: fmt.money(l.qty * l.rate, true) })), ui.row({ title: h('b', 'Total'), detail: h('b', fmt.money(inv.amount, true)) })),
           ui.section('Payments', pays.length ? pays.map(p => ui.row({ icon: 'creditcard', iconColor: 'var(--pink)', title: p.method, subtitle: whenFull(p.at), detail: fmt.money(p.amount, true) })) : ui.row({ title: 'No payments yet' })),

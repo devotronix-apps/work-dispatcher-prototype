@@ -55,6 +55,7 @@ const clock = ms => { const s = Math.max(0, Math.floor(ms / 1000)), p = n => Str
 const routeOf = () => S.shift && q.route(S.shift.routeId);
 const todayJobs = routeId => q.jobsFor(routeId, D.today()).filter(j => !j.allDay);
 const remaining = routeId => todayJobs(routeId).filter(j => !DONE[j.status]);
+const ops2 = () => WD.ops2 || {};   // r14-ops.js loads after this file, so it is looked up when the screen draws
 const openDetails = id => { if (WD.screens.jobs && WD.screens.jobs.openDetails) WD.screens.jobs.openDetails(id); else ui.toast('Job details aren’t available', 'info.circle'); };
 const numFor = (job, n, small) => n ? h('span.sh-num' + (small ? '.small' : ''), { style: WD.pinStyle ? WD.pinStyle(job) : { '--c': q.routeColor(job.routeId) } }, n)
   : h('span.sh-num.small' + (!job.located && job.address ? '.q' : '.none'), !job.located && job.address ? '?' : '–');
@@ -273,11 +274,17 @@ function onShift() {
       h('div.sh-acts', { style: { marginTop: '10px' } }, !done.invoice && WD.screens.billing && WD.screens.billing.canInvoice() && done.type !== 'creditCard' && ui.button('Bill', { kind: 'tinted', small: true, block: false, icon: 'doc.text', onTap: () => WD.screens.billing.openEditor(done.id, { onDone: () => wf().afterBilling(done) }) }),
         !done.invoice && WD.screens.billing && WD.screens.billing.canInvoice() && done.type !== 'creditCard' && ui.button('Paid, no inv.', { kind: 'tinted', small: true, block: false, icon: 'dollarsign.circle', onTap: () => wf().paidNoInvoice(done, null, () => wf().afterBilling(done)) }),
         ui.button('Photo or note', { kind: 'gray', small: true, block: false, icon: 'camera', onTap: () => openCamera(done) }))),
-    unbilled.length > 0 && ui.section(null, ui.row({ icon: 'exclamationmark.triangle', iconColor: 'var(--orange)', title: unbilled.length + (unbilled.length === 1 ? ' completed stop isn’t billed' : ' completed stops aren’t billed'), subtitle: 'Create the invoice, mark paid–no invoice, or skip', chevron: true, onTap: () => wf().missedSheet(unbilled) })),
+    /* One block for what the driver should know at a glance: stops not billed yet, then the day's meet-the-truck jobs and time windows (r14-ops.js). */
+    (rows => rows.length ? ui.section(null, rows) : null)([unbilled.length > 0 && ui.row({ icon: 'exclamationmark.triangle', iconColor: 'var(--orange)', title: unbilled.length + (unbilled.length === 1 ? ' completed stop isn’t billed' : ' completed stops aren’t billed'), subtitle: 'Create the invoice, mark paid–no invoice, or skip', chevron: true, onTap: () => wf().missedSheet(unbilled) }), ops2().daySynopsis && ops2().daySynopsis(r)].flat(Infinity).filter(Boolean)),
+    /* Stops another driver took off this route, and this driver's own requests to help another route. */
+    ops2().shiftNotices && ops2().shiftNotices(r),
     nextCard(r),
+    /* Out of mapped stops: the jobs that are left (no address, meet the truck), then the offer to help another route. */
+    !q.stops(r.id, D.today()).some(s => !DONE[s.job.status]) && ops2().shiftExtras && ops2().shiftExtras(r),
     ui.section('Today · ' + q.routeName(r), q.jobsFor(r.id, D.today()).map(j => { const sx = WD.jobStatuses[j.status], svc = serviceText(j);
       return ui.row({ class: WD.struck[j.status] ? 'sh-struck' : null, leading: numFor(j, numbers.get(j.id), true), title: wf().titleNode(j), subtitle: h('span', svc && h('div.sh-svc2', svc), (j.allDay ? 'Note for the day' : 'Stop ' + q.position(j).n) + (j.status === 'completed' && !j.allDay && j.type !== 'meet' ? (wf().billed(j) ? ' · ' + (j.invoice ? j.invoice.number : wf().billingLabel(j)) : ' · not billed') : '') + (WD.struck[j.status] ? ' · ' + sx.title + (j.rescheduledTo ? ' to ' + fmt.day(j.rescheduledTo, 'md') : '') : '') + (!j.located && j.address ? ' · address not found' : '') + (j.pending ? ' · waiting to sync' : '')),
-        trailing: h('span.hstack', { style: { gap: '6px' } }, j.pending && icon('sync', 16, 'var(--orange)'), j.allDay ? null : icon(sx.icon, 18, sx.color)), onTap: () => openDetails(j.id) }); })),
+        trailing: h('span.hstack', { style: { gap: '6px' } }, j.pending && icon('sync', 16, 'var(--orange)'), j.allDay ? null : icon(sx.icon, 18, sx.color)), onTap: () => openDetails(j.id) }); }),
+      ops2().takenRows && ops2().takenRows(r.id)),
     ui.section({ header: 'Tracking', footer: denied ? 'Location isn’t allowed, so nothing is recorded. Use the status buttons to report stops.' : 'Points are thinned to one every 30 seconds and upload in small batches. Without a connection they wait on this iPhone.' },
       ui.row({ title: 'Last location', detail: span('lastFix'), icon: 'location.fill', iconColor: 'var(--blue)' }), ui.row({ title: 'Accuracy', detail: span('accuracy'), icon: 'scope', iconColor: 'var(--teal)' }),
       ui.row({ title: 'Points sent today', detail: span('sent'), icon: 'arrow.up', iconColor: 'var(--green)' }),

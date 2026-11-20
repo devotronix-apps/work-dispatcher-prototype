@@ -416,17 +416,20 @@ const stdProof = () => { const t = biz().proofText; return !t || /per the terms 
 function standardInvoice(o) {
   const org = S.org || data.orgs[0], lines = o.lines.filter(l => l.qty || l.rate), tax = +o.tax || 0, tot = total(lines) + tax, net = parseInt((String(o.terms || '').match(/\d+/) || [30])[0], 10);
   const meta = [['Invoice Number', o.number], ['Invoice Date', mdy2(o.date)], ['Due Date', mdy2(D.add(o.date, net))], o.serviceDate && o.serviceDate !== o.date && ['Service Date', mdy2(o.serviceDate)], o.po && ['PO Number', o.po], o.revised && ['Revised', o.revised]].filter(Boolean);
-  return h('div.bn-doc',
-    h('div.bn-top', logo(), h('div.bn-co', [org.name].concat((org.remit || []).slice(1), org.phone || [], org.fax ? 'Fax ' + org.fax : [], org.email || [], org.website || [], data.tax && data.tax.on && data.tax.regNo ? 'Tax reg. # ' + data.tax.regNo : []).map(x => h('div', x)))),
-    h('div.bn-mid', h('div.bn-to', (o.billTo || []).map(x => h('div', x))), h('div', h('div.bn-ttl', 'Invoice'), h('div.bn-meta', meta.map(([k, v]) => [h('span', k), h('span', v)])))),
-    h('table.bn-tab', h('thead', h('tr', h('th', 'Item'), h('th', 'Description'), h('th', 'Unit', h('br'), 'Cost'), h('th', 'Quantity'), h('th.r', 'Line', h('br'), 'Total'))),
+  /* Settings → Company → Forms and documents: the default invoice layout can rename the title, the column headings and the totals, and hide blocks. */
+  const FM = WD.money && WD.money.docLabel ? WD.money : null, L = (k, d) => FM ? FM.docLabel('invoice', k, d) : d, show = k => !FM || FM.docShows('invoice', k), two = t => { const w = String(t).split(' '); return w.length === 2 ? [w[0], h('br'), w[1]] : t; };
+  return h('div.bn-doc', FM && FM.docAccent('invoice') ? { style: { '--mny-accent': FM.docAccent('invoice') } } : null,
+    h('div.bn-top', show('logo') ? logo() : h('div'), show('company') === false ? h('div') : h('div.bn-co', [org.name].concat((org.remit || []).slice(1), org.phone || [], org.fax ? 'Fax ' + org.fax : [], org.email || [], org.website || [], data.tax && data.tax.on && data.tax.regNo ? 'Tax reg. # ' + data.tax.regNo : []).map(x => h('div', x)))),
+    h('div.bn-mid', h('div.bn-to', (o.billTo || []).map(x => h('div', x))), h('div', h('div.bn-ttl', FM && FM.docAccent('invoice') ? { style: { color: FM.docAccent('invoice') } } : null, L('title', 'Invoice')), h('div.bn-meta', meta.map(([k, v]) => [h('span', k), h('span', v)])))),
+    h('table.bn-tab', h('thead', h('tr', h('th', L('col.item', 'Item')), h('th', L('col.desc', 'Description')), h('th', two(L('col.rate', 'Unit Cost'))), h('th', L('col.qty', 'Quantity')), h('th.r', two(L('col.total', 'Line Total'))))),
       h('tbody', lines.map(l => { const [item, desc] = itemText(l); return h('tr', h('td', item), h('td', desc), h('td.n', money2(+l.rate || 0)), h('td.n', String(+l.qty || 0)), h('td.r.n', money2((+l.qty || 0) * (+l.rate || 0)))); }))),
     h('div.bn-bot',
       h('div.bn-sig', (o.stamp || o.paid) && h('div.bn-stamp', o.stamp || 'PAID'), (o.sigs || []).filter(s => s.sig || s.blank).map(s => [h('div.bn-ink', sigView(s.sig)), h('div.bn-cap', s.cap)])),
-      h('div.bn-tot', tax > 0 && ((o.taxes || []).filter(t => t.amount > 0).length > 1 ? o.taxes.filter(t => t.amount > 0).map(t => h('div.x', h('span', t.label || t.name), h('span', money2(t.amount)))) : h('div.x', h('span', o.taxLabel || 'Sales tax'), h('span', money2(tax)))), h('div', h('span', 'Total'), h('span', money2(tot))), h('div', h('span', 'Paid to Date'), h('span', money2(o.paid ? tot : 0))), h('div.due', h('span', 'Balance Due'), h('span', money2(o.paid || o.stamp ? 0 : tot))))),
+      h('div.bn-tot', tax > 0 && ((o.taxes || []).filter(t => t.amount > 0).length > 1 ? o.taxes.filter(t => t.amount > 0).map(t => h('div.x', h('span', t.label || t.name), h('span', money2(t.amount)))) : h('div.x', h('span', o.taxLabel || 'Sales tax'), h('span', money2(tax)))), h('div', h('span', L('total', 'Total')), h('span', money2(tot))), h('div', h('span', L('paid', 'Paid to Date')), h('span', money2(o.paid ? tot : 0))), h('div.due', h('span', L('balance', 'Balance Due')), h('span', money2(o.paid || o.stamp ? 0 : tot))))),
     o.pounds && h('div.bi-scan', h('b', 'WEIGHT SHREDDED: '), Number(o.pounds).toLocaleString('en-US') + ' lb'),
     o.scans && o.scans.length > 0 && h('div.bi-scan', h('b', 'CONTAINERS SERVICED (BARCODE SCANS): '), o.scans.map(s => s.code + ' ' + fmt.clock(new Date(s.at))).join(' · ') + (o.scanNote ? ' · Note: ' + o.scanNote : '')),
     o.drives && o.drives.length > 0 && h('div.bi-scan', h('b', 'HARD DRIVES DESTROYED (SERIAL NUMBERS): '), o.drives.map(s => s.code).join(' · ') + (o.driveNote ? ' · Note: ' + o.driveNote : '')),
+    FM && FM.docFooter('invoice') && h('div.bi-scan', FM.docFooter('invoice')),
     h('div.bn-fill'),
     biz().proofOn !== false && h('div.bn-cod', h('b', (biz().proofTitle || 'CERTIFICATE OF DESTRUCTION') + ':'), proofLine(o.destruction, stdProof().replace(/\{company\}/g, org.name))));
 }
@@ -462,7 +465,8 @@ function openInvoice(jobId) {
     const inv = job.invoice, unpaid = inv.status !== 'Paid';
     return ui.list(invoiceDoc(inv, job),
       WD.r9 && WD.r9.revisionSection((WD.workflow && WD.workflow.invRecFor(job)) || inv),
-      ui.section(null, destructionRow(job), invActions(job), ui.row({ title: 'Resend to customer', icon: 'envelope', iconPlain: true, tint: true, onTap: () => ui.run('Sending…', null, { done: 'Sent' }) })));
+      ui.section(null, destructionRow(job), invActions(job), ui.row({ title: 'Resend to customer', icon: 'envelope', iconPlain: true, tint: true, onTap: async () => { if (await ui.run('Sending…', null, { done: 'Sent' })) { const rec = WD.workflow && WD.workflow.invRecFor(job); if (rec) rec.lastSent = +WD.now(); } } }),
+        WD.money && WD.money.emailPreview && ui.row({ title: 'Preview the email', subtitle: 'The invoice attached as a PDF and a button to the portal', icon: 'envelope', iconPlain: true, tint: true, chevron: true, onTap: () => WD.money.emailPreview({ kind: 'invoice', customer: q.customer(job.customerId), rec: (WD.workflow && WD.workflow.invRecFor(job)) || { number: inv.number, amount: inv.amount, day: job.day, jobId: job.id, customerId: job.customerId, status: inv.status } }) })));
   } });
 }
 async function recordPayment(job) {

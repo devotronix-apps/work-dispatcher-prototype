@@ -192,10 +192,52 @@ WD.on('role', () => setTimeout(RC.maintCheck, 900));
 
 /* ================= Maintenance section ================= */
 const gauge = pct => h('div.rc-gauge' + (pct < MT.lowFuel ? '.low' : pct < 35 ? '.mid' : ''), h('i', { style: { width: Math.max(3, pct) + '%' } }));
+/* Files on a repair or maintenance record: photos and PDFs (the shop's invoice, a receipt, a picture of the part). Kept on the record as
+   files: [{name, kind: 'image' | 'pdf' | 'file', size, url}]. Chosen files are shown from an object URL; nothing is uploaded in the prototype. */
+WD.css(`
+.rp-files { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 16px; background: var(--cell); }
+.rp-file { position: relative; width: 84px; height: 84px; border-radius: 10px; overflow: hidden; background: var(--fill3); border: 0; padding: 0; cursor: pointer; color: var(--label); font: inherit; display: grid; place-items: center; }
+.rp-file img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.rp-file.chip { width: auto; max-width: 100%; height: 44px; display: inline-flex; align-items: center; gap: 7px; padding: 0 12px; font-size: 14px; }
+.rp-file.chip span.n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 190px; } .rp-file.chip small { color: var(--label2); font-size: 12px; white-space: nowrap; }
+.rp-wrap { position: relative; display: inline-flex; max-width: 100%; }
+.rp-x { position: absolute; top: -9px; right: -9px; width: 44px; height: 44px; border: 0; background: none; display: grid; place-items: center; cursor: pointer; padding: 0; z-index: 1; }
+.rp-x i { width: 22px; height: 22px; border-radius: 50%; background: var(--label); color: var(--bg); display: grid; place-items: center; font-style: normal; font-size: 14px; font-weight: 700; line-height: 1; }
+.rp-add { display: flex; gap: 8px; padding: 10px 16px; background: var(--cell); flex-wrap: wrap; } .rp-add label { cursor: pointer; }
+.rp-view { padding: 16px; display: grid; place-items: center; } .rp-view img { max-width: 100%; border-radius: 10px; }
+.rp-paper { width: 100%; max-width: 420px; background: #fff; color: #1c1c1e; border-radius: 10px; padding: 22px 20px; font-size: 13.5px; line-height: 19px; box-shadow: 0 1px 4px rgba(0,0,0,.14); }
+.rp-paper h4 { margin: 0 0 2px; font-size: 16px; } .rp-paper small { color: #6b6b70; } .rp-paper table { width: 100%; border-collapse: collapse; margin-top: 12px; } .rp-paper td { padding: 5px 0; border-top: .5px solid #d8d8dc; } .rp-paper td:last-child { text-align: right; white-space: nowrap; }
+`);
+const fileSize = n => n == null ? '' : typeof n === 'string' ? n : n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+const fileKind = file => /^image\//.test(file.type) || /\.(png|jpe?g|heic|gif|webp)$/i.test(file.name) ? 'image' : /pdf/i.test(file.type) || /\.pdf$/i.test(file.name) ? 'pdf' : 'file';
+/** Tap-to-preview for one file. A picture shows itself; a PDF chosen on this device opens in the browser's own viewer; a mock PDF (no url) shows a drawn page. */
+function fileSpec(x, r) {
+  return { title: x.name, trailing: [{ icon: 'share', label: 'Share', onTap: () => ui.toast('Share sheet: save, print or email', 'share', 2200) }], render: () => {
+    if (x.kind === 'image' && x.url) return h('div.rp-view', h('img', { src: x.url, alt: x.name }));
+    if (x.url) return ui.list(ui.section({ fold: false, footer: 'Chosen on this device. It opens in the browser’s own viewer.' }, ui.row({ icon: 'doc', iconColor: 'var(--red)', title: x.name, subtitle: fileSize(x.size) }), h('div', { style: 'padding:10px 16px;background:var(--cell)' }, h('a.btn.tinted.block', { href: x.url, target: '_blank', rel: 'noopener' }, 'Open ' + (x.kind === 'pdf' ? 'the PDF' : 'the file')))));
+    const v = r && q.vehicle(r.vehicleId);
+    return h('div.rp-view', h('div.rp-paper', h('h4', (r && r.vendor) || 'Shop invoice'), h('small', x.name + (x.size ? ' · ' + fileSize(x.size) : '')),
+      r && h('table', h('tr', h('td', 'Vehicle'), h('td', (v ? v.name : '') + (v && v.plate ? ' · ' + v.plate : ''))), h('tr', h('td', 'Date'), h('td', fmt.day(r.day, 'md') + ', ' + r.day.slice(0, 4))), r.odo ? h('tr', h('td', 'Mileage'), h('td', nfmt(r.odo))) : null, h('tr', h('td', r.title), h('td', r.cost ? fmt.money(r.cost, true) : '')), h('tr', h('td', h('b', 'Total')), h('td', h('b', r.cost ? fmt.money(r.cost, true) : '—')))),
+      h('p', { style: 'margin:14px 0 0;color:#6b6b70' }, 'Sample page. In the app this is the PDF exactly as it was attached.'))); } };
+}
+/** Thumbnails for pictures, chips for other files; onRemove adds a remove button to each. */
+function fileStrip(files, r, onRemove) {
+  if (!files || !files.length) return null;
+  return h('div.rp-files', files.map((x, i) => h('div.rp-wrap',
+    x.kind === 'image' && x.url ? h('button.rp-file', { 'aria-label': 'Preview ' + x.name, onclick: e => { e.stopPropagation(); WD.nav.push(fileSpec(x, r)); } }, h('img', { src: x.url, alt: x.name }))
+      : h('button.rp-file.chip', { 'aria-label': 'Preview ' + x.name, onclick: e => { e.stopPropagation(); WD.nav.push(fileSpec(x, r)); } }, icon(x.kind === 'image' ? 'photo' : 'doc', 18, x.kind === 'pdf' ? 'var(--red)' : 'var(--label2)'), h('span.n', x.name), x.size ? h('small', fileSize(x.size)) : null),
+    onRemove && h('button.rp-x', { 'aria-label': 'Remove ' + x.name, onclick: e => { e.stopPropagation(); onRemove(i); } }, h('i', '×')))));
+}
+/** “Add photo” and “Add file (PDF, image)”: real file inputs. */
+function fileButtons(files, refresh) {
+  const take = e => { [...e.target.files].forEach(file => files.push({ name: file.name, kind: fileKind(file), size: file.size, url: URL.createObjectURL(file) })); e.target.value = ''; refresh(); };
+  return h('div.rp-add', h('label.btn.tinted.small', icon('camera', 17), 'Add photo', h('input', { type: 'file', accept: 'image/*', capture: 'environment', multiple: true, style: 'display:none', onchange: take })),
+    h('label.btn.tinted.small', icon('paperclip', 17), 'Add file (PDF, image)', h('input', { type: 'file', accept: 'image/*,application/pdf,.pdf', multiple: true, style: 'display:none', onchange: take })));
+}
 function repairSheet(v, preset, done) {
-  const f = { day: today(), kind: 'repair', title: '', vendor: '', cost: '', note: '', odo: String(F.odo[v.id] || ''), svc: '', ...preset };
+  const f = { day: today(), kind: 'repair', title: '', vendor: '', cost: '', note: '', odo: String(F.odo[v.id] || ''), svc: '', ...preset, files: ((preset || {}).files || []).slice() };
   ui.sheet({ title: 'Add a record · ' + v.name, leading: [{ label: 'Cancel', onTap: p => p.dismiss() }], trailing: [{ label: 'Save', bold: true, onTap: p => { if (!f.title.trim()) return ui.toast('Say what was done', 'pencil');
-      const odo = parseInt(String(f.odo).replace(/\D/g, ''), 10) || F.odo[v.id] || 0; F.repairs.push({ id: uid('rp'), vehicleId: v.id, day: f.day, odo, kind: f.kind, title: f.title.trim(), vendor: f.vendor.trim(), cost: RC.num(f.cost), note: f.note.trim(), by: me() });
+      const odo = parseInt(String(f.odo).replace(/\D/g, ''), 10) || F.odo[v.id] || 0; F.repairs.push({ id: uid('rp'), vehicleId: v.id, day: f.day, odo, kind: f.kind, title: f.title.trim(), vendor: f.vendor.trim(), cost: RC.num(f.cost), note: f.note.trim(), by: me(), files: f.files.slice(), fromEmail: f.fromEmail || null });
       const s = f.svc && F.services.find(x => x.id === f.svc); if (s) { s.last = odo; s.lastDay = f.day; s.lastHours = (F.hours || {})[v.id] || 0; }
       WD.changed(); p.dismiss(); ui.toast('Saved to ' + v.name, 'checkmark'); done && done(); } }],
     render: p => ui.list(ui.section({ fold: false },
@@ -204,6 +246,8 @@ function repairSheet(v, preset, done) {
         ui.dateRow({ title: 'Date', value: f.day, onChange: v2 => { f.day = v2; } }), ui.inputRow({ label: 'Mileage', inputmode: 'numeric', value: f.odo, onInput: v2 => { f.odo = v2; } }),
         ui.inputRow({ label: 'Shop or person', placeholder: 'Optional', value: f.vendor, onInput: v2 => { f.vendor = v2; } }), ui.inputRow({ label: 'Cost', inputmode: 'decimal', placeholder: '0.00', value: f.cost, onInput: v2 => { f.cost = v2; } }),
         ui.inputRow({ multiline: true, placeholder: 'Notes (optional)', value: f.note, onInput: v2 => { f.note = v2; } })),
+      ui.section({ header: 'Files and photos' + (f.files.length ? ' · ' + f.files.length : ''), fold: false, showFooter: true, footer: 'The shop’s invoice, a receipt or pictures of the work. They stay with this record.' },
+        fileStrip(f.files, null, i => { const x = f.files.splice(i, 1)[0]; if (x && x.url && x.url.startsWith('blob:')) URL.revokeObjectURL(x.url); p.refresh(); }), fileButtons(f.files, () => p.refresh())),
       f.kind === 'service' && ui.section({ fold: false, footer: 'Picking one restarts its countdown from this mileage and date.' }, ui.pickerRow({ title: 'Counts as', value: f.svc, options: [{ value: '', label: 'Nothing on the schedule' }].concat(F.services.filter(s => s.owner === v.id).map(s => ({ value: s.id, label: s.name }))), onChange: v2 => { f.svc = v2; p.refresh(); } }))) }, { detent: 'large' });
 }
 async function resolve(x, v, re) {
@@ -226,9 +270,22 @@ function inspectionSpec(x) { const v = q.vehicle(x.vehicleId) || { name: 'Truck'
   } }; }
 const historySpec = vid => ({ title: vid ? 'Inspections' : 'Inspection history', render: page => { const list = (vid ? insOf(vid) : F.inspections.slice().sort((a, b) => b.at - a.at));
   return ui.list(list.length ? ui.section({ header: plural(list.length, 'inspection') + ' · newest first', fold: false }, list.map(x => insRow(x, s => page.push(s), !vid))) : ui.empty({ icon: 'checklist', title: 'No inspections yet', text: 'Drivers do the pre-trip inspection when they clock in.' })); } });
-const repRow = (r, withTruck) => ui.row({ icon: r.kind === 'service' ? 'repeat' : 'wrench', iconColor: r.kind === 'service' ? 'var(--teal)' : 'var(--orange)', title: r.title, subtitle: (withTruck ? (q.vehicle(r.vehicleId) || {}).name + ' · ' : '') + fmt.day(r.day, 'md') + ', ' + r.day.slice(0, 4) + ' · ' + nfmt(r.odo) + ' mi' + (r.vendor ? ' · ' + r.vendor : '') + (r.note ? ' · ' + r.note : ''), detail: r.cost ? fmt.money(r.cost, true) : '' });
-const repairsSpec = () => ({ title: 'Repairs and maintenance', render: () => { const list = F.repairs.slice().sort((a, b) => b.day.localeCompare(a.day)), yr = today().slice(0, 4), sum = list.filter(r => r.day.slice(0, 4) === yr).reduce((s, r) => s + (r.cost || 0), 0);
-  return ui.list(ui.section({ header: plural(list.length, 'record') + ' · ' + fmt.money(sum) + ' this year', fold: false, footer: 'Add a record from a truck’s page.' }, list.map(r => repRow(r, true)))); } });
+const repRow = (r, withTruck) => ui.row({ icon: r.kind === 'service' ? 'repeat' : 'wrench', iconColor: r.kind === 'service' ? 'var(--teal)' : 'var(--orange)', title: r.title,
+  subtitle: [h('div', (withTruck ? ((q.vehicle(r.vehicleId) || {}).name || 'Truck') + ' · ' : '') + fmt.day(r.day, 'md') + ', ' + r.day.slice(0, 4) + ' · ' + nfmt(r.odo) + ' mi' + (r.vendor ? ' · ' + r.vendor : '') + (r.note ? ' · ' + r.note : '')),
+    (r.files || []).length > 0 && h('div', { style: 'display:flex;align-items:center;gap:4px' }, icon('paperclip', 13), plural(r.files.length, 'file') + (r.fromEmail ? ' · added from an email' : ''))],
+  detail: r.cost ? fmt.money(r.cost, true) : '', chevron: true, onTap: () => WD.nav.push(repairSpec(r)) });
+/** One repair or maintenance record, with its files. */
+function repairSpec(r) { const v = q.vehicle(r.vehicleId) || { name: 'Truck' }, st = { adding: false };
+  return { title: r.kind === 'service' ? 'Scheduled maintenance' : 'Repair', render: page => { r.files = r.files || [];
+    return ui.list(ui.section({ header: v.name + (v.plate ? ' · ' + v.plate : ''), fold: false }, ui.row({ title: 'What was done', subtitle: r.title }), ui.row({ title: 'Date', detail: fmt.day(r.day, 'md') + ', ' + r.day.slice(0, 4) }), ui.row({ title: 'Mileage', detail: nfmt(r.odo) + ' mi' }),
+        r.vendor && ui.row({ title: 'Shop or person', detail: r.vendor }), ui.row({ title: 'Cost', detail: r.cost ? fmt.money(r.cost, true) : '—' }), r.note && ui.row({ title: 'Notes', subtitle: r.note }), ui.row({ title: 'Added by', detail: r.by || '—', subtitle: r.fromEmail ? 'From an email: ' + r.fromEmail : null })),
+      ui.section({ header: 'Files and photos' + (r.files.length ? ' · ' + r.files.length : ''), fold: false, showFooter: true, footer: r.files.length ? 'Tap a file to open it.' : 'Nothing attached yet.' },
+        fileStrip(r.files, r, canMaint() ? i => { r.files.splice(i, 1); WD.changed(); page.refresh(); } : null), canMaint() && fileButtons(r.files, () => { WD.changed(); page.refresh(); }))); } }; }
+RC.repairSheet = repairSheet; RC.repairSpec = repairSpec; RC.fileSpec = fileSpec; RC.fileStrip = fileStrip;
+const repairsSpec = () => ({ title: 'Repairs and maintenance', render: page => { const list = F.repairs.slice().sort((a, b) => b.day.localeCompare(a.day)), yr = today().slice(0, 4), sum = list.filter(r => r.day.slice(0, 4) === yr).reduce((s, r) => s + (r.cost || 0), 0);
+  return ui.list(WD.money && WD.money.inboxSection && canMaint() ? WD.money.inboxSection(page) : null,
+    ui.section({ header: plural(list.length, 'record') + ' · ' + fmt.money(sum) + ' this year', fold: false, footer: 'Add a record from a truck’s page. Each record can hold photos and files.' }, list.map(r => repRow(r, true)))); } });
+RC.repairsSpec = repairsSpec;
 function truckSpec(v) {
   return { title: v.name, trailing: page => canMaint() ? [{ icon: 'plus', label: 'Add a record', onTap: () => repairSheet(v, {}, () => page.refresh()) }] : [],
     render: page => { const t = tel(v.id), re = () => page.refresh(), edit = canMaint(), P = WD.truckProfile(v.id) || { axles: 2 }, cpm = WD.fuelCostPerMile(v.id), open = openReports(v.id), svcs = svcOf(v.id), reps = F.repairs.filter(r => r.vehicleId === v.id).sort((a, b) => b.day.localeCompare(a.day)), ins = insOf(v.id), active = t ? t.codes.filter(c => c.active) : [];
@@ -379,7 +436,8 @@ RC.openChecklist = job => { const items = checksFor(job); job.checks = job.check
 
 /* ================= Past-due flag at a stop ================= */
 RC.pastDue = c => (WD.r11 && c ? WD.r11.overdue(c) : []);
-RC.pastDueFlag = job => { const c = job.customerId && q.customer(job.customerId), pd = RC.pastDue(c); if (pd.length < 2) return null;
+RC.pastDueFlag = job => { if (WD.r11 && WD.r11.warnOn && !WD.r11.warnOn('drivers')) return null;   // Settings → Company → Unpaid invoice warnings
+  const c = job.customerId && q.customer(job.customerId), pd = RC.pastDue(c); if (pd.length < 2) return null;
   const U = WD.r11.cfg.unpaid, sum = pd.reduce((s, i) => s + i.amount, 0), oldest = Math.max(...pd.map(i => D.diff(today(), i.day))), canBill = WD.screens.billing && WD.screens.billing.canInvoice();
   return h('div.rc-flag', h('div.t', icon('flag', 16), pd.length + ' invoices past due · ' + fmt.money(sum)), h('div', 'Unpaid more than ' + U.overdueDays + ' days; the oldest is ' + oldest + ' days old.'), h('div', h('b', 'Recommended: '), U.driverAction || 'Ask the office manager whether they are receiving our invoices.'),
     canBill && h('div.sh-acts', ui.button('Statement…', { kind: 'filled', small: true, block: false, icon: 'envelope', onTap: () => RC.openStatement && RC.openStatement(c, { job }) }),

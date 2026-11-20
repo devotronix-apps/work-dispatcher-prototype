@@ -23,6 +23,38 @@ WD.css(`
 .cr-seg .segmented button { font-size: 12.5px; padding-left: 2px; padding-right: 2px; white-space: nowrap; }
 .cr-try { display: flex; gap: 6px; flex-wrap: wrap; } .cr-try span { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; color: var(--label3); } .cr-try span.on { color: var(--green); font-weight: 600; }
 .cr-bar { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 13px; color: var(--label2); padding: 10px 16px 0; } .cr-bar .cu-link { font-size: 13px; }
+.cr-side { padding-top: 6px; }
+.cr-st { margin: 14px 0 0; border: 3px solid var(--c); border-radius: 16px; overflow: hidden; background: var(--cell); }
+.cr-st-h { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 2px 12px; background: color-mix(in srgb, var(--c) 22%, var(--cell)); }
+.cr-st-h b { font-size: 16px; font-weight: 700; letter-spacing: -.3px; white-space: nowrap; }
+.cr-st-n { box-sizing: border-box; flex: none; min-width: 24px; height: 24px; padding: 0 7px; border-radius: 12px; display: inline-grid; place-items: center; font-size: 13px; font-weight: 700; background: var(--cell); color: var(--label); border: 1.5px solid var(--c); }
+.cr-st-v { font-size: 13px; color: var(--label2); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.cr-st-h .cu-link { margin-left: auto; flex: none; min-height: 44px; padding: 0 2px 0 10px; font-weight: 600; }
+.cr-st-f { padding: 8px 12px 10px; font-size: 12px; line-height: 16px; color: var(--label2); border-top: .5px solid var(--sep); }
+.cr-lc { display: flex; gap: 8px; padding: 10px 4px 8px 12px; border-top: .5px solid var(--sep); cursor: pointer; }
+.cr-lc:active { background: var(--fill3); }
+.cr-lc-m { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.cr-lc-t { display: flex; align-items: baseline; gap: 6px; } .cr-lc-t b { font-size: 16px; font-weight: 600; letter-spacing: -.3px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cr-lc-v { margin-left: auto; flex: none; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.cr-star { color: var(--orange); flex: none; align-self: center; display: inline-flex; }
+.cr-lc-s { font-size: 14px; line-height: 18px; color: var(--label); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cr-lc-c { font-size: 13px; line-height: 17px; color: var(--label2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cr-lc-f { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin-top: 2px; }
+.cr-chip { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 8px; border-radius: 10px; font-size: 12px; font-weight: 600; background: var(--fill3); color: var(--label); white-space: nowrap; } .cr-chip.late { background: color-mix(in srgb, var(--red) 16%, transparent); color: var(--red); }
+.cr-lc-src { display: inline-flex; gap: 3px; align-items: center; font-size: 12px; color: var(--label2); white-space: nowrap; }
+.cr-lc-r { flex: none; display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding-top: 2px; }
+.cr-more { border: 0; background: none; color: var(--label2); width: 44px; height: 44px; display: grid; place-items: center; cursor: pointer; margin-bottom: -6px; }
+.cr-act { display: flex; gap: 6px; padding: 10px 16px 0; }
+.cr-ab { flex: 1; min-width: 0; min-height: 50px; border: 0; border-radius: 12px; background: var(--cell); color: var(--tint); font: inherit; font-size: 12px; font-weight: 600; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; cursor: pointer; padding: 4px 2px; }
+.cr-ab:disabled { color: var(--label3); cursor: default; } .cr-ab.on { color: var(--orange); } .cr-ab.red { color: var(--red); }
+.cr-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 8px 16px 0; }
+.cr-cell { box-sizing: border-box; min-height: 46px; min-width: 0; border: 0; border-radius: 12px; background: var(--cell); color: var(--label); font: inherit; text-align: left; padding: 5px 12px; display: flex; flex-direction: column; justify-content: center; cursor: pointer; }
+.cr-cell small { font-size: 12px; line-height: 15px; color: var(--label2); } .cr-cell > span { font-size: 15px; line-height: 20px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.cr-cell:disabled { cursor: default; color: var(--label); }
+.cr-cell input { border: 0; background: none; color: var(--label); font: inherit; font-size: 15px; line-height: 20px; font-weight: 600; padding: 0; margin: 0; min-width: 0; width: 100%; height: 22px; }
+.cr-last { display: flex; gap: 5px; align-items: center; padding: 8px 18px 0; font-size: 13px; line-height: 17px; color: var(--label2); }
+.cr-note2 { padding: 4px 18px 0; font-size: 13px; line-height: 17px; color: var(--label2); }
+.cr-tag { font-size: 12px; font-weight: 700; letter-spacing: .2px; color: var(--label2); text-transform: uppercase; }
 `);
 
 /* ================= Sources, seed leads, quotes, referrals ================= */
@@ -136,48 +168,97 @@ function sendFollowUp(c, startId, onDone) {
           (r => { r.classList.add('co-body'); return r; })(ui.inputRow({ multiline: true, value: text, onInput: v => { text = v; } })))); } }, { detent: 'large' });
 }
 
+/* ================= Lead value, key accounts, the lead card (5.0) ================= */
+/** The quote or bid that counts for a lead: the newest one that was not declined. */
+const leadQuote = c => data.quotes.filter(x => x.customerId === c.id && x.status !== 'declined').sort((a, b) => (b.sentAt || b.at) - (a.sentAt || a.at))[0] || null;
+const quoteValue = c => { const qt = leadQuote(c); return qt ? qTotal(qt) : 0; };
+const valText = c => c.estValue ? money(c.estValue) + ' a year' : quoteValue(c) ? money(quoteValue(c)) : '';
+/** Key account: a flag separate from priority, for the few leads worth far more than the rest. */
+function setVip(c, on) { c.vip = !!on; if (on && !c.vipAt) c.vipAt = +WD.now(); K.addI({ customerId: c.id, type: 'note', at: +WD.now(), text: on ? 'Flagged as a key account.' : 'Removed from key accounts.', by: me() }); WD.changed(); ui.toast(on ? c.name + ' is a key account' : 'Removed from key accounts', on ? 'star.fill' : 'star'); }
+function setPri(c, v) { if (v === priOf(c)) return; c.priority = v; K.addI({ customerId: c.id, type: 'note', at: +WD.now(), text: 'Priority set to ' + PRI[v][0].toLowerCase() + '.', by: me() }); WD.changed(); ui.toast(PRI[v][0] + ' priority', 'flag'); }
+function rowMenu(c, el) {
+  ui.menu(el, [{ label: 'Open the lead', onTap: () => openLead(c.id) }, { label: c.vip ? 'Remove from key accounts' : 'Flag as key account', icon: c.vip ? 'star' : 'star.fill', onTap: () => setVip(c, !c.vip) },
+    { header: 'Priority' }, ...PRIS.map(k => ({ label: PRI[k][0], checked: priOf(c) === k, onTap: () => setPri(c, k) })), 'divider',
+    F.followups && c.lifecycle !== 'lost' && { label: 'Send a follow-up…', icon: 'message', onTap: () => sendFollowUp(c) },
+    !c.archived && { label: 'Archive', icon: 'tray', onTap: () => { archive([c]); ui.toast(c.name + ' archived', 'tray'); } },
+    c.lifecycle !== 'lost' && { label: 'Mark lost…', destructive: true, onTap: () => K.markLost(c) }]);
+}
+/** One lead on the pipeline: name, value, one-line situation, last contact, next step, owner. o.stage shows the stage instead of the priority. */
+function leadCard(c, o = {}) {
+  const v = valText(c), open = !['scheduled', 'lost'].includes(c.lifecycle), late = open && c.nextAction && c.nextAction <= today, next = c.lifecycle === 'lost' ? null : K.nextLabel(c), who = K.staff(c.owner);
+  return h('div.cr-lc', { role: 'button', tabindex: '0', 'aria-label': c.name, onclick: () => openLead(c.id) },
+    h('div.cr-lc-m',
+      h('div.cr-lc-t', c.vip && h('span.cr-star', { 'aria-label': 'Key account' }, icon('star.fill', 14)), h('b', c.name), v && h('span.cr-lc-v', v)),
+      h('div.cr-lc-s', situation(c)), h('div.cr-lc-c', contactLine(c)),
+      h('div.cr-lc-f', next && h('span.cr-chip' + (late ? '.late' : ''), icon('calendar', 12), next), o.stage ? ui.badge(K.LC[c.lifecycle][0], K.LC[c.lifecycle][1]) : priOf(c) !== 'medium' ? priBadge(c) : null,
+        c.lowValue && ui.badge('Low value' + (c.lowValue.at ? ' · auto-replied' : ''), 'var(--gray)'), h('span.cr-lc-src', icon((SRC[sourceOf(c)] || SRC.phone).icon, 12), srcLabel(c)))),
+    h('div.cr-lc-r', (a => { a.title = 'Assigned to ' + who; a.setAttribute('aria-label', 'Assigned to ' + who); return a; })(ui.avatar(who, { size: 28 })),
+      canEdit() && h('button.cr-more', { 'aria-label': 'More for ' + c.name, onclick: e => { e.stopPropagation(); rowMenu(c, e.currentTarget); } }, icon('ellipsis', 20))));
+}
+const callRow = page => { const L = WD.calls; if (!L || !L.logSpec) return null; const n = L.reviewCount ? L.reviewCount() : 0;
+  return ui.section(null, ui.row({ icon: 'phone.fill', iconColor: 'var(--green)', title: 'Call log' + (n ? ' · ' + n + ' to review' : ''), subtitle: 'Every call, with who it was and what was said', chevron: true, onTap: () => page.push(L.logSpec()) })); };
+
 /* ================= Lead page ================= */
 function leadSpec(id) {
+  let full = false;
   return { title: 'Lead', render: page => { const c = q.customer(id); if (!c) return ui.empty({ icon: 'person', title: 'Lead not found' });
-    const p = c.contacts[0] || {}, edit = canEdit(), [sid, why] = suggest(c), quotes = data.quotes.filter(x => x.customerId === id), ref = data.referrals.find(r => r.leadId === id), by = ref && q.customer(ref.byId), acts = K.timeline(id).slice(0, 4), src = SRC[sourceOf(c)] || SRC.phone;
+    const p = c.contacts[0] || {}, edit = canEdit(), [sid, why] = suggest(c), quotes = data.quotes.filter(x => x.customerId === id), ref = data.referrals.find(r => r.leadId === id), by = ref && q.customer(ref.byId), src = SRC[sourceOf(c)] || SRC.phone;
+    const C2 = WD.crm2 || {}, ai = !!(WD.aip && WD.aip.on()), tl = K.timeline(id), lc = lastContact(c), re = () => page.refresh();
     const stages = ['lead', 'contacted', 'quoted', 'scheduled', 'customer'].concat(c.lifecycle === 'lost' ? ['lost'] : []).map(s => ({ value: s, label: K.LC[s][0] }));
-    const lc = lastContact(c);
-    return [h('div.cr-head', h('span.headline', c.name), h('span.spacer'), priOf(c) === 'high' && ui.badge('High priority', 'var(--red)'), ui.badge(K.LC[c.lifecycle][0], K.LC[c.lifecycle][1])),
+    const setStage = v => { if (v === c.lifecycle) return; c.lifecycle = v; c.lostReason = null; c.stageSince = +WD.now(); K.addI({ customerId: id, type: 'note', at: +WD.now(), text: 'Moved to ' + K.LC[v][0] + '.', by: me() }); WD.changed(); re(); ui.toast('Moved to ' + K.LC[v][0], 'checkmark'); };
+    /* Status: five facts in a small two-column grid. Tapping a cell opens the same picker the old rows had. */
+    const cell = (label, value, onTap) => h('button.cr-cell', { disabled: !onTap, 'aria-label': label, onclick: e => onTap && onTap(e.currentTarget) }, h('small', label), h('span', value));
+    const act = (ic, label, fn, o = {}) => h('button.cr-ab' + (o.cls || ''), { disabled: !!o.disabled, 'aria-label': o.aria || label, onclick: fn }, icon(ic, 20), h('span', label));
+    const tplFor = ch => { const ok = t => !!t && (t.channel === 'email') === (ch === 'email'); if (ok(CO.tpl(sid))) return sid; const t = data.templates.find(x => x.group === 'Leads and follow-ups' && ok(x)); return t ? t.id : null; };
+    /* Recent activity: only what matters most (their latest message, the latest call with its summary, the latest quote). The rest opens in place. */
+    const lastMsg = i => i.messages && i.messages.length ? i.messages[i.messages.length - 1] : {};
+    const inbound = tl.find(i => (i.type === 'text' && lastMsg(i).dir === 'in') || (i.type === 'email' && i.dir === 'in') || i.type === 'form' || i.type === 'voicemail'), call = tl.find(i => i.type === 'call' && i.summary && i !== inbound);
+    const lq = quotes.slice().sort((a, b) => (b.sentAt || b.at) - (a.sentAt || a.at))[0];
+    const actRow = (i, tag) => { const d = K.describe(i); return ui.row({ title: d.title, subtitle: [tag && h('div.cr-tag', tag), d.snippet && h('div', d.snippet), h('div', (d.who ? d.who + ' · ' : '') + fmt.rel(i.at))].filter(Boolean) }); };
+    let key = [inbound && actRow(inbound, 'Their latest message'), call && actRow(call, 'Latest call'), F.quotes && lq && quoteRow(lq, false)].filter(Boolean); if (!key.length) key = tl.slice(0, 2).map(i => actRow(i));
+    return [h('div.cr-head', c.vip && h('span.cr-star', { 'aria-label': 'Key account' }, icon('star.fill', 18)), h('span.headline', c.name), h('span.spacer'), c.lowValue && ui.badge('Low value' + (c.lowValue.at ? ' · auto-replied' : ''), 'var(--gray)'), priOf(c) === 'high' && ui.badge('High priority', 'var(--red)'), ui.badge(K.LC[c.lifecycle][0], K.LC[c.lifecycle][1])),
       h('div.footnote', { style: 'padding:0 16px 2px' }, [p.name, p.phone && fmt.phone(p.phone), p.email].filter(Boolean).join(' · ')),
+      h('div.cr-act', { role: 'group', 'aria-label': 'Actions' },
+        act('phone.fill', 'Call', () => K.startCall(c, p), { disabled: !p.phone }),
+        act('message', 'Text', () => sendFollowUp(c, tplFor('text'), re), { disabled: !edit || !p.phone }),
+        act('envelope', 'Email', () => sendFollowUp(c, tplFor('email'), re), { disabled: !edit || !p.email }),
+        edit && act(c.vip ? 'star.fill' : 'star', 'VIP', () => { setVip(c, !c.vip); re(); }, { cls: c.vip ? '.on' : '', aria: c.vip ? 'Remove from key accounts' : 'Flag as key account' }),
+        edit && (c.archived ? act('tray', 'Restore', () => { unarchive(c); re(); ui.toast('Back in the inbox', 'tray'); })
+          : act('tray', 'Archive', async () => { if (!await ui.actionSheet({ title: 'Archive ' + c.name + '?', message: 'It leaves the inbox and the tab badge. Nothing is deleted, and you can bring it back from Archived leads at any time.', buttons: [{ label: 'Archive', value: true }] })) return; archive([c]); page.pop(); ui.toast(c.name + ' archived', 'tray'); })),
+        edit && c.lifecycle !== 'lost' && act('xmark.circle.fill', 'Lost', () => K.markLost(c), { cls: '.red', aria: 'Mark lost' })),
       c.archived && h('div', { style: 'padding:8px 4px 0' }, ui.note('Archived' + (c.archivedAt ? ' ' + fmt.rel(c.archivedAt).toLowerCase() : '') + (c.archivedBy ? ' by ' + c.archivedBy : '') + '. It is out of the inbox; nothing was deleted.')),
+      ai && C2.leadCard ? C2.leadCard(c, page) : null,
+      h('div.cr-grid',
+        cell('Stage', h('span', { style: 'color:' + K.LC[c.lifecycle][1] }, K.LC[c.lifecycle][0]), edit && (el => ui.menu(el, stages.map(s => ({ label: s.label, checked: s.value === c.lifecycle, onTap: () => setStage(s.value) }))))),
+        cell('Priority', h('span', { style: 'color:' + PRI[priOf(c)][1] }, PRI[priOf(c)][0]), edit && (el => ui.menu(el, PRIS.map(k => ({ label: PRI[k][0], checked: k === priOf(c), onTap: () => { setPri(c, k); re(); } }))))),
+        edit ? h('label.cr-cell', h('small', 'Next follow-up'), h('input', { type: 'date', 'aria-label': 'Next follow-up', value: c.nextAction || '', onchange: e => { c.nextAction = e.target.value || null; WD.changed(); re(); } })) : cell('Next follow-up', K.nextLabel(c)),
+        cell('Assigned to', K.staff(c.owner), edit && (el => ui.menu(el, K.owners().map(u => ({ label: u.name, checked: u.id === c.owner, onTap: () => { c.owner = u.id; WD.changed(); re(); } })))))),
+      h('div.cr-last', icon('clock', 14), h('span' + (!lc ? '.cr-hot' : quiet(c) >= ST.remindDays && !['scheduled', 'lost'].includes(c.lifecycle) ? '.cr-quiet' : ''), 'Last contact: ' + (lc ? lc.by + ' ' + lc.how + ' ' + ago(lc.at) : 'nobody yet'))),
+      c.notes && h('div.cr-note2', c.notes),
       ui.list(
-        c.archived && edit && ui.section(null, ui.row({ icon: 'tray', iconPlain: true, title: 'Move back to the inbox', tint: true, onTap: () => { unarchive(c); page.refresh(); ui.toast('Back in the inbox', 'tray'); } })),
-        ui.section({ header: 'Status', footer: c.notes || null },
-          ui.pickerRow({ title: 'Stage', disabled: !edit, value: c.lifecycle, options: stages, onChange: v => { if (v === c.lifecycle) return; c.lifecycle = v; c.lostReason = null; K.addI({ customerId: id, type: 'note', at: +WD.now(), text: 'Moved to ' + K.LC[v][0] + '.', by: me() }); WD.changed(); page.refresh(); ui.toast('Moved to ' + K.LC[v][0], 'checkmark'); } }),
-          ui.pickerRow({ title: 'Priority', disabled: !edit, value: priOf(c), options: PRIS.map(k => ({ value: k, label: PRI[k][0] })), onChange: v => { if (v === priOf(c)) return; c.priority = v; K.addI({ customerId: id, type: 'note', at: +WD.now(), text: 'Priority set to ' + PRI[v][0].toLowerCase() + '.', by: me() }); WD.changed(); page.refresh(); ui.toast(PRI[v][0] + ' priority', 'flag'); } }),
-          edit ? ui.dateRow({ title: 'Next follow-up', value: c.nextAction || '', onChange: v => { c.nextAction = v; WD.changed(); page.refresh(); } }) : ui.row({ title: 'Next follow-up', detail: K.nextLabel(c) }),
-          ui.pickerRow({ title: 'Assigned to', disabled: !edit, value: c.owner, options: K.owners().map(u => ({ value: u.id, label: u.name })), onChange: v => { c.owner = v; WD.changed(); page.refresh(); } }),
-          ui.row({ title: 'Last contact', subtitle: lc ? first(lc.by) === lc.by ? null : lc.by + ' ' + lc.how : null, detail: lc ? h('span' + (quiet(c) >= ST.remindDays && !['scheduled', 'lost'].includes(c.lifecycle) ? '.cr-quiet' : ''), ago(lc.at)[0].toUpperCase() + ago(lc.at).slice(1)) : h('span.cr-hot', 'Nobody yet') })),
         ui.section({ header: 'Current situation', footer: c.situation ? 'Written by ' + (c.situationBy || 'the office') + (c.situationAt ? ' · ' + fmt.rel(c.situationAt).toLowerCase() : '') + '. Shown on the pipeline under the lead’s name.' : 'Shown on the pipeline under the lead’s name. Until someone writes one, the app fills it in from the stage, quotes and follow-ups.' },
           edit ? ui.inputRow({ multiline: true, placeholder: autoSituation(c), value: c.situation || '', onInput: v => { c.situation = v; c.situationBy = me(); c.situationAt = +WD.now(); } }) : ui.row({ title: situation(c) })),
-        WD.r13 && c.kind !== 'household' && (r => r && ui.section({ header: 'Contract', fold: false }, r))(WD.r13.agreementRow(c)),
+        c.vip && C2.vipSection ? C2.vipSection(c, page, edit) : null,
+        WD.r13 && c.kind !== 'household' && (r => r && ui.section({ header: 'Contract', fold: false }, r, ai && C2.requestRow ? C2.requestRow(c, page) : null))(WD.r13.agreementRow(c)),
         ui.section({ header: 'First contact: call, text, email', footer: triedAll(c) ? (c.archived ? 'Called, texted and emailed once.' : 'Called, texted and emailed once. If there is no answer, there is nothing more to do: archive the lead to clear it from the inbox.') : 'One call, one text and one email, in that order. They are ticked as you do them from here, or tap one to tick it by hand.' },
-          (t => TRY.map(([k, label, ic]) => ui.row({ icon: t[k] ? 'checkmark.circle.fill' : ic, iconPlain: true, iconColor: t[k] ? 'var(--green)' : 'var(--label3)', title: label, detail: t[k] ? 'Done' : 'Not yet', onTap: edit && !t[k] ? () => { c.tried = { ...(c.tried || {}), [k]: true }; if (c.lifecycle === 'lead') c.lifecycle = 'contacted'; K.addI({ customerId: id, type: 'note', at: +WD.now(), text: label + ' once, no answer.', by: me() }); WD.changed(); page.refresh(); } : null })))(tried(c)),
-          edit && !c.archived && triedAll(c) && ui.row({ icon: 'tray', iconPlain: true, title: 'Archive this lead', tint: true, onTap: () => { archive([c], 'called, texted and emailed with no answer'); page.pop(); ui.toast(c.name + ' archived', 'tray'); } })),
+          (t => TRY.map(([k, label, ic]) => ui.row({ icon: t[k] ? 'checkmark.circle.fill' : ic, iconPlain: true, iconColor: t[k] ? 'var(--green)' : 'var(--label3)', title: label, detail: t[k] ? 'Done' : 'Not yet', onTap: edit && !t[k] ? () => { c.tried = { ...(c.tried || {}), [k]: true }; if (c.lifecycle === 'lead') c.lifecycle = 'contacted'; K.addI({ customerId: id, type: 'note', at: +WD.now(), text: label + ' once, no answer.', by: me() }); WD.changed(); re(); } : null })))(tried(c))),
         ui.section('Where it came from',
           ui.row({ icon: src.icon, iconColor: 'var(--teal)', title: src.title, subtitle: by ? 'Referred by ' + by.name : 'Heard of us: ' + c.channel, detail: c.createdAt ? fmt.rel(c.createdAt) : null }),
           sourceOf(c) === 'yelp' && ui.row({ icon: 'arrow.up.right', iconPlain: true, title: c.yelpReplied ? 'Open the conversation in Yelp' : 'Reply in Yelp', subtitle: c.yelpReplied ? 'Replied ' + fmt.rel(c.yelpReplied).toLowerCase() : 'Yelp keeps messages on its side, so the reply is written there. Fast replies help your Yelp response time.', tint: true, badge: c.yelpReplied ? null : ui.badge('Waiting', 'var(--red)'),
-            onTap: async () => { ui.toast('Opens Yelp for Business', 'globe', 1800); if (c.yelpReplied || !edit) return; await WD.delay(1900, 2100); if (await ui.actionSheet({ title: 'Did you reply in Yelp?', message: 'Marks this lead as contacted and logs it on the timeline.', buttons: [{ label: 'Yes, I replied', value: true }], cancel: 'Not yet' })) { c.yelpReplied = +WD.now(); if (c.lifecycle === 'lead') c.lifecycle = 'contacted'; K.addI({ customerId: id, type: 'note', at: +WD.now(), text: 'Replied to the Yelp request in Yelp.', by: me() }); WD.changed(); page.refresh(); } } }),
+            onTap: async () => { ui.toast('Opens Yelp for Business', 'globe', 1800); if (c.yelpReplied || !edit) return; await WD.delay(1900, 2100); if (await ui.actionSheet({ title: 'Did you reply in Yelp?', message: 'Marks this lead as contacted and logs it on the timeline.', buttons: [{ label: 'Yes, I replied', value: true }], cancel: 'Not yet' })) { c.yelpReplied = +WD.now(); if (c.lifecycle === 'lead') c.lifecycle = 'contacted'; K.addI({ customerId: id, type: 'note', at: +WD.now(), text: 'Replied to the Yelp request in Yelp.', by: me() }); WD.changed(); re(); } } }),
           F.territories && ui.row({ icon: 'mappin', iconColor: 'var(--red)', title: 'Territory', subtitle: (c.locations[0] || {}).address, detail: CO.regionOf(c) + ' · ' + CO.zipOf(c) + (CO.areaOf(c) ? ' · (' + CO.areaOf(c) + ')' : '') })),
         edit && c.lifecycle !== 'lost' && ui.section({ header: 'Follow up', footer: F.followups ? 'The suggestion changes with the stage, how many follow-ups went out and how long it has been quiet.' : null },
-          F.followups && ui.row({ icon: (CO.tpl(sid).channel === 'email' ? 'envelope' : 'message'), iconColor: 'var(--green)', title: 'Send “' + CO.tpl(sid).name + '”', subtitle: why, chevron: true, onTap: () => sendFollowUp(c, sid, () => page.refresh()) }),
-          F.followups && ui.row({ icon: 'doc.text', iconPlain: true, title: 'Choose another template…', tint: true, onTap: () => sendFollowUp(c, null, () => page.refresh()) }),
-          ui.row({ icon: 'phone.fill', iconPlain: true, title: 'Call ' + (first(p.name) || 'them'), tint: true, disabled: !p.phone, onTap: () => K.startCall(c, p) }),
+          F.followups && ui.row({ icon: (CO.tpl(sid).channel === 'email' ? 'envelope' : 'message'), iconColor: 'var(--green)', title: 'Send “' + CO.tpl(sid).name + '”', subtitle: why, chevron: true, onTap: () => sendFollowUp(c, sid, re) }),
+          F.followups && ui.row({ icon: 'doc.text', iconPlain: true, title: 'Choose another template…', tint: true, onTap: () => sendFollowUp(c, null, re) }),
           ui.row({ icon: 'phone', iconPlain: true, title: 'Log a call', tint: true, onTap: () => K.logCall(c) })),
         F.quotes && ui.section({ header: 'Quotes and bids' },
           quotes.map(qt => quoteRow(qt, false)),
           edit && ui.row({ icon: 'plus.circle.fill', iconPlain: true, iconColor: 'var(--green)', title: 'New quote', tint: true, onTap: () => page.push(quoteSpec(addQuote(c))) }),
           edit && ui.row({ icon: 'plus.circle.fill', iconPlain: true, iconColor: 'var(--green)', title: 'New bid', subtitle: 'For an invitation to bid, with a due date', tint: true, onTap: () => page.push(quoteSpec(addQuote(c, { kind: 'bid', due: D.add(today, 14) }))) })),
         F.referrals && ref && ui.section({ header: 'Referral', footer: 'Thank-you: ' + ST.referralReward + '.' }, referralRow(ref, page)),
-        ui.section('Recent activity', acts.map(i => { const d = K.describe(i); return ui.row({ title: d.title, subtitle: [d.snippet, (d.who ? d.who + ' · ' : '') + fmt.rel(i.at)].filter(Boolean).map(x => h('div', x)) }); }), !acts.length && ui.row({ title: 'Nothing yet' })),
-        ui.section(null, WD.can('crm.view') && ui.row({ title: 'Open the full record', subtitle: 'Contacts, calls, texts, email, documents', chevron: true, onTap: () => WD.screens.customers.openDetail(id) }),
-          edit && !c.archived && ui.row({ title: 'Archive lead', subtitle: 'Clears it from the inbox. Nothing is deleted.', tint: true, onTap: async () => { if (!await ui.actionSheet({ title: 'Archive ' + c.name + '?', message: 'It leaves the inbox and the tab badge. You can bring it back from Archived leads at any time.', buttons: [{ label: 'Archive', value: true }] })) return; archive([c]); page.pop(); ui.toast(c.name + ' archived', 'tray'); } }),
-          edit && c.lifecycle !== 'lost' && ui.row({ title: 'Mark lost…', destructive: true, onTap: () => K.markLost(c) })))];
+        ui.section({ header: full ? 'Full history · ' + tl.length : 'Recent activity', fold: false }, full ? tl.map(i => actRow(i)) : key, !tl.length && !key.length && ui.row({ title: 'Nothing yet' }),
+          (full || tl.length > 0) && ui.row({ icon: full ? 'chevron.up' : 'chevron.down', iconPlain: true, title: full ? 'Show only the latest' : 'Show full history (' + tl.length + ')', tint: true, onTap: () => { full = !full; re(); } })),
+        ui.section(null, WD.can('crm.view') && ui.row({ title: 'Open the full record', subtitle: 'Contacts, calls, texts, email, documents', chevron: true, onTap: () => WD.screens.customers.openDetail(id) })))];
   } };
 }
 const openLead = id => WD.nav.push(leadSpec(id));
@@ -242,7 +323,7 @@ function referralsView(page) {
 
 /* ================= New lead (manual entry) ================= */
 function newLead(pre = {}) {
-  const on = CO.SOURCES.filter(([k]) => ST.sources[k]), f = { name: '', contact: '', phone: '', email: '', address: '', zip: '', source: pre.source || (ST.sources.manual ? 'manual' : on[0] ? on[0][0] : 'manual'), channel: 'Other', referredBy: null, notes: '', owner: S.me.id, priority: 'medium' };
+  const on = CO.SOURCES.filter(([k]) => ST.sources[k]), f = { name: pre.name || '', contact: pre.contact || '', phone: pre.phone || '', email: pre.email || '', address: pre.address || '', zip: '', source: pre.source || (ST.sources.manual ? 'manual' : on[0] ? on[0][0] : 'manual'), channel: 'Other', referredBy: null, notes: pre.notes || '', owner: S.me.id, priority: 'medium' };
   const customers = data.customers.filter(c => ['customer', 'serviced'].includes(c.lifecycle)).sort((a, b) => a.name.localeCompare(b.name));
   ui.sheet({ title: 'New lead', leading: [{ label: 'Cancel', onTap: p => p.dismiss() }],
     trailing: [{ label: 'Add', bold: true, onTap: async p => { if (!f.name.trim()) return ui.toast('Add a name', 'note'); if (!fmt.phoneValid(f.phone) && !f.email.trim()) return ui.toast('Add a phone number or an email', 'phone');
@@ -267,8 +348,10 @@ function newLead(pre = {}) {
 
 /* ================= Pipeline ================= */
 const STAGES = [['fresh', 'New', 'New — nobody has replied'], ['due', 'Follow-up due', 'Follow-up due'], ['contacted', 'Contacted', 'Contacted'], ['quoted', 'Quoted', 'Quoted — waiting'], ['scheduled', 'Won', 'Won — scheduled'], ['lost', 'Lost', 'Lost']];
+/* Each stage has its own color: the thick border and the header band of its block on the pipeline, and its bar on the desktop charts. */
+const SC = { fresh: K.LC.lead[1], due: 'var(--pink)', contacted: K.LC.contacted[1], quoted: K.LC.quoted[1], scheduled: K.LC.scheduled[1], lost: K.LC.lost[1] };
 const SORTS = [['next', 'Follow-up date'], ['priority', 'Priority'], ['quiet', 'Longest without contact'], ['newest', 'Newest lead']];
-const R = { seg: 'pipeline', source: 'all', sort: 'next', pri: { high: true, medium: true, low: true }, stages: { fresh: true, due: true, contacted: true, quoted: true, scheduled: true, lost: false }, important: true };
+const R = { side: 'leads', seg: 'pipeline', source: 'all', sort: 'next', pri: { high: true, medium: true, low: true }, stages: { fresh: true, due: true, contacted: true, quoted: true, scheduled: true, lost: false }, important: true };
 const stageOf = c => c.lifecycle === 'lost' ? 'lost' : c.lifecycle === 'lead' && !K.contactedYet(c) && !c.followUps ? 'fresh' : isDue(c) ? 'due' : c.lifecycle === 'quoted' ? 'quoted' : c.lifecycle === 'scheduled' ? 'scheduled' : 'contacted';
 const byNext = (a, b) => (a.nextAction || '9').localeCompare(b.nextAction || '9') || a.name.localeCompare(b.name);
 const sorters = { next: byNext, priority: (a, b) => PRI[priOf(a)][2] - PRI[priOf(b)][2] || byNext(a, b), quiet: (a, b) => ((lastContact(a) || {}).at || 0) - ((lastContact(b) || {}).at || 0) || byNext(a, b), newest: (a, b) => (b.createdAt || 0) - (a.createdAt || 0) };
@@ -292,17 +375,20 @@ function pipelineView(page) {
   const head = (title, on, flip, color) => h('span.cr-sh', h('span', { style: color ? 'color:' + color : null }, title), h('button.cu-link', { 'aria-label': (on ? 'Hide ' : 'Show ') + title, onclick: e => { e.stopPropagation(); flip(!on); page.refresh(); } }, on ? 'Hide' : 'Show'));
   const staleList = canEdit() ? list.filter(stale) : [], arch = archived();
   const quoted = data.quotes.filter(x => x.status === 'sent' && list.some(c => c.id === x.customerId)).reduce((s, x) => s + qTotal(x), 0), t = CO.territory(S.me), sort = sorters[R.sort] || byNext;
-  const row = (c, top) => ui.row({ title: h('span.cr-t', h('span', c.name), top ? ui.badge(K.LC[c.lifecycle][0], K.LC[c.lifecycle][1]) : priBadge(c)),
-    subtitle: [h('span.cr-sit', situation(c)), contactLine(c), priOf(c) === 'low' && tryLine(c), h('span.cr-src', icon((SRC[sourceOf(c)] || SRC.phone).icon, 13), srcLabel(c) + ' · ' + (c.referredBy && q.customer(c.referredBy) ? 'by ' + q.customer(c.referredBy).name : c.channel) + ' · assigned to ' + first(K.staff(c.owner)))].filter(Boolean).map(x => h('div', x)),
-    detail: c.lifecycle === 'lost' ? null : K.nextLabel(c), chevron: true, onTap: () => openLead(c.id) });
+  /* A block per stage: thick border in the stage’s color, a header band with the name, count and quoted value, and a card per lead. */
+  const block = (key, color, label, xs, on, flip, foot, o) => mark(h('div.cr-st', { style: { '--c': color } },
+    h('div.cr-st-h', h('b', label), h('span.cr-st-n', String(xs.length)), (v => v ? h('span.cr-st-v', money(v) + ' quoted') : null)(xs.reduce((s, c) => s + quoteValue(c), 0)),
+      h('button.cu-link', { 'aria-label': (on ? 'Hide ' : 'Show ') + label, onclick: e => { e.stopPropagation(); flip(!on); page.refresh(); } }, on ? 'Hide' : 'Show')),
+    on ? xs.sort(sort).map(c => leadCard(c, o)) : null, on && foot ? h('div.cr-st-f', foot) : null), key);
   const mark = (el, key) => { el.dataset.jump = key; return el; };
   const FOOT = { fresh: 'From calls, texts, email, website forms, Yelp, the leads sheet and manual entry.', due: F.reminders ? 'Past their follow-up date, or quiet for ' + plural(ST.remindDays, 'day') + ' or more.' : null };
-  const sec = ([k, , title]) => g[k].length ? mark(ui.section({ header: head(title + ' · ' + g[k].length, R.stages[k], v => { R.stages[k] = v; }), footer: R.stages[k] ? FOOT[k] : null, keepEmpty: true }, R.stages[k] ? g[k].sort(sort).map(c => row(c)) : []), k) : null;
+  const sec = ([k, label]) => g[k].length ? block(k, SC[k], label, g[k], R.stages[k], v => { R.stages[k] = v; }, FOOT[k]) : null;
   const srcRows = F.sources ? CO.SOURCES.map(([k, title, ic]) => { const xs = all.filter(c => sourceOf(c) === k), won = xs.filter(c => c.lifecycle === 'scheduled').length; return xs.length ? ui.row({ icon: ic, iconColor: 'var(--teal)', title, subtitle: ST.sources[k] ? null : 'Switched off — no new leads from here', detail: plural(xs.length, 'lead') + (won ? ' · ' + won + ' won' : ''), chevron: true, onTap: () => { R.source = k; page.refresh(); page.body.scrollTop = 0; } }) : null; }).filter(Boolean) : [];
   const tile = (key, n, label, color) => h('div.cr-tile', { onclick: () => showAndJump(page, key) }, h('b', { style: color ? 'color:' + color : null }, n), h('span', label));
   const hidden = PRIS.filter(k => !R.pri[k] && counts.pri[k]).map(k => PRI[k][0].toLowerCase() + ' priority').concat(STAGES.filter(([k]) => !R.stages[k] && counts.stage[k]).map(([, label]) => label));
   const shown = STAGES.reduce((n, [k]) => n + (R.stages[k] ? g[k].length : 0), 0);
   return ui.list(
+    WD.crm2 && WD.crm2.leadsTop ? WD.crm2.leadsTop(page) : null, callRow(page),
     !CO.seesAll() && h('div', { style: 'padding:4px 4px 0' }, ui.note('You see leads assigned to you' + (t.values.length ? ', plus every lead in ' + CO.territoryText(S.me) : '') + '. An admin sets this in Settings → CRM and leads.')),
     ui.section(null, h('div.co-tiles', tile('fresh', String(g.fresh.length), 'New', g.fresh.length ? 'var(--blue)' : null), tile('due', String(g.due.length), 'Due', g.due.length ? 'var(--orange)' : null), tile('quoted', money(quoted), 'Quoted'), tile('scheduled', String(g.scheduled.length), 'Won'))),
     h('div.cr-jump', { role: 'navigation', 'aria-label': 'Jump to a stage' },
@@ -314,7 +400,7 @@ function pipelineView(page) {
     staleList.length > 0 && ui.section({ header: 'Ready to archive · ' + staleList.length, fold: true, folded: true, foldKey: 'Ready to archive', footer: 'Low-priority leads that were called, texted and emailed once with no answer. Archiving clears them from the inbox; nothing is deleted.' },
       staleList.map(c => ui.row({ title: c.name, subtitle: [h('span.cr-sit', situation(c)), tryLine(c)].map(x => h('div', x)), trailing: ui.button('Archive', { kind: 'gray', small: true, block: false, onTap: e => { e.stopPropagation(); archive([c], 'called, texted and emailed with no answer'); ui.toast(c.name + ' archived', 'tray'); } }), onTap: () => openLead(c.id) })),
       staleList.length > 1 && ui.row({ icon: 'tray', iconPlain: true, title: 'Archive all ' + staleList.length, tint: true, onTap: () => { const n = staleList.length; archive(staleList, 'called, texted and emailed with no answer'); ui.toast(plural(n, 'lead') + ' archived', 'tray'); } })),
-    important.length > 0 && mark(ui.section({ header: head('High priority · ' + important.length, R.important, v => { R.important = v; }, 'var(--red)'), footer: R.important ? 'Open leads marked high priority. Each one is also listed under its stage below.' : null, keepEmpty: true }, R.important ? important.sort(sort).map(c => row(c, true)) : []), 'important'),
+    important.length > 0 && block('important', 'var(--red)', 'High priority', important, R.important, v => { R.important = v; }, 'Open leads marked high priority. Each one is also listed under its stage below.', { stage: true }),
     STAGES.map(sec),
     !shown && ui.empty({ icon: 'funnel', title: list.length || hidden.length ? 'Everything here is hidden' : 'No leads', text: list.length || hidden.length ? 'Tap Show all to bring the hidden priorities and stages back.' : CO.seesAll() ? 'New leads appear here as they come in.' : 'No leads in your territory right now.' }),
     srcRows.length > 0 && R.source === 'all' && ui.section({ header: 'Leads by source', footer: 'Tap a source to see only its leads.' }, srcRows),
@@ -330,15 +416,23 @@ function attentionLine(page) {
     a.fresh > 0 && go(a.fresh + ' new', stage('fresh')), a.due > 0 && go(a.due + ' due', stage('due')), a.fb > 0 && go(a.fb + ' feedback', () => { R.seg = 'feedback'; page.refresh(); }));
 }
 function root() {
-  return { title: 'CRM', large: true, trailing: page => [R.seg === 'pipeline' && { icon: 'line.3.horizontal.decrease', label: 'Sort and filter', onTap: (p, el) => ui.menu(el, [{ header: 'Sort by' }, ...SORTS.map(([v, label]) => ({ label, checked: R.sort === v, onTap: () => { R.sort = v; page.refresh(); } })), 'divider', { label: 'Show and hide…', icon: 'eye.slash', onTap: () => R.openFilter && R.openFilter() }], { compact: true }) },
+  const C2 = () => WD.crm2 || {}, needs = () => R.side === 'needs' && !!C2().needsView;
+  return { title: 'CRM', large: true, trailing: page => needs() ? [canEdit() && { icon: 'plus', label: 'New customer request', onTap: () => C2().newInquiry() }].filter(Boolean)
+    : [R.seg === 'pipeline' && { icon: 'line.3.horizontal.decrease', label: 'Sort and filter', onTap: (p, el) => ui.menu(el, [{ header: 'Sort by' }, ...SORTS.map(([v, label]) => ({ label, checked: R.sort === v, onTap: () => { R.sort = v; page.refresh(); } })), 'divider', { label: 'Show and hide…', icon: 'eye.slash', onTap: () => R.openFilter && R.openFilter() }], { compact: true }) },
       canEdit() && (R.seg === 'tasks' ? { icon: 'plus', label: 'New follow-up', onTap: () => K.newTask() } : { icon: 'plus', label: 'New lead', onTap: () => newLead() })].filter(Boolean),
     render: page => { const due = data.tasks.filter(t => !t.done && t.due <= today).length, segs = [{ value: 'pipeline', label: 'Pipeline' }, { value: 'tasks', label: 'Tasks' + (due ? ' · ' + due : '') }, F.quotes && { value: 'quotes', label: 'Quotes' }, F.referrals && { value: 'referrals', label: 'Referrals' }, F.feedback && { value: 'feedback', label: 'Feedback' + (CO.feedbackOpen() ? ' · ' + CO.feedbackOpen() : '') }].filter(Boolean);
       if (!segs.some(s => s.value === R.seg)) R.seg = 'pipeline';
-      return [attentionLine(page), segs.length > 1 && h('div.cu-seg.cr-seg', ui.segmented(segs, R.seg, v => { R.seg = v; page.refresh(); })), R.seg === 'tasks' ? K.tasksView() : R.seg === 'quotes' ? quotesView() : R.seg === 'referrals' ? referralsView(page) : R.seg === 'feedback' ? CO.feedbackView(page) : pipelineView(page)]; } };
+      /* Two sides: Leads (the pipeline and its segments) and Customer needs (requests from existing customers, r14-crm.js). */
+      const open = C2().openCount ? C2().openCount() : 0, side = C2().needsView ? h('div.cu-seg.cr-side', ui.segmented([{ value: 'leads', label: 'Leads · ' + pipe().length }, { value: 'needs', label: 'Customer needs' + (open ? ' · ' + open : '') }], needs() ? 'needs' : 'leads', v => { R.side = v; page.refresh(); page.body.scrollTop = 0; })) : null;
+      if (needs()) return [side, C2().needsView(page)];
+      const desk = S.desktop && R.seg === 'pipeline' && C2().desktop;
+      return [side, attentionLine(page), segs.length > 1 && h('div.cu-seg.cr-seg', ui.segmented(segs, R.seg, v => { R.seg = v; page.refresh(); })), R.seg === 'tasks' ? K.tasksView() : R.seg === 'quotes' ? quotesView() : R.seg === 'referrals' ? referralsView(page) : R.seg === 'feedback' ? CO.feedbackView(page) : desk ? (R.openFilter = null, C2().desktop(page)) : pipelineView(page)]; } };
 }
 
 /* ================= Registration ================= */
-WD.screens.crm = { root, openLead, newLead };
+WD.screens.crm = { root, openLead, newLead, leadSpec,
+  /* Internals r14-crm.js builds on (key accounts, the AI review, the desktop dashboard and spreadsheet). */
+  x: { R, STAGES, SC, archivedSpec, SORTS, PRI, PRIS, SRC, TRY, pipe, archived, stageOf, priOf, priBadge, situation, autoSituation, lastContact, contactText, contactLine, lastTouch, quiet, isDue, ago, sourceOf, srcLabel, qTotal: qt => qTotal(qt), leadQuote, quoteValue, valText, addQuote, quoteSpec: qt => quoteSpec(qt), quoteRow: (qt, n) => quoteRow(qt, n), sendFollowUp, archive, unarchive, suggest, tried, triedAll, stale, leadCard, rowMenu, setVip, setPri, callRow, sorters, newLead, canEdit } };
 const tab = WD.app.tabs.find(t => t.id === 'crm');
 /* The badge used to add every due lead (including ones already counted as new), so it read 11 beside "5 new, 3 due". Now each lead counts once, by its stage. */
 if (tab) tab.badge = () => WD.can('leads.view') ? attention().total : 0;

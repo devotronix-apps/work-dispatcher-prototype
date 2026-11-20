@@ -114,7 +114,7 @@ function afterAuth(from) {
   from.push({ title: 'Choose a company', large: true, back: false, render: page => ui.list(
     ui.section({ footer: 'You can switch companies later in Settings.' }, data.orgs.map(o => ui.row({
       leading: ui.avatar(o.name, { size: 40, icon: 'building' }), title: o.name, subtitle: [roleTitle(o.role), o.trucks + ' trucks', o.plan].join(' · '),
-      chevron: true, onTap: () => { S.org = o; loading(page); } })))) });
+      chevron: true, onTap: () => { WD.r14 ? WD.r14.startIn(o.id) : (S.org = o); loading(page); } })))) });
 }
 /** Staged progress screen. o: {title, glyph, stages, done(page)} */
 function progressPage(from, o) {

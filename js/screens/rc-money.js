@@ -278,7 +278,44 @@ function statementDoc(c, invs) {
     h('div.bn-bot', h('div.bn-sig'), h('div.bn-tot', ag.map((v, i) => v > 0 && h('div' + (i ? '.x' : ''), h('span', AGE_LABELS[i]), h('span', money(v)))), h('div.due', h('span', 'Total Due'), h('span', money(sum))))),
     h('div.bn-fill'), h('div.bn-cod', 'Thank you for your business. If you have already sent payment, please disregard this statement. Questions: ' + (org.phone || '') + (org.email ? ' · ' + org.email : '')));
 }
-RC.statementPages = (c, attach) => { const invs = unpaid(c); return [statementDoc(c, invs)].concat(attach ? invs.map(invoiceNode) : []); };
+/* ---------- Statement of all invoices: paid and unpaid, with the payments applied and a running balance (for hunting down a discrepancy) ---------- */
+const ST_RANGES = [['year', 'This year'], ['12m', 'Last 12 months'], ['all', 'All time'], ['custom', 'Custom dates']];
+const stSpan = f => f.range === 'year' ? [today().slice(0, 4) + '-01-01', today()] : f.range === '12m' ? [D.add(today(), -365), today()] : f.range === 'custom' ? (f.from <= f.to ? [f.from, f.to] : [f.to, f.from]) : ['0000-00-00', '9999-12-31'];
+const stPeriod = f => f.range === 'all' ? 'All invoices' : (([a, b]) => mdy(a) + ' – ' + mdy(b))(stSpan(f));
+const paysOf = i => (i.payments || []).map(p => p && typeof p === 'object' ? p : (data.payments || []).find(x => x.id === p)).filter(Boolean);
+const dayOf = at => D.key(new Date(at)), creditOf = i => { const j = i.jobId && q.job(i.jobId); return +(i.credit || (j && j.invoice && j.invoice.credit) || 0) || 0; };
+const stLabel = i => { const st = RC.invStatus(i); return st === 'Sent' ? 'Unpaid' : st === 'Overdue' ? 'Unpaid · past due' : st; };
+/** Every invoice in the period as a ledger → {from, to, opening, rows: [{day, kind: 'inv'|'pay'|'off'|'credit', inv, text, sub, charge, pay, bal}], invs, charges, paid, written, credits, closing, unpaid}.
+    opening is what was still owed from before the period; unpaid is every open invoice, whatever its date. */
+function ledger(c, f) {
+  const [from, to] = stSpan(f), all = (data.invoices || []).filter(i => i.customerId === c.id && i.status !== 'Draft').sort((a, b) => a.day.localeCompare(b.day) || String(a.number).localeCompare(String(b.number)));
+  const invs = all.filter(i => i.day >= from && i.day <= to), opening = cents(all.filter(i => i.day < from && invOpen(i)).reduce((s, i) => s + i.amount, 0)), ev = [], later = (a, b) => a > b ? a : b;
+  invs.forEach((i, n) => { const pays = paysOf(i), cr = creditOf(i);
+    ev.push({ day: i.day, o: n * 10, kind: 'inv', inv: i, text: i.number, sub: stLabel(i), charge: i.amount });
+    pays.forEach((p, k) => ev.push({ day: later(dayOf(p.at), i.day), o: n * 10 + 1 + Math.min(k, 6), kind: 'pay', inv: i, text: 'Payment · ' + i.number, sub: p.method || 'Payment', pay: +p.amount || 0 }));
+    if (i.status === 'Paid' && !pays.length) ev.push({ day: i.day, o: n * 10 + 1, kind: 'pay', inv: i, text: 'Payment · ' + i.number, sub: 'Marked paid', pay: i.amount });
+    if (invClosed(i)) ev.push({ day: i.closed && i.closed.at ? later(dayOf(i.closed.at), i.day) : i.day, o: n * 10 + 8, kind: 'off', inv: i, text: (i.status === BAD ? 'Written off · ' : 'Voided · ') + i.number, sub: i.status === BAD ? 'Bad debt, no longer owed' : 'Void, never owed', pay: i.amount });
+    if (cr > 0) ev.push({ day: i.day, o: n * 10 + 9, kind: 'credit', inv: i, text: 'Credit · ' + i.number, sub: 'Owed to the customer after a correction', pay: cr }); });
+  ev.sort((a, b) => a.day.localeCompare(b.day) || a.o - b.o); let bal = opening; ev.forEach(e => { bal = cents(bal + (e.charge || 0) - (e.pay || 0)); e.bal = bal; });
+  const tot = k => cents(ev.filter(e => e.kind === k).reduce((s, e) => s + (e.pay || 0), 0));
+  return { from, to, opening, rows: ev, invs, charges: cents(invs.reduce((s, i) => s + i.amount, 0)), paid: tot('pay'), written: tot('off'), credits: tot('credit'), closing: bal, unpaid: unpaid(c) };
+}
+/** The all-invoices statement page: date, item, charge, payment or credit, running balance; then the unpaid invoices summarized by age. */
+function ledgerDoc(c, L, f) {
+  const B = WD.screens.billing, org = S.org || data.orgs[0], due = L.unpaid.reduce((s, i) => s + i.amount, 0), ag = aging(L.unpaid), m = v => v ? money(v) : '';
+  return h('div.bn-doc.rc-st', h('div.bn-top', B.logo(), h('div.bn-co', [org.name].concat((org.remit || []).slice(1), org.phone || [], org.email || [], data.tax && data.tax.on && data.tax.regNo ? 'Tax reg. # ' + data.tax.regNo : []).map(x => h('div', x)))),
+    h('div.bn-mid', h('div.bn-to', billTo(c).map(x => h('div', x))), h('div', h('h2', 'Statement'), h('div.bn-meta', [['Statement Date', mdy(today())], ['Period', stPeriod(f)], ['Invoices', String(L.invs.length)], ['Total Due', money(due)]].map(([k, v]) => [h('span', k), h('span', v)])))),
+    h('table.bn-tab', h('thead', h('tr', h('th', 'Date'), h('th', 'Item'), h('th.r', 'Charge'), h('th.r', 'Payment', h('br'), 'or Credit'), h('th.r', 'Balance'))),
+      h('tbody', L.opening > 0 && h('tr', h('td.n', mdy(L.from)), h('td', 'Balance forward', h('br'), h('small', 'Unpaid from before this period')), h('td.r.n', ''), h('td.r.n', ''), h('td.r.n', money(L.opening))),
+        L.rows.map(e => h('tr', h('td.n', mdy(e.day)), h('td', e.text, h('br'), h('small', e.sub)), h('td.r.n', m(e.charge)), h('td.r.n', m(e.pay)), h('td.r.n', money(e.bal)))),
+        !L.rows.length && h('tr', h('td', { colspan: '5' }, 'No invoices in this period.')))),
+    h('div.bn-bot', h('div.bn-sig'), h('div.bn-tot', h('div.x', h('span', 'Invoiced in the period'), h('span', money(L.charges))), h('div.x', h('span', 'Payments applied'), h('span', money(L.paid))), L.written > 0 && h('div.x', h('span', 'Written off or voided'), h('span', money(L.written))), L.credits > 0 && h('div.x', h('span', 'Credits'), h('span', money(L.credits))),
+      ag.map((v, i) => v > 0 && h('div.x', h('span', AGE_LABELS[i]), h('span', money(v)))), h('div.due', h('span', 'Total Due'), h('span', money(due))))),
+    h('div.bn-fill'), h('div.bn-cod', (L.unpaid.length ? 'Still unpaid: ' + L.unpaid.map(i => i.number + ' (' + mdy(i.day) + ', ' + money(i.amount) + ')').join('; ') + '. ' : 'Every invoice is paid. ') + 'If your records differ from this statement, reply with the invoice number and we will sort it out. Questions: ' + (org.phone || '') + (org.email ? ' · ' + org.email : '')));
+}
+/** f: the statement choices ({all, range, from, to}); without f.all it is the unpaid-only statement. */
+RC.statementPages = (c, attach, f) => { if (f && f.all) { const L = ledger(c, f); return [ledgerDoc(c, L, f)].concat(attach ? L.invs.map(invoiceNode) : []); } const invs = unpaid(c); return [statementDoc(c, invs)].concat(attach ? invs.map(invoiceNode) : []); };
+RC.statementLedger = ledger;
 /** What Premium "Late-payment risk" says about a customer, from their invoices. */
 RC.payRisk = c => { const all = (data.invoices || []).filter(i => i.customerId === c.id), late = all.filter(i => RC.invStatus(i) === 'Overdue').length, open = unpaid(c).length, score = all.length ? (late * 2 + open) / (all.length * 2) : 0;
   return { level: score > 0.45 ? 'High' : score > 0.18 ? 'Medium' : 'Low', color: score > 0.45 ? 'var(--red)' : score > 0.18 ? 'var(--orange)' : 'var(--green)', why: late + ' of their last ' + all.length + ' invoices went past due' + (open ? '; ' + open + ' still open' : '') }; };
@@ -290,25 +327,39 @@ function draftMessage(c, invs, tone) {
   if (tone === 'final') return open + 'This is our final reminder that ' + list + '.' + since + '\n\nWe would rather not interrupt your service. Please pay the balance or call us within 10 days so we can agree on a plan.\n\nThe statement and invoices are attached.\n\n' + org;
   return open + (yrs > 1 ? 'Thank you for ' + yrs + ' years with us. ' : '') + 'A quick note that ' + list + '.' + since + '\n\nWe suspect these may not be reaching the right inbox, so the statement and every open invoice are attached here in one PDF. If someone else handles payables, just reply with their address.\n\nThanks so much,\n' + org;
 }
-/** One customer's statement: review the unpaid invoices and the billing email, choose whether to attach the invoices, preview, send.
-    o.job (a driver at the stop) adds today's invoice to the top so it can be created before the statement goes out. */
+/** One customer's statement: choose unpaid invoices only or all invoices (o.all opens on All), review them and the billing email, choose whether
+    to attach the invoices, preview, send. o.job (a driver at the stop) adds today's invoice to the top so it can be created before the statement goes out. */
 RC.openStatement = (c, o = {}) => {
   if (!(WD.can('billing.view') || WD.can('billing.field'))) return ui.toast('Billing access is needed for statements', 'lock');
   const was = emailOf(c), tplBody = () => { const invs = unpaid(c); return WD.co && WD.co.tpl ? WD.co.fill(WD.co.tpl('statement').body, WD.co.ctxFor(c, { amount: money(invs.reduce((s, i) => s + i.amount, 0)) })) : 'Your statement is attached.'; };
-  const f = { email: was, future: 'new', attach: data.comms ? data.comms.statement.attach : true, msg: tplBody(), tone: 'friendly' };
-  const send = async p => { const invs = unpaid(c), to = f.email.trim(); if (!invs.length) return ui.toast('Nothing is unpaid', 'checkmark'); if (!validEmail(to)) return ui.toast('Enter the billing email address', 'envelope', 2600);
+  const f = { email: was, future: 'new', attach: data.comms ? data.comms.statement.attach : true, msg: tplBody(), tone: 'friendly', all: !!o.all, range: o.range || 'year', from: o.from || D.add(today(), -90), to: o.to || today() };
+  const send = async p => { const L = f.all ? ledger(c, f) : null, invs = L ? L.invs : unpaid(c), to = f.email.trim(); if (!invs.length) return ui.toast(L ? 'No invoices in that period' : 'Nothing is unpaid', L ? 'calendar' : 'checkmark'); if (!validEmail(to)) return ui.toast('Enter the billing email address', 'envelope', 2600);
     const ok = await ui.run('Sending statement…', () => {
       if (to !== was) { if (f.future === 'new') c.billingEmail = to; else if (f.future === 'both') c.billingEmail = [was, to].filter(Boolean).join(', '); }
-      c.lastStatement = { day: today(), to, by: me(), count: invs.length }; logMail(c, 'Statement from ' + (S.org || data.orgs[0]).name, 'Statement with ' + plural(invs.length, 'open invoice') + (f.attach ? ', invoices attached' : '') + '.', to);
-      if (o.job) o.job.events.push({ at: +WD.now(), actor: me(), text: 'Statement with ' + plural(invs.length, 'unpaid invoice') + ' sent to ' + to });
+      c.lastStatement = { day: today(), to, by: me(), count: invs.length, all: !!L }; logMail(c, 'Statement from ' + (S.org || data.orgs[0]).name, (L ? 'Statement of all invoices (' + stPeriod(f) + '): ' + plural(invs.length, 'invoice') + ', ' + L.unpaid.length + ' unpaid' : 'Statement with ' + plural(invs.length, 'open invoice')) + (f.attach ? ', invoices attached' : '') + '.', to);
+      if (o.job) o.job.events.push({ at: +WD.now(), actor: me(), text: 'Statement with ' + (L ? plural(invs.length, 'invoice') + ' (paid and unpaid)' : plural(invs.length, 'unpaid invoice')) + ' sent to ' + to });
     }, { done: 'Statement sent' }); if (ok) p.dismiss(); };
   ui.sheet({ title: 'Statement', leading: [{ label: 'Cancel', onTap: p => p.dismiss() }], trailing: [{ label: 'Send', bold: true, onTap: send }],
     render: p => { const invs = unpaid(c), sum = invs.reduce((s, i) => s + i.amount, 0), ag = aging(invs), changed = f.email.trim() !== was && validEmail(f.email), job = o.job && q.job(o.job.id), risk = RC.ai('payrisk') ? RC.payRisk(c) : null;
+      const L = f.all ? ledger(c, f) : null, listed = L ? L.invs : invs, paidText = i => { const ps = paysOf(i); return ps.length ? 'Paid ' + fmt.day(dayOf(ps[ps.length - 1].at), 'md') + (ps[ps.length - 1].method ? ' · ' + ps[ps.length - 1].method : '') : i.status === 'Paid' ? 'Marked paid' : null; };
+      const stColor = i => { const st = RC.invStatus(i); return st === 'Paid' ? 'var(--green)' : st === 'Overdue' ? 'var(--red)' : invClosed(i) ? 'var(--gray)' : 'var(--orange)'; };
       return ui.list(
+        ui.section({ header: 'What to include', fold: false, showFooter: true, footer: f.all ? 'Every invoice in the period with its status, the payments applied and a running balance. Use it to find where your records and the customer’s differ. The unpaid ones are still totaled at the bottom.' : 'Only what is still owed, with its age.' },
+          h('div', { style: 'padding:10px 16px;background:var(--cell)' }, ui.segmented([{ value: false, label: 'Unpaid invoices only' }, { value: true, label: 'All invoices' }], f.all, v => { f.all = v; p.refresh(); })),
+          f.all && ui.pickerRow({ title: 'Period', value: f.range, options: ST_RANGES.map(([value, label]) => ({ value, label })), onChange: v => { f.range = v; p.refresh(); } }),
+          f.all && f.range === 'custom' && ui.dateRow({ title: 'From', value: f.from, onChange: v => { f.from = v; p.refresh(); } }),
+          f.all && f.range === 'custom' && ui.dateRow({ title: 'To', value: f.to, onChange: v => { f.to = v; p.refresh(); } })),
         job && ui.section({ header: 'Today’s visit', fold: false, footer: job.invoice ? 'Today’s invoice is on the statement below.' : 'Create it first and it goes on the statement with the others.' },
           job.invoice ? ui.row({ icon: 'checkmark.circle.fill', iconPlain: true, iconColor: 'var(--green)', title: job.invoice.number + ' created', detail: money(job.invoice.amount) })
             : ui.row({ icon: 'doc.text', iconColor: 'var(--indigo)', title: 'Create today’s invoice', subtitle: job.title, tint: true, chevron: true, onTap: () => WD.screens.billing.openEditor(job.id) })),
-        ui.section({ header: c.name + ' · ' + plural(invs.length, 'unpaid invoice'), fold: false },
+        L ? ui.section({ header: c.name + ' · ' + plural(L.invs.length, 'invoice') + ' · ' + stPeriod(f), fold: false },
+          L.opening > 0 && ui.row({ title: 'Balance forward', subtitle: 'Unpaid from before ' + longDay(L.from), detail: money(L.opening) }),
+          L.invs.slice(-40).reverse().map(i => { const e = L.rows.filter(x => x.inv === i).pop(); return ui.row({ title: longDay(i.day), subtitle: [i.number, paidText(i) || (invOpen(i) ? age(i) + ' days old' : null), creditOf(i) > 0 ? 'credit ' + money(creditOf(i)) : null, e ? 'balance after ' + money(e.bal) : null].filter(Boolean).join(' · '), badge: ui.badge(stLabel(i).replace('Unpaid · past due', 'Past due'), stColor(i)), detail: money(i.amount), chevron: true, onTap: () => RC.viewInvoice && RC.viewInvoice(i) }); }),
+          L.invs.length > 40 && ui.row({ title: '+ ' + (L.invs.length - 40) + ' earlier invoices', subtitle: 'All of them are in the PDF' }),
+          !L.invs.length && ui.row({ icon: 'calendar', iconPlain: true, iconColor: 'var(--label3)', title: 'No invoices in this period', subtitle: 'Choose a longer period above' }),
+          L.invs.length > 0 && ui.row({ title: 'Invoiced', detail: money(L.charges), subtitle: 'Payments applied ' + money(L.paid) + (L.written ? ' · written off or voided ' + money(L.written) : '') + (L.credits ? ' · credits ' + money(L.credits) : '') }),
+          ui.row({ title: h('b', 'Still unpaid'), detail: h('b', money(sum)), subtitle: invs.length ? plural(invs.length, 'invoice') + ': ' + invs.map(i => i.number).slice(0, 6).join(', ') + (invs.length > 6 ? '…' : '') : 'Nothing is owed' }))
+        : ui.section({ header: c.name + ' · ' + plural(invs.length, 'unpaid invoice'), fold: false },
           invs.length ? invs.map(i => ui.row({ title: longDay(i.day), subtitle: i.number + ' · ' + age(i) + ' days old', badge: RC.invStatus(i) === 'Overdue' ? ui.badge('Past due', 'var(--red)') : null, detail: money(i.amount) })) : ui.row({ icon: 'checkmark.circle.fill', iconPlain: true, iconColor: 'var(--green)', title: 'Nothing is unpaid' }),
           invs.length > 0 && ui.row({ title: h('b', 'Total due'), detail: h('b', money(sum)), subtitle: ag.map((v, i) => v > 0 ? AGE_LABELS[i].toLowerCase() + ' ' + fmt.money(v) : null).filter(Boolean).join(' · ') })),
         risk && h('div.rc-ai', h('div.k', icon('sparkles', 15), 'Late-payment risk'), h('div', h('b', { style: { color: risk.color } }, risk.level), ' — ' + risk.why + '.')),
@@ -316,13 +367,14 @@ RC.openStatement = (c, o = {}) => {
           ui.inputRow({ label: 'Billing email', type: 'email', caps: 'off', value: f.email, onInput: v => { const before = f.email.trim() !== was && validEmail(f.email); f.email = v; if (before !== (v.trim() !== was && validEmail(v))) p.refresh(); } }),
           changed && ui.pickerRow({ title: 'Future invoices go to', value: f.future, options: [{ value: 'new', label: 'The new address' }, { value: 'old', label: 'The old address' + (was ? ' (' + was + ')' : '') }, { value: 'both', label: 'Both addresses' }], onChange: v => { f.future = v; p.refresh(); } }),
           changed && h('div.section-footer', { style: 'padding:6px 16px 10px;background:var(--cell)' }, 'This statement goes to ' + f.email.trim() + '. ' + ({ new: 'Later invoices will too.', old: 'Later invoices keep going to ' + (was || 'the old address') + '.', both: 'Later invoices go to both.' }[f.future]))),
-        ui.section({ header: 'What’s in it', fold: false, footer: f.attach ? 'One PDF: the statement, then each unpaid invoice.' : 'One PDF with the statement page only.' },
-          ui.toggleRow({ title: 'Attach the unpaid invoices', subtitle: plural(invs.length, 'invoice') + ', in the same PDF', value: f.attach, onChange: v => { f.attach = v; p.refresh(); } }),
-          ui.row({ title: 'Preview the PDF', subtitle: plural(1 + (f.attach ? invs.length : 0), 'page'), icon: 'doc.text', iconPlain: true, tint: true, chevron: true, onTap: () => p.push({ title: 'Statement PDF', render: () => WD.screens.billing.docWrap(RC.statementPages(c, f.attach)) }) })),
+        ui.section({ header: 'What’s in it', fold: false, footer: f.attach ? 'One PDF: the statement, then each ' + (L ? 'invoice listed, paid or not.' : 'unpaid invoice.') : 'One PDF with the statement page only.' },
+          ui.toggleRow({ title: L ? 'Attach every invoice listed' : 'Attach the unpaid invoices', subtitle: plural(listed.length, 'invoice') + ', in the same PDF', value: f.attach, onChange: v => { f.attach = v; p.refresh(); } }),
+          WD.money && WD.money.emailPreview && ui.row({ title: 'Preview the email', subtitle: 'What the customer receives: your logo, the PDF attached, a button to the portal', icon: 'envelope', iconPlain: true, tint: true, chevron: true, onTap: () => WD.money.emailPreview({ kind: 'statement', customer: c, rec: { invs: listed, all: !!f.all } }) }),
+          ui.row({ title: 'Preview the PDF', subtitle: plural(1 + (f.attach ? listed.length : 0), 'page'), icon: 'doc.text', iconPlain: true, tint: true, chevron: true, onTap: () => p.push({ title: 'Statement PDF', render: () => WD.screens.billing.docWrap(RC.statementPages(c, f.attach, f)) }) })),
         ui.section({ header: 'Message', fold: false }, ui.inputRow({ multiline: true, value: f.msg, onInput: v => { f.msg = v; } })),
         RC.aiBlock('collect', () => h('div.rc-ai', h('div.k', icon('sparkles', 15), 'Draft the message'), h('div', 'Written from this customer’s open invoices and history. You can edit it afterwards.'),
           h('div', { style: 'display:flex;gap:8px;margin-top:10px;flex-wrap:wrap' }, [['friendly', 'Friendly'], ['firm', 'Firm'], ['final', 'Final notice']].map(([v, label]) => ui.button(label, { kind: f.tone === v && f.drafted ? 'filled' : 'tinted', small: true, block: false, onTap: async () => { const hud = ui.hud('Writing…'); await WD.delay(700, 1100); hud.close(); f.tone = v; f.drafted = true; f.msg = draftMessage(c, unpaid(c), v); p.refresh(); } }))))),
-        h('div', { style: 'padding:4px 0 8px' }, ui.button('Send statement' + (invs.length ? ' · ' + money(sum) : ''), { icon: 'envelope', disabled: !invs.length, onTap: () => send(p) }))); } }, { detent: 'large' });
+        h('div', { style: 'padding:4px 0 8px' }, ui.button(L ? 'Send statement · ' + plural(L.invs.length, 'invoice') : 'Send statement' + (invs.length ? ' · ' + money(sum) : ''), { icon: 'envelope', disabled: !listed.length, onTap: () => send(p) }))); } }, { detent: 'large' });
 };
 /** Statements for a list of customers at once (from the Customers filters). */
 RC.batchStatements = list => { const rows = list.filter(c => unpaid(c).length).map(c => ({ c, on: true })), f = { attach: data.comms ? data.comms.statement.attach : true };
@@ -500,7 +552,11 @@ RC.perfBillingSection = (page, from, to) => { if (!(WD.can('billing.view') || WD
 /** Assumptions for both calculators; all editable on the screen. Area prices are the owner's base price for a standard purge in places off the regular routes. */
 const CALC = data.calc = { perMile: 2, labor: 50, opp: 200, mph: 32, road: 1.3, base: 150, included: 14, extra: 8, zone: 6,
   areas: [{ id: 'ar1', name: 'Lakemont (on the regular routes)', price: 150 }, { id: 'ar2', name: 'North Lakemont', price: 150 }, { id: 'ar3', name: 'Ridgeview', price: 185 }, { id: 'ar4', name: 'Cedar Flats (rural)', price: 225 }, { id: 'ar5', name: 'Harlan County (rural)', price: 275 }] };
-const PC = { mode: 'cost', text: '', spot: null, addr: '', from: 'nearest', boxes: 14, sugs: [] };
+/* mode 'price' (the default view) or 'cost'. mods: extras chosen from the price list {lineId: quantity}; pick: the recommended route and day chosen ('routeId|day'). */
+const PC = { mode: 'price', text: '', spot: null, addr: '', from: 'nearest', boxes: 14, bins: 2, sugs: [], name: '', phone: '', mods: {}, pick: null };
+/** The base tier the calculator prices from: the purge price list (r14-price.js) when it is loaded, otherwise the numbers kept here. */
+const tier = () => WD.price && WD.price.tier ? WD.price.tier() : { method: 'box', unit: 'box', flat: CALC.base, included: CALC.included, extra: CALC.extra };
+const listName = () => WD.price && WD.price.name ? WD.price.name() : 'Standard purge rate';
 const MILE = 25, hashSpot = a => { let n = 7; for (const ch of a.toLowerCase()) n = (n * 31 + ch.charCodeAt(0)) >>> 0; return { x: 120 + n % 760, y: 120 + (n >>> 9) % 760 }; };
 const milesBetween = (a, b) => Math.hypot(a.x - b.x, a.y - b.y) / MILE * CALC.road;
 /** The closest customer stop on the schedule in the next two weeks. */
@@ -515,7 +571,7 @@ function calcSettingsSpec() {
   return { title: 'Assumptions', render: page => { const re = () => page.refresh();
     return ui.list(
       ui.section({ header: 'Cost to serve', fold: false, footer: 'Miles are road miles: straight-line distance × the road factor. Lost revenue is what the truck would normally earn in an hour. These apply to both calculators.' }, field('Vehicle cost', 'perMile', '$per mile'), field('Labor', 'labor', '$per hour'), field('Lost revenue', 'opp', '$per hour'), field('Average speed', 'mph', 'mph'), field('Road factor', 'road', '× direct')),
-      ui.section({ header: 'Standard purge rate', fold: false, footer: 'The standard rate applies anywhere within ' + CALC.zone + ' road miles of a regular customer.' }, field('Show-up price', 'base', '$'), field('Boxes included', 'included', 'boxes'), field('Each additional box', 'extra', '$per box'), field('Regular-route range', 'zone', 'miles')),
+      ui.section({ header: listName(), fold: false, footer: 'The standard rate applies anywhere within ' + CALC.zone + ' road miles of a regular customer.' }, WD.price && WD.price.listSpec ? ui.row({ icon: 'shippingbox', iconColor: 'var(--orange)', title: listName(), subtitle: WD.price.label() + ' · base price, each additional and the extra line items', chevron: true, onTap: () => page.push(WD.price.listSpec()) }) : [field('Show-up price', 'base', '$'), field('Boxes included', 'included', 'boxes'), field('Each additional box', 'extra', '$per box')], field('Regular-route range', 'zone', 'miles')),
       ui.section({ header: 'Base prices by area', fold: false, footer: 'Your price for a standard purge in each place. An address that mentions the area’s name uses it as the floor.' },
         CALC.areas.map(a => ui.row({ title: a.name, detail: fmt.money(a.price), chevron: true, onTap: async () => { const v = await ui.actionSheet({ title: a.name, buttons: [{ label: 'Change the price…', value: 'p' }, { label: 'Rename…', value: 'n' }, { label: 'Remove', value: 'x', role: 'destructive' }] });
           if (v === 'p') { const t = await RC.ask('Base price for ' + a.name, 'e.g. 225', a.price, null, 'number'); if (t) a.price = num(t); } else if (v === 'n') { const t = await RC.ask('Area name', '', a.name); if (t) a.name = t; } else if (v === 'x') CALC.areas.splice(CALC.areas.indexOf(a), 1); WD.changed(); re(); } })),
@@ -529,18 +585,20 @@ function calcRoot() {
     trailing: () => [{ icon: 'gearshape', label: 'Edit assumptions', onTap: p => p.push(calcSettingsSpec()) }],
     render: page => {
     const assume = text => ui.section({ fold: false }, ui.row({ icon: 'gearshape', iconPlain: true, title: 'Assumptions', subtitle: text, chevron: true, onTap: () => page.push(calcSettingsSpec()) }));
-    const re = () => page.refresh(), pick = s => { PC.addr = s.address; PC.text = s.address; PC.spot = s.l ? { x: s.l.x, y: s.l.y } : hashSpot(s.address); PC.sugs = []; re(); };
+    const PR = WD.price && WD.price.findAt ? WD.price : null, re = () => page.refresh(), pick = s => { PC.addr = s.address; PC.text = s.address; PC.spot = s.l ? { x: s.l.x, y: s.l.y } : hashSpot(s.address); PC.sugs = []; PC.pick = null; re(); };
+    /* The customer or lead already at this address, looked up as the address is typed. */
+    const matchBox = h('div'), findMatch = () => PR ? PR.findAt(PC.addr || PC.text) : null, showMatch = () => { const m = findMatch(); matchBox.replaceChildren(...(m ? [PR.customerCard(m)] : [])); return m; };
     const sugBox = h('div.rc-sugs'), showSugs = () => { sugBox.replaceChildren(...PC.sugs.map(s => h('button', { onclick: () => pick(s) }, s.title, h('small', s.sub)))); };
-    const addr = ui.section({ header: 'Address', fold: false }, ui.inputRow({ icon: 'mappin', placeholder: 'Street, city', value: PC.text, onInput: v => { PC.text = v; PC.sugs = WD.addressSuggestions ? WD.addressSuggestions(v).slice(0, 5) : []; showSugs(); }, onEnter: v => v.trim() && pick({ address: v.trim() }) }), sugBox,
-      PC.spot && ui.row({ icon: 'checkmark.circle.fill', iconPlain: true, iconColor: 'var(--green)', title: PC.addr, trailing: h('button.cu-link', { style: 'border:0;background:none;color:var(--tint);font:inherit;cursor:pointer', onclick: () => { PC.spot = null; PC.addr = PC.text = ''; re(); } }, 'Clear') }));
-    showSugs();
-    const seg = h('div', { style: 'padding:0 16px 10px' }, ui.segmented([{ value: 'cost', label: 'Cost to serve' }, { value: 'purge', label: 'Purge price' }], PC.mode, v => { PC.mode = v; re(); }));
+    const addr = ui.section({ header: 'Address', fold: false }, ui.inputRow({ icon: 'mappin', placeholder: 'Street, city', value: PC.text, onInput: v => { PC.text = v; if (PC.addr && v !== PC.addr) PC.addr = ''; PC.sugs = WD.addressSuggestions ? WD.addressSuggestions(v).slice(0, 5) : []; showSugs(); showMatch(); }, onEnter: v => v.trim() && pick({ address: v.trim() }) }), sugBox,
+      PC.spot && ui.row({ icon: 'checkmark.circle.fill', iconPlain: true, iconColor: 'var(--green)', title: PC.addr, trailing: h('button.cu-link', { style: 'border:0;background:none;color:var(--tint);font:inherit;cursor:pointer', onclick: () => { PC.spot = null; PC.addr = PC.text = ''; PC.pick = null; re(); } }, 'Clear') }));
+    showSugs(); const match = showMatch();
+    const seg = h('div', { style: 'padding:0 16px 10px' }, ui.segmented([{ value: 'price', label: 'Price calc' }, { value: 'cost', label: 'Cost to serve' }], PC.mode, v => { PC.mode = v; re(); }));
     const near = PC.spot && nearestJob(PC.spot);
     if (PC.mode === 'cost') {
       const froms = [{ value: 'nearest', label: 'Closest customer on the schedule' }].concat(data.places.map(p => ({ value: p.id, label: p.name })));
       const origin = PC.spot && (PC.from === 'nearest' ? (near ? near.job : null) : data.places.find(p => p.id === PC.from)), oneWay = origin ? milesBetween(PC.spot, origin) : 0, miles = oneWay * 2, hours = miles / CALC.mph;
       const veh = miles * CALC.perMile, lab = hours * CALC.labor, opp = hours * CALC.opp;
-      return [seg, ui.list(addr,
+      return [seg, ui.list(addr, matchBox,
         ui.section({ header: 'Measured from', fold: false, footer: PC.from === 'nearest' ? 'The nearest customer with a job in the next two weeks, so the trip is priced as a detour from a route that is already running.' : 'A round trip from this place and back.' },
           ui.pickerRow({ title: 'From', value: PC.from, options: froms, onChange: v => { PC.from = v; re(); } }),
           PC.spot && PC.from === 'nearest' && (near ? ui.row({ icon: 'person.2', iconColor: q.routeColor(near.job.routeId), title: near.job.title, subtitle: fmt.day(near.job.day, 'short') + ' · ' + q.routeName(near.job.routeId) + ' · ' + fmt.dist(near.miles) + ' away' }) : ui.row({ title: 'No scheduled customers in the next two weeks', subtitle: 'Choose one of your places instead' }))),
@@ -552,22 +610,61 @@ function calcRoot() {
           : note('Enter an address to see the miles, drive time and cost of the round trip.'),
         assume(money(CALC.perMile) + ' a mile · ' + money(CALC.labor) + ' an hour labor · ' + fmt.money(CALC.opp) + ' an hour lost revenue · ' + CALC.mph + ' mph'))];
     }
-    /* Purge price */
-    const std = CALC.base + Math.max(0, PC.boxes - CALC.included) * CALC.extra, off = PC.spot ? offRoute(PC.spot) : 0, inZone = off <= CALC.zone, area = PC.spot && CALC.areas.find(a => PC.addr.toLowerCase().includes(a.name.replace(/\s*\(.*\)/, '').toLowerCase()));
-    const extraMiles = Math.max(0, off - CALC.zone) * 2, extraH = extraMiles / CALC.mph, tripCost = extraMiles * CALC.perMile + extraH * CALC.labor, areaAdd = area ? Math.max(0, area.price - CALC.base) : 0;
+    /* Price calc: the price list's base tier and extras, the address's distance from the regular routes, the customer already there, the days a truck is nearby, and a job made from all of it. */
+    const T = tier(), bin = T.method === 'bin', qty = bin ? PC.bins : PC.boxes, total = items => cents(items.reduce((s2, x) => s2 + x.qty * x.rate, 0));
+    const pd = PR ? PR.purgeFor(qty, PC.mods) : bin ? { bin65: qty, stairs: 'none', haul: false } : { std: qty, stairs: 'none', haul: false };
+    const baseItems = PR ? PR.items(pd) : [{ id: 'box', qty, rate: 0 }], std = PR ? total(baseItems) : T.flat + Math.max(0, qty - T.included) * T.extra;
+    const off = PC.spot ? offRoute(PC.spot) : 0, inZone = off <= CALC.zone, area = PC.spot && CALC.areas.find(a => PC.addr.toLowerCase().includes(a.name.replace(/\s*\(.*\)/, '').toLowerCase()));
+    const extraMiles = Math.max(0, off - CALC.zone) * 2, extraH = extraMiles / CALC.mph, tripCost = extraMiles * CALC.perMile + extraH * CALC.labor, areaAdd = area ? Math.max(0, area.price - T.flat) : 0;
     const tripAdd = r5(tripCost + extraH * CALC.opp * 0.5), pairPrice = near ? Math.max(std, r5(std + (near.miles * 2 * CALC.perMile + near.miles * 2 / CALC.mph * CALC.labor))) : Infinity;
-    const add = inZone ? areaAdd : Math.max(areaAdd, tripAdd), rec = std + add, low = std + (inZone ? areaAdd : Math.max(areaAdd, r5(tripCost))), high = std + (inZone ? areaAdd : Math.max(areaAdd, r5(tripCost + extraH * CALC.opp)));
+    const add = !PC.spot ? 0 : inZone ? areaAdd : Math.max(areaAdd, tripAdd), low = std + (inZone ? areaAdd : Math.max(areaAdd, r5(tripCost))), high = std + (inZone ? areaAdd : Math.max(areaAdd, r5(tripCost + extraH * CALC.opp)));
+    /* The out-of-area amount goes on the price list's trip-charge line when there is one, so the job and the invoice name it the same way. */
+    const tl = PR && PR.tripLine(), jobPurge = add > 0 && tl ? { ...pd, mods: { ...pd.mods, [tl.id]: 1 }, modRate: { [tl.id]: add } } : pd;
+    const items = !PR ? baseItems : add > 0 && !tl ? baseItems.concat({ id: 'trip', name: inZone ? 'Area price difference' : 'Out-of-area trip charge', qty: 1, rate: add }) : PR.items(jobPurge), rec = PR ? total(items) : std + add;
     const lines = () => [inZone ? h('span', h('b', 'On your regular routes.'), ' The nearest regular customer is ' + fmt.dist(off) + ' away, so the standard rate covers it.') : h('span', h('b', fmt.dist(off) + ' from your nearest regular customer.'), ' That is ' + fmt.dist(extraMiles) + ' and about ' + fmt.dur(Math.max(1, extraH * 60)) + ' of extra driving beyond your ' + CALC.zone + '-mile range, costing ' + money(tripCost) + ' in truck and labor.'),
-      area ? h('span', h('b', 'Your base price for ' + area.name.replace(/\s*\(.*\)/, '') + ' is ' + fmt.money(area.price) + '.'), areaAdd ? ' Used as the floor.' : ' Same as standard.') : !inZone ? h('span', 'No base price is saved for this area. Similar distances in your list run ' + fmt.money(Math.min(...CALC.areas.filter(a => a.price > CALC.base).map(a => a.price))) + ' to ' + fmt.money(Math.max(...CALC.areas.map(a => a.price))) + '.') : null,
+      area ? h('span', h('b', 'Your base price for ' + area.name.replace(/\s*\(.*\)/, '') + ' is ' + fmt.money(area.price) + '.'), areaAdd ? ' Used as the floor.' : ' Same as standard.') : !inZone && CALC.areas.some(a => a.price > T.flat) ? h('span', 'No base price is saved for this area. Similar distances in your list run ' + fmt.money(Math.min(...CALC.areas.filter(a => a.price > T.flat).map(a => a.price))) + ' to ' + fmt.money(Math.max(...CALC.areas.map(a => a.price))) + '.') : null,
       !inZone ? (areaAdd >= tripAdd ? h('span', h('b', 'Recommended ' + fmt.money(rec) + '.'), ' Your area price already covers the extra driving.') : h('span', h('b', 'Recommended ' + fmt.money(rec) + '.'), ' Covers the trip plus half of the revenue the truck gives up. Don’t go below ' + fmt.money(low) + '; ' + fmt.money(high) + ' recovers all of it.')) : areaAdd ? h('span', h('b', 'Recommended ' + fmt.money(rec) + '.'), ' It is on your routes, but your price list charges more in this area.') : null,
       near && !inZone && !area && pairPrice < rec ? h('span', h('b', 'Cheaper day: ' + fmt.day(near.job.day, 'long') + '.'), ' ' + q.routeName(near.job.routeId) + ' is already at ' + near.job.title + ', ' + fmt.dist(near.miles) + ' away. Offering that day could justify ' + fmt.money(pairPrice) + '.') : null].filter(Boolean);
-    return [seg, ui.list(addr,
-      ui.section({ header: 'The job', fold: false }, ui.row({ icon: 'shippingbox', iconColor: 'var(--brown)', title: 'Boxes', subtitle: 'Standard banker boxes', trailing: h('div.hstack', { style: 'gap:8px' }, ui.numField(PC.boxes, 1, 2000, v => { PC.boxes = v; re(); }, 'Boxes'), ui.stepper(PC.boxes, 1, 2000, v => { PC.boxes = v; re(); })) })),
-      h('div.rc-sum', h('div.muted', h('span', 'Show up and shred up to ' + CALC.included + ' boxes'), h('span', money(CALC.base))), PC.boxes > CALC.included && h('div.muted', h('span', (PC.boxes - CALC.included) + ' more × ' + money(CALC.extra)), h('span', money((PC.boxes - CALC.included) * CALC.extra))),
-        h('div', h('span', 'Standard rate'), h('span', money(std))), PC.spot && add > 0 && h('div.muted', h('span', inZone ? 'Area price difference' : 'Out-of-area charge'), h('span', '+ ' + money(add))), PC.spot && h('div.big', h('span', inZone && !add ? 'Price' : 'Recommended price'), h('span', money(rec)))),
-      PC.spot ? RC.aiBlock('pricing', () => RC.aiCard({ title: 'Pricing recommendation', lines: lines() })) : note('Enter the address to check whether it is on your regular routes and get a recommended price.'),
-      PC.spot && !RC.ai('pricing') && !inZone && h('div.footnote.secondary', { style: 'padding:0 6px 12px' }, 'Without the recommendation: this address is ' + fmt.dist(off) + ' off your routes; the out-of-area charge above is the cost of the extra driving.'),
-      assume('Show up ' + fmt.money(CALC.base) + ' with ' + CALC.included + ' boxes · ' + money(CALC.extra) + ' each extra · ' + CALC.zone + '-mile range · ' + plural(CALC.areas.length, 'area price')))];
+    /* Extras from the price list: counts for the lines charged per unit, switches for the rest. */
+    const COUNTED = ['legal', 'xl', 'xray', 'hdd', 'flight', 'count'], setMod = (id, v) => { if (v) PC.mods[id] = v; else delete PC.mods[id]; re(); };
+    const extras = PR ? PR.activeLines().filter(l => l !== tl && !(bin && (l.appliesTo === 'legal' || l.appliesTo === 'xl'))).map(l => l.kind !== 'flat' && COUNTED.includes(l.appliesTo)
+      ? ui.row({ title: l.name, subtitle: PR.lineSummary(l), trailing: ui.numField(PC.mods[l.id] || 0, 0, 999, v => setMod(l.id, v), l.name) })
+      : ui.toggleRow({ title: l.name, subtitle: PR.lineSummary(l), value: !!PC.mods[l.id], onChange: v => setMod(l.id, v ? 1 : 0) })) : [];
+    /* Days a truck is already near the address. Everyone sees the list; AI Premium adds the pick on top. */
+    const dayText = d => fmt.day(d.day, 'weekday') + ' ' + fmt.day(d.day, 'md'), rd = PC.spot && PR ? PR.days(PC.spot) : null, fit = rd && WD.aip && WD.aip.on() ? PR.bestFit(rd.list, PC.spot) : null;
+    const shown = rd ? rd.list.slice(0, 6) : [], chosen = rd ? rd.list.find(d => d.key === PC.pick) : null;
+    [fit && fit.pick, chosen].forEach(d => { if (d && !shown.includes(d)) shown.push(d); }); shown.sort((a, b) => a.day.localeCompare(b.day) || a.closest - b.closest);
+    const useDay = chosen || shown[0] || (near ? { routeId: near.job.routeId, day: near.job.day, fallback: true } : null);
+    const dates = PC.spot && PR ? ui.section({ header: 'Recommended service dates', fold: false, showFooter: true, footer: shown.length ? 'Days a truck already has stops within ' + fmt.dist(rd.radius) + ' of this address in the next 45 days. Tap one to use it for the job; it can still be changed there.' : 'No truck has a stop within 25 miles in the next 45 days' + (near ? '. The closest is ' + near.job.title + ' on ' + fmt.day(near.job.day, 'long') + ' (' + q.routeName(near.job.routeId) + '), ' + fmt.dist(near.miles) + ' away.' : '.') },
+      shown.map(d => { const on = useDay === d; return ui.row({ leading: ui.dot(q.routeColor(d.routeId)), title: fmt.day(d.day, 'long'), subtitle: [q.routeName(d.routeId) + ' · ' + plural(d.n, 'stop') + ' nearby' + (d.projected ? ' · from the recurring schedule' : ''), 'Nearest: ' + d.nearest + ', ' + fmt.dist(d.closest)].map(x => h('div', x)),
+        badge: PR.capChip(d.cap), trailing: icon(on ? 'checkmark.circle.fill' : 'circle', 22, on ? 'var(--tint)' : 'var(--label3)'), onTap: () => { PC.pick = d.key; re(); } }); }),
+      WD.r8 && WD.r8.openPlanMap && ui.row({ icon: 'map', iconPlain: true, title: 'See the planning map', subtitle: 'Every job near an address, and each customer’s service dates', tint: true, chevron: true, onTap: () => WD.r8.openPlanMap() })) : null;
+    const best = fit && WD.aip.block(() => WD.aip.card({ title: 'Best fit · ' + q.routeName(fit.pick.routeId) + ' · ' + dayText(fit.pick), lines: fit.lines,
+      action: h('div', { style: 'margin-top:10px' }, ui.button(useDay === fit.pick ? 'Selected' : 'Use this', { kind: useDay === fit.pick ? 'tinted' : 'filled', small: true, block: false, icon: useDay === fit.pick ? 'checkmark' : null, onTap: () => { PC.pick = fit.pick.key; re(); ui.toast(q.routeName(fit.pick.routeId) + ' · ' + dayText(fit.pick), 'checkmark'); } })) }));
+    /* A job made from what was entered: purge, the address, the customer if one is there, the counts, the price as lines, and the route and day chosen. */
+    const who = match ? match.customer.name : PC.name.trim(), createJob = () => { const J = WD.screens.jobs; if (!J || !J.openEditor) return;
+      const o = { type: 'purge', address: PC.addr || PC.text.trim(), purge: { ...jobPurge, mods: { ...(jobPurge.mods || {}) } }, items: items.map(x2 => ({ ...x2 })), price: rec, notes: 'Quoted ' + money(rec) + ' in Price Calc' + (PR ? ': ' + PR.text(items) : '') + '.',
+        banner: 'From Price Calc · ' + money(rec) + (useDay ? ' · ' + q.routeName(useDay.routeId) + ' · ' + dayText(useDay) : '') };
+      if (useDay) { o.routeId = useDay.routeId; o.day = useDay.day; } if (match) o.customerId = match.customer.id; if (who) o.title = who; if (PC.name.trim()) o.contactName = PC.name.trim(); if (PC.phone) o.phone = PC.phone;
+      J.openEditor(o); };
+    const newLead = () => { const K = WD.screens.crm; if (K && K.newLead) K.newLead({ name: PC.name.trim(), contact: PC.name.trim(), contactName: PC.name.trim(), phone: PC.phone, address: PC.addr || PC.text.trim(), notes: 'Quoted ' + money(rec) + ' in Price Calc for ' + plural(qty, T.unit === 'bin' ? 'bin' : 'box').replace(/boxs$/, 'boxes') + '.' }); };
+    return [seg, ui.list(addr, matchBox,
+      !match && ui.section({ header: 'Who is asking', fold: false, footer: PC.spot ? 'Nobody in your customers or leads is at this address. The name and phone are optional; they carry over to the lead or the job.' : 'Optional. Carries over to the lead or the job.' },
+        ui.inputRow({ label: 'Name', placeholder: 'Company or person', caps: 'words', value: PC.name, onInput: v => { PC.name = v; } }),
+        ui.phoneRow ? ui.phoneRow({ value: PC.phone, onInput: v => { PC.phone = v; } }) : ui.inputRow({ label: 'Phone', type: 'tel', value: PC.phone, onInput: v => { PC.phone = v; } }),
+        PC.spot && WD.can('crm.edit') && WD.screens.crm && WD.screens.crm.newLead && ui.row({ icon: 'person.badge.plus', iconPlain: true, iconColor: 'var(--green)', title: 'Create this customer in the CRM', subtitle: 'A new lead with this address' + (PC.name.trim() ? ', name' : '') + (PC.phone ? ' and phone' : ''), tint: true, chevron: true, onTap: newLead })),
+      ui.section({ header: 'The job', fold: false, footer: listName() + ': ' + fmt.money(T.flat) + ' covers up to ' + T.included + (bin ? ' bins' : ' boxes') + ', then ' + money(T.extra) + ' each.' },
+        bin ? ui.row({ icon: 'shippingbox', iconColor: 'var(--brown)', title: 'Bins', subtitle: '65-gallon bins', trailing: h('div.hstack', { style: 'gap:8px' }, ui.numField(PC.bins, 1, 500, v => { PC.bins = v; re(); }, 'Bins'), ui.stepper(PC.bins, 1, 500, v => { PC.bins = v; re(); })) })
+          : ui.row({ icon: 'shippingbox', iconColor: 'var(--brown)', title: 'Boxes', subtitle: 'Standard banker boxes', trailing: h('div.hstack', { style: 'gap:8px' }, ui.numField(PC.boxes, 1, 2000, v => { PC.boxes = v; re(); }, 'Boxes'), ui.stepper(PC.boxes, 1, 2000, v => { PC.boxes = v; re(); })) })),
+      extras.length > 0 && ui.section({ header: 'Extras', fold: false }, extras),
+      h('div.rc-sum', PR ? PR.lines(items).map(l => h('div.muted', h('span', l.label), h('span', money(l.amount)))) : [h('div.muted', h('span', 'Show up and shred up to ' + T.included + ' boxes'), h('span', money(T.flat))), qty > T.included && h('div.muted', h('span', (qty - T.included) + ' more × ' + money(T.extra)), h('span', money((qty - T.included) * T.extra))), add > 0 && h('div.muted', h('span', inZone ? 'Area price difference' : 'Out-of-area charge'), h('span', '+ ' + money(add)))],
+        add > 0 && h('div', h('span', 'Standard rate, before the ' + (inZone ? 'area price' : 'trip charge')), h('span', money(std))), h('div.big', h('span', add > 0 ? 'Recommended price' : 'Price'), h('span', money(rec)))),
+      PC.spot ? RC.aiBlock('pricing', () => RC.aiCard({ title: 'Pricing recommendation', lines: lines() })) : note('Enter the address to check whether it is on your regular routes, see who is already there, and get the days a truck is nearby.'),
+      PC.spot && !RC.ai('pricing') && !inZone && h('div.footnote.secondary', { style: 'padding:0 6px 12px' }, 'This address is ' + fmt.dist(off) + ' off your routes; the trip charge above is the cost of the extra driving.'),
+      best, dates,
+      WD.can('jobs.edit') && h('div', { style: 'padding:4px 0 14px' }, ui.button('Create job · ' + money(rec), { icon: 'plus', disabled: !(PC.addr || PC.text.trim()), onTap: createJob }),
+        h('div.footnote.secondary', { style: 'padding:8px 6px 0;text-align:center' }, !(PC.addr || PC.text.trim()) ? 'Enter the address first.' : 'Opens a new purge job' + (who ? ' for ' + who : '') + (useDay ? ' on ' + q.routeName(useDay.routeId) + ', ' + dayText(useDay) : '') + '. Nothing is saved until you save the job.')),
+      assume(listName() + ' · ' + fmt.money(T.flat) + ' with ' + T.included + (bin ? ' bins' : ' boxes') + ' · ' + money(T.extra) + ' each extra · ' + CALC.zone + '-mile range · ' + plural(CALC.areas.length, 'area price')))];
   } };
 }
 WD.screens.calc = { root: calcRoot };
@@ -575,5 +672,6 @@ WD.screens.calc = { root: calcRoot };
 WD.panel.addJump('Reports', () => WD.nav.switchTab('reports'));
 WD.panel.addJump('Price Calc', () => WD.nav.switchTab('calc'));
 WD.panel.addJump('New invoice', () => { WD.nav.switchTab('invoices'); RC.newInvoice(); });
+WD.panel.addJump('Statement · all invoices', () => { const c = data.customers.find(x => (data.invoices || []).filter(i => i.customerId === x.id).length > 2); if (c) { WD.nav.switchTab('customers'); RC.openStatement(c, { all: true }); } });
 WD.panel.addJump('Statement', () => { const c = data.customers.find(x => (data.invoices || []).filter(i => i.customerId === x.id && invOpen(i)).length > 1); if (c) { WD.nav.switchTab('customers'); RC.openStatement(c); } });
 })();

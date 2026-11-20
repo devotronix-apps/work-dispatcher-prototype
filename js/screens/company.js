@@ -56,7 +56,7 @@ const ST = data.settings = {
     sources: { phone: true, text: true, email: true, form: true, yelp: true, sheet: false, manual: true, referral: true },
     remindDays: 3, referralReward: '$25 credit on their next invoice', territories: { u2: { mode: 'zip', values: ['78641', '78642'] } } },
 };
-const BOOKS = [{ value: 'ninja', label: 'Invoice Ninja' }, { value: 'qbo', label: 'QuickBooks Online' }, { value: 'zoho', label: 'Zoho Books' }, { value: 'xero', label: 'Xero' }, { value: 'freshbooks', label: 'FreshBooks' }, { value: 'none', label: 'None — track payments here' }];
+const BOOKS = [{ value: 'ninja', label: 'Invoice Ninja' }, { value: 'qbo', label: 'QuickBooks Online' }, { value: 'zoho', label: 'Zoho Books' }, { value: 'xero', label: 'Xero' }, { value: 'freshbooks', label: 'FreshBooks' }, { value: 'none', label: 'RouteClerk invoicing (built in)' }];   // built in: Settings → Company → Invoicing (r14-money.js) holds its numbering, terms and late fee
 CO.booksName = () => (BOOKS.find(b => b.value === ST.books.provider) || BOOKS[0]).label.replace(/ —.*/, '');
 CO.hasBooks = () => ST.books.provider !== 'none';
 
@@ -344,7 +344,8 @@ CO.booksSection = () => { if (!CO.hasBooks()) return null; const b = ST.books, n
 CO.booksSpec = () => ({ title: 'Invoicing and bookkeeping', render: page => { if (!admin()) return locked(); const b = ST.books, name = CO.booksName(), on = CO.hasBooks(), integ = on && (WD.integrations || []).find(x => x.id === b.provider);
   return ui.list(
     ui.section({ header: 'Invoicing and bookkeeping service', footer: on ? 'Invoices created here are sent to ' + name + ', and payments recorded there come back. ' + (integ && integ.connected ? '' : 'Connect the ' + name + ' account below to start. ') + 'Every service plugs in the same way, so another one can be added later without changing how invoices work here.' : 'Invoices and payments are kept only in RouteClerk.' },
-      ui.pickerRow({ title: 'We use', icon: 'doc.text', iconColor: 'var(--green)', value: b.provider, options: BOOKS, onChange: v => { b.provider = v; WD.changed(); page.refresh(); } }),
+      ui.pickerRow({ title: 'We use', icon: 'doc.text', iconColor: 'var(--green)', value: b.provider, options: BOOKS, onChange: v => { b.provider = v; if (data.pay) data.pay.via = v === 'none' ? 'routeclerk' : v;   /* rc.js and the Invoicing page read data.pay.via */ WD.changed(); page.refresh(); } }),
+      !on && WD.money && WD.money.invoicingSpec && ui.row({ icon: 'doc.text', iconColor: 'var(--green)', title: 'Invoice numbers, terms and late fee', subtitle: 'Settings for RouteClerk’s own invoicing', chevron: true, onTap: () => page.push(WD.money.invoicingSpec()) }),
       integ && ui.row({ icon: 'link', iconColor: integ.connected ? 'var(--green)' : 'var(--orange)', title: integ.connected ? name + ' is connected' : 'Connect ' + name, subtitle: integ.connected ? 'Tap to see the connection or disconnect' : 'Not connected yet — invoices stay here until it is', badge: ui.badge(integ.connected ? 'Connected' : 'Not connected', integ.connected ? 'var(--green)' : 'var(--orange)'), chevron: true, onTap: () => page.push(WD.screens.settings.integrationSpec(integ)) })),
     on && ui.section({ header: 'Unpaid invoices', footer: 'Every open invoice is checked against ' + name + '. When a customer has paid there (portal, card, ACH or a payment the office entered) the invoice is marked paid here with the method and date, and the job shows as paid. Last checked ' + fmt.rel(b.lastCheck).toLowerCase() + '.' },
       ui.toggleRow({ title: 'Mark invoices paid automatically', subtitle: 'When ' + name + ' shows them paid', value: b.autoPaid, onChange: v => { b.autoPaid = v; WD.changed(); page.refresh(); } }),
