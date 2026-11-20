@@ -107,7 +107,8 @@ RC.displaySection = push => ui.section({ header: 'Display', fold: false, footer:
   ui.row({ icon: 'textformat', iconColor: 'var(--blue)', title: 'Text size', detail: (WD.textSizes.find(t => t.value === S.textSize) || {}).label }),
   h('div.rc-size', WD.textSizes.map((t, i) => h('button' + (t.value === S.textSize ? '.on' : ''), { 'aria-label': 'Text size ' + t.label, style: { fontSize: 13 + i * 4 + 'px' }, onclick: () => WD.app.setTextSize(t.value) }, 'A'))),
   ui.row({ icon: 'square.grid', iconColor: 'var(--gray)', title: 'Tabs and menu', subtitle: 'Choose what sits in the bottom bar, and the order of the menu', detail: (n => n ? n + ' hidden' : '')(Object.values(S.prefs.hidden).filter(Boolean).length), chevron: true, onTap: () => push(RC.sectionsSpec()) }),
-  WD.can('jobs.edit') && ui.toggleRow({ icon: 'person', iconColor: 'var(--teal)', title: 'Show drivers on Dispatch', subtitle: 'The driver and truck assigned to each route for the day', value: S.prefs.showDrivers, onChange: v => { S.prefs.showDrivers = v; WD.changed(); } }));
+  WD.can('jobs.edit') && ui.toggleRow({ icon: 'person', iconColor: 'var(--teal)', title: 'Show drivers on Dispatch', subtitle: 'The driver and truck assigned to each route for the day', value: S.prefs.showDrivers, onChange: v => { S.prefs.showDrivers = v; WD.changed(); } }),
+  WD.r15 && WD.r15.cardStyleRow && WD.r15.cardStyleRow(push));
 
 /* ================= Company: business details, invoicing and payment options ================= */
 const org = () => S.org || data.orgs[0];

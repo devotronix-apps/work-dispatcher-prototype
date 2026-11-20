@@ -926,4 +926,6 @@ WD.panel.addAction('Customer pays in the portal', () => { const r = (data.invoic
 WD.panel.addAction('Customer turns on autopay', () => { const c = data.customers.find(x => recurring(x) && !autoMethod(x) && (data.invoices || []).some(i => i.customerId === x.id && isOpen(i))) || data.customers.find(x => recurring(x) && !autoMethod(x)); if (!c) return ui.toast('Every recurring customer already has autopay', 'info.circle');
   const P = pstate(c); if (!P.methods.length) P.methods.push({ id: uid('pm'), type: 'card', brand: 'Visa', last4: '4242', exp: '12/34' }); P.autopay = { on: true, methodId: P.methods[0].id, max: 0 }; WD.changed();
   ui.banner({ title: 'Autopay turned on', text: c.name + ' switched on autopay in the portal · ' + M.autopayText(c) + '. New invoices are charged on the due date.', icon: 'arrow.clockwise', color: 'var(--green)', duration: 8000, onTap: () => { WD.nav.switchTab(WD.can('crm.view') ? 'customers' : 'settings'); WD.screens.customers.openDetail(c.id); } }); });
+/* 5.1: view state kept separately for each business (core.js app.uiState). */
+if (WD.app.uiState) { WD.app.uiState('invTrack', IS); }
 })();

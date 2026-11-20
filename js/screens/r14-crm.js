@@ -637,4 +637,6 @@ WD.panel.addAction('New low-value lead (5 boxes)', () => { const k = K(); if (!k
 
 Object.assign(C2, { recommend, recommendInq, lowMatch, autoReply, vips, sheet, inquiries: inq, requests: reqs });
 ensure();
+/* 5.1: view state kept separately for each business (core.js app.uiState). */
+if (WD.app.uiState) { WD.app.uiState('needs', N); WD.app.uiState('crmDesk', DV); }
 })();

@@ -76,27 +76,31 @@ WD.panel.addJump('AI Premium', () => { WD.nav.switchTab('settings'); WD.nav.push
    first with its own names, city and phone numbers, and swaps WD.data's contents when the person switches (core.js app.switchOrg parks and
    restores the screens). data.orgs, the plan and AI Premium are shared by reference so they survive the swap. */
 const O = WD.orgs = {}, SHARED = ['orgs', 'plan', 'aiPremium'];
-Object.assign(data.orgs[0], { short: 'Discount', color: '#007AFF', state: 'CA', areaCodes: ['512', '559', '661', '209'], lines: [{ label: 'Main', number: '+15125550300' }, { label: 'Google Ads', number: '+15125550301' }] });
+Object.assign(data.orgs[0], { short: 'Discount', color: '#007AFF', state: 'CA', areaCodes: ['512', '559', '661', '209'], lines: [{ label: 'Main', number: '+15125550300' }, { label: 'Google Ads', number: '+15125550301' }, { label: 'Fresno', number: '+15595550320' }, { label: 'Bakersfield', number: '+16615550321' }, { label: 'Stockton', number: '+12095550322' }] });
 data.orgs[1] = { id: 'o2', name: 'Buckeye Shred', short: 'Buckeye', role: 'office', trucks: 2, plan: 'Pro', city: 'Akron', color: '#C8102E', state: 'OH', areaCodes: ['330', '216', '440', '234'], lines: [{ label: 'Main', number: '+13305550140' }, { label: 'Website', number: '+12165550141' }], phone: '(330) 555-0140', remit: ['BUCKEYE SHRED', '88 Canal Park Dr', 'Akron'] };
+/* 5.1: a third business, so switching shows the picker (with two there is only one place to go). */
+data.orgs[2] = { id: 'o3', name: 'Peach State Shred', short: 'Peach State', role: 'admin', trucks: 3, plan: 'Pro', city: 'Marietta', color: '#E8590C', state: 'GA', areaCodes: ['404', '770', '678', '470'], lines: [{ label: 'Main', number: '+17705550160' }, { label: 'Atlanta', number: '+14045550161' }], phone: '(770) 555-0160', remit: ['PEACH STATE SHRED', '410 Roswell St', 'Marietta'] };
+const DEMO = { o2: { words: null, city: 'Akron', area: '330', domain: 'buckeyeshred', routes: ['Akron', 'Cleveland', 'Canton', 'Medina', 'Kent'], purge: { method: 'bin', binFlat: 160, binIncluded: 2, binExtra: 60 } },
+  o3: { words: ['Cobb', 'Fulton', 'Peachtree', 'Marietta', 'Kennesaw', 'Roswell', 'Decatur', 'Smyrna', 'Dunwoody', 'Vinings', 'Buckhead', 'Chattahoochee', 'Alpharetta', 'Piedmont', 'Druid Hills', 'Acworth', 'Woodstock', 'Sandy Springs', 'Midtown', 'Gwinnett'], city: 'Marietta', area: '770', domain: 'peachstateshred', routes: ['Marietta', 'Atlanta', 'Alpharetta', 'Decatur', 'Kennesaw'], purge: null } };
 const clone = (v, seen = new Map()) => { if (v === null || typeof v !== 'object') return v; if (seen.has(v)) return seen.get(v); if (v instanceof Date) return new Date(+v); if (v instanceof Set) return new Set(v); if (v instanceof Map) return new Map(v); if (v instanceof Node) return v;
   const out = Array.isArray(v) ? [] : Object.create(Object.getPrototypeOf(v)); seen.set(v, out);
   Object.keys(v).forEach(k => { const d = Object.getOwnPropertyDescriptor(v, k); if (d.get || d.set) Object.defineProperty(out, k, d); else out[k] = clone(v[k], seen); }); return out; };
 let pristine = null; const stash = {}; O.dataOrg = 'o1';
 /** Take the untouched copy the other business is built from. Called once, when the app starts. */
 O.snapshot = () => { if (!pristine) { const src = {}; Object.keys(data).filter(k => !SHARED.includes(k)).forEach(k => { src[k] = data[k]; }); pristine = clone(src); } };
-const OHIO = ['Summit', 'Cuyahoga', 'Portage', 'Medina', 'Tallmadge', 'Hudson', 'Stow', 'Canal', 'Erie', 'Buckeye', 'Wooster', 'Barberton', 'Fairlawn', 'Copley', 'Kent', 'Ravenna', 'Brecksville', 'Wadsworth', 'Massillon', 'Green'];
+const OHIO0 = ['Summit', 'Cuyahoga', 'Portage', 'Medina', 'Tallmadge', 'Hudson', 'Stow', 'Canal', 'Erie', 'Buckeye', 'Wooster', 'Barberton', 'Fairlawn', 'Copley', 'Kent', 'Ravenna', 'Brecksville', 'Wadsworth', 'Massillon', 'Green'];
 const CITY = ['Akron', 'Cuyahoga Falls', 'Kent', 'Stow', 'Hudson', 'Medina'];
 function build(orgId) {
-  const d = clone(pristine), org = data.orgs.find(o => o.id === orgId), names = {}, used = new Set();
+  const d = clone(pristine), org = data.orgs.find(o => o.id === orgId), names = {}, used = new Set(), Z = DEMO[orgId] || DEMO.o2, OHIO = Z.words || OHIO0;
   (d.customers || []).forEach((c, i) => { const w = String(c.name || '').split(' '); let n = w.length > 1 ? OHIO[i % OHIO.length] + ' ' + w.slice(1).join(' ') : c.name; let k = 1; while (used.has(n)) n = OHIO[(i + k++) % OHIO.length] + ' ' + w.slice(1).join(' '); used.add(n); if (n !== c.name) names[c.name] = n; });
   const keys = Object.keys(names).sort((a, b) => b.length - a.length), cities = {};
   const fix = s => { if (s.length < 3) return s; let t = s; keys.forEach(k => { if (t.includes(k)) t = t.split(k).join(names[k]); });
-    return t.split('Discount Shred').join(org.name).split('DISCOUNT SHRED').join(org.name.toUpperCase()).split('discountshred').join('buckeyeshred').split('Lakemont').join('Akron').replace(/\(512\)/g, '(330)').replace(/\b512-555/g, '330-555').replace(/\+1512/g, '+1330').replace(/\b512555/g, '330555'); };
+    return t.split('Discount Shred').join(org.name).split('DISCOUNT SHRED').join(org.name.toUpperCase()).split('discountshred').join(Z.domain).split('Lakemont').join(Z.city).replace(/\(512\)/g, '(' + Z.area + ')').replace(/\b512-555/g, Z.area + '-555').replace(/\+1512/g, '+1' + Z.area).replace(/\b512555/g, Z.area + '555'); };
   const walk = (v, seen = new Set()) => { if (!v || typeof v !== 'object' || seen.has(v) || v instanceof Date || v instanceof Node) return; seen.add(v);
     Object.keys(v).forEach(k => { const d2 = Object.getOwnPropertyDescriptor(v, k); if (d2.get || d2.set) return; const x = v[k]; if (typeof x === 'string') { const y = fix(x); if (y !== x) v[k] = y; } else walk(x, seen); }); };
   walk(d); void cities; void CITY;
-  if (d.purgePricing) Object.assign(d.purgePricing, { method: 'bin', binFlat: 160, binIncluded: 2, binExtra: 60 });
-  (d.routes || []).forEach((r, i) => { r.name = ['Akron', 'Cleveland', 'Canton', 'Medina', 'Kent'][i] || r.name; if (r.nickname) r.nickname = r.name; });
+  if (d.purgePricing && Z.purge) Object.assign(d.purgePricing, Z.purge);
+  (d.routes || []).forEach((r, i) => { r.name = Z.routes[i] || r.name; if (r.nickname) r.nickname = r.name; });
   if (WD.syncPurgeBook) { const keep = data.purgePricing, kb = data.priceBook, kr = data.purgeRules; try { data.purgePricing = d.purgePricing; data.priceBook = d.priceBook; data.purgeRules = d.purgeRules; WD.syncPurgeBook(); } catch (e) { /* the copy keeps the first business's price list */ } data.purgePricing = keep; data.priceBook = kb; data.purgeRules = kr; }
   return d;
 }

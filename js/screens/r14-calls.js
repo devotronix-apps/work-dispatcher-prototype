@@ -32,6 +32,8 @@ WD.addIcons({
 });
 
 WD.css(`
+.cl-why { display: inline-flex; align-items: center; gap: 5px; margin-top: 6px; padding: 3px 10px; border-radius: 12px; background: color-mix(in srgb, var(--green) 16%, transparent); color: var(--label); font-size: 12px; font-weight: 600; }
+.cl-autowhy { text-align: center; font-size: 12px; color: var(--label2); margin: -2px 0 4px; min-height: 15px; }
 .cl-dial { padding-top: 8px; }
 .cl-kp { max-width: 340px; margin: 0 auto; text-align: center; }
 .cl-from { appearance: none; border: 0; background: var(--fill3); color: var(--label); border-radius: 17px; min-height: 36px; padding: 0 14px; font-size: 14px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; margin-top: 12px; }
@@ -234,6 +236,19 @@ const addNumberTo = (number, after) => pickCustomer('Add to customer', async cu 
 const newLead = (number, label) => { const cs = WD.screens.customers; if (!cs || !cs.openNew) return ui.toast('Customers aren’t available', 'lock'); cs.openNew({ phone: number, channel: (K().CHANNELS || []).includes(label) ? label : '' }); };
 const openRecord = cu => { const lead = PIPE.includes(cu.lifecycle); if (lead && WD.screens.crm && WD.screens.crm.openLead) WD.screens.crm.openLead(cu.id); else if (WD.screens.customers && WD.screens.customers.openDetail) WD.screens.customers.openDetail(cu.id); };
 
+/* ================= Which of our numbers a call goes out from (5.1) ================= */
+/* Each service area has its own local number. A call back goes out from the number the person called in on; a first call goes out from the
+   number with their area code, or failing that the one nearest to it; the main number is the last resort. Rough centers of the area codes we serve. */
+const AC = { 512: [30.27, -97.74], 559: [36.74, -119.78], 661: [35.37, -119.02], 209: [37.96, -121.29], 415: [37.77, -122.42], 916: [38.58, -121.49], 805: [34.42, -119.7], 831: [36.6, -121.89], 213: [34.05, -118.24], 818: [34.18, -118.44], 760: [33.2, -117.2], 330: [41.08, -81.52], 216: [41.5, -81.69], 440: [41.4, -81.9], 234: [41.08, -81.52], 614: [39.96, -83], 419: [41.65, -83.54], 404: [33.75, -84.39], 770: [33.95, -84.55], 678: [33.9, -84.4], 470: [33.8, -84.4], 706: [33.47, -81.97], 912: [32.08, -81.09] };
+const far = (a, b) => Math.hypot((a[0] - b[0]) * 69, (a[1] - b[1]) * 55);
+/** → {line, why, how: 'same' | 'area' | 'near' | 'main'} for a number we are about to call. */
+C.pickLine = number => { const org = cur(), lines = org.lines || [], n = dg(number), main = lines[0] || { label: 'Main', number: '' }, area = n.slice(0, 3);
+  let last = null; try { last = list().find(c => c.dir === 'in' && dg(c.number) === n && lines.some(l => dg(l.number) === dg(c.to))); } catch (e) { /* no log yet */ }
+  if (last) { const l = lines.find(x => dg(x.number) === dg(last.to)); return { line: l, how: 'same', why: 'the number they called us on' }; }
+  const same = lines.find(l => dg(l.number).slice(0, 3) === area); if (same) return { line: same, how: 'area', why: 'our local ' + area + ' number' };
+  if (AC[area]) { const near = lines.filter(l => AC[dg(l.number).slice(0, 3)]).map(l => ({ l, d: far(AC[area], AC[dg(l.number).slice(0, 3)]) })).sort((a, b) => a.d - b.d)[0]; if (near && near.d < 220) return { line: near.l, how: 'near', why: 'our closest number to the ' + area + ' area code' }; }
+  return { line: main, how: 'main', why: 'no local number near ' + (area || 'them') }; };
+
 /* ================= Placing a call ================= */
 /** o: {number, from: one of our lines, to: our number to call from, customerId, contact, back: the flagged call being returned}. Shows the
     in-call sheet; End writes the call to the log, and to the customer's timeline when the number belongs to one. */
@@ -242,13 +257,15 @@ function place(o) {
   const num = norm(o.number); if (dg(num).length < 3) return ui.toast('Enter a number first', 'phone');
   if (S.offline) return ui.toast('You’re offline. Quo calls need a connection.', 'wifi.slash');
   callsOf();
-  const org = cur(), lines = org.lines || [], line = o.from || lines.find(l => dg(l.number) === dg(o.to)) || lines[0] || { label: 'Main', number: '' };
+  const org = cur(), lines = org.lines || [], auto = !o.from && !lines.some(l => dg(l.number) === dg(o.to)) ? C.pickLine(num) : null, line = o.from || lines.find(l => dg(l.number) === dg(o.to)) || (auto && auto.line) || lines[0] || { label: 'Main', number: '' };
+  const lineWhy = o.from ? 'chosen by you' : auto ? auto.why : 'the number they called us on';
   const hit = phoneMap(data)[dg(num)], cu = (o.customerId && q.customer(o.customerId)) || (hit && hit.c) || null;
   const p = cu ? (hit && hit.c === cu && hit.p) || (cu.contacts || []).find(x => x.phone) || (cu.contacts || [])[0] || null : null;
   const title = cu ? cu.name : o.contact || fmt.phone(num), t0 = Date.now(); let conn = null, ended = false, notes = '', held = false, tones = '';
-  const live = h('div.cl-live', 'Calling…'), toneEl = h('div.cl-tones');
+  const live = h('div.cl-live', 'Calling…'), toneEl = h('div.cl-tones'), R15 = WD.r15 || {};
+  R15.callBegin && R15.callBegin({ dir: 'out', number: num, line, customerId: cu ? cu.id : null, contact: p ? p.name : o.contact || null });
   const tick = setInterval(() => { if (!conn && Date.now() - t0 > 2400) { conn = Date.now(); live.classList.add('on'); } live.textContent = conn ? (held ? 'On hold · ' : '') + mmss((Date.now() - conn) / 1000) : 'Calling…'; }, 250);
-  const finish = () => { if (ended) return; ended = true; clearInterval(tick);
+  const finish = () => { if (ended) return; ended = true; clearInterval(tick); R15.callEnd && R15.callEnd();
     const dur = conn ? Math.max(1, Math.round((Date.now() - conn) / 1000)) : 0, st = ST(), lead = cu && PIPE.includes(cu.lifecycle), back = o.back, meN = me(), them = p ? p.name : o.contact || 'Caller';
     const summary = notes.trim() || (!dur ? 'No answer. Hung up before anyone picked up.' : dur < st.threshold ? 'Short call: ended after ' + dur + ' s.'
       : back ? 'Called back about the ' + (back.status === 'voicemail' ? 'voicemail' : back.status === 'missed' ? 'missed call' : 'earlier call') + ' from ' + when(back.at) + '. Sorted out on the call; nothing else to do.'
@@ -271,8 +288,8 @@ function place(o) {
   const mini = h('div', { style: 'display:none' }, toneEl, pad(k => { tones += k; toneEl.textContent = tones; }, true), h('div', { style: 'height:14px' }));
   const sheet = ui.sheet({ title: 'Quo call', live: false, onClose: finish, render: () => h('div.cl-call',
     ui.avatar(cu ? cu.name : '#', { size: 72 }), h('div.title2', title),
-    h('div.footnote.secondary', [cu && p && p.name, fmt.phone(num)].filter(Boolean).join(' · ')), h('div.caption.secondary', 'From ' + line.label + ' · ' + fmt.phone(line.number) + ' · ' + org.name),
-    live,
+    h('div.footnote.secondary', [cu && p && p.name, fmt.phone(num)].filter(Boolean).join(' · ')), h('div.caption.secondary', 'From ' + line.label + ' · ' + fmt.phone(line.number) + ' · ' + org.name), h('div.cl-why', icon('phone.fill', 12), 'Calling from ' + lineWhy),
+    live, R15.callBrief && R15.callBrief(cu, { number: num }),
     h('div.cl-cgrid', tog('mic', 'Mute'), tog('pause', 'Hold', on => { held = on; }), tog('speaker.wave', 'Speaker'),
       tog('square.grid', 'Keypad', on => { mini.style.display = on ? '' : 'none'; }), tog('pencil', 'Notes', on => { notesBox.style.display = on ? '' : 'none'; if (on) notesBox.focus(); }),
       tog('arrow.left.arrow.right', 'Transfer', (on, b) => { b.classList.remove('on'); ui.toast('Transfers go to another Quo user. Not in the prototype.', 'info.circle', 2600); })),
@@ -280,8 +297,8 @@ function place(o) {
     h('button.cl-end', { 'aria-label': 'End call', onclick: () => sheet.close() }, icon('phone.down', 32)), h('div.caption.secondary', { style: 'margin-top:6px' }, 'End')) }, { detent: 'large', dismissable: false });
 }
 C.place = place;
-/** Call the number of a logged call back, from the line it came in on. */
-C.callBack = c => place({ number: c.number, to: c.to, customerId: c.customerId, contact: c.contact, back: c });
+/** Call the number of a logged call back: from the line it came in on, or for a call we placed, the line C.pickLine chooses. */
+C.callBack = c => place({ number: c.number, to: c.dir === 'in' ? c.to : null, customerId: c.customerId, contact: c.contact, back: c });
 function textTo(c) { if (!canEdit()) return; const cu = custOf(c), nm = first(c.contact || ''), un = c.status !== 'answered' && c.dir === 'in';
   let text = (nm && cu ? 'Hi ' + nm + ', ' : 'Hi, ') + (un ? 'sorry we missed your call. ' : '') + 'This is ' + first(me()) + ' from ' + cur().name + '. ' + (un ? 'How can we help?' : 'Following up on our call.');
   ui.sheet({ title: 'Text ' + fmt.phone(c.number), leading: [{ label: 'Cancel', onTap: pg => pg.dismiss() }],
@@ -326,18 +343,21 @@ C.detailSpec = id => ({ title: 'Call', render: page => {
 /* ================= Dialer tab ================= */
 const UI = { seg: 'keypad', typed: '', from: {} };
 function keypadView(page) {
-  const org = cur(), lines = org.lines || [], idx = Math.min(UI.from[org.id] || 0, Math.max(0, lines.length - 1)), from = lines[idx] || { label: 'Main', number: '' };
+  const org = cur(), lines = org.lines || [], sel = UI.from[org.id], isAuto = sel == null || sel === 'auto', idx = isAuto ? -1 : Math.min(sel, Math.max(0, lines.length - 1)), from = isAuto ? null : lines[idx] || { label: 'Main', number: '' };
+  const fromB = h('b', isAuto ? 'Automatic · local number' : from.label + ' · ' + fmt.phone(from.number));
   const disp = h('div.cl-num', { role: 'button', title: 'Tap to type or paste a number', onclick: async () => { const v = RC.ask ? await RC.ask('Number to call', '555-0100', fmt.phoneTyping(UI.typed), null, 'tel') : null; if (v != null) { UI.typed = String(v).replace(/[^\d*#]/g, '').slice(0, 15); sync(); } } });
-  const sub = h('div.cl-sub'), hits = h('div.cl-hits'), callBtn = h('button.cl-callbtn', { 'aria-label': 'Call', onclick: () => { const n = UI.typed; if (dg(n).length < 3) return ui.toast('Enter a number first', 'phone'); UI.typed = ''; sync(); place({ number: n, from }); } }, icon('phone.fill', 32));
+  const sub = h('div.cl-sub'), hits = h('div.cl-hits'), callBtn = h('button.cl-callbtn', { 'aria-label': 'Call', onclick: () => { const n = UI.typed; if (dg(n).length < 3) return ui.toast('Enter a number first', 'phone'); UI.typed = ''; sync(); place(from ? { number: n, from } : { number: n }); } }, icon('phone.fill', 32));
+  const autoWhy = h('div.cl-autowhy');
   const del = h('button.cl-del', { 'aria-label': 'Delete', onclick: () => { UI.typed = UI.typed.slice(0, -1); sync(); } }, icon('delete.left', 28));
   function sync() { const t = UI.typed, n = t.replace(/\D/g, '');
     disp.textContent = t ? (/[*#]/.test(t) || n.length > 10 ? t : fmt.phoneTyping(t)) : 'Enter a number'; disp.classList.toggle('empty', !t); del.style.visibility = t ? 'visible' : 'hidden'; callBtn.disabled = n.length < 3;
     const found = []; if (n.length >= 2) for (const c of data.customers || []) { if (c.archived) continue; const p = (c.contacts || []).find(x => dg(x.phone).includes(n)); if (p) found.push({ c, p }); if (found.length >= 12) break; }
+    if (isAuto) { const pk = n.length >= 3 ? C.pickLine(t) : null; fromB.textContent = pk ? pk.line.label + ' · ' + fmt.phone(pk.line.number) : 'Automatic · local number'; autoWhy.textContent = pk ? 'Automatic: ' + pk.why : 'Automatic: the number they called us on, or the closest local one'; }
     const exact = found.find(x => dg(x.p.phone) === dg(t)); sub.textContent = exact ? exact.p.name + ' · ' + exact.c.name : found.length > 2 ? plural(found.length, 'match') + (found.length >= 12 ? ' or more' : '') : '';
     fill(hits, exact ? [] : found.slice(0, 2).map(({ c, p }) => h('button.cl-hit', { onclick: () => { UI.typed = dg(p.phone); sync(); } }, ui.avatar(c.name, { size: 34 }), h('div.m', h('div.n', c.name), h('div.p', p.name + ' · ' + fmt.phone(p.phone))), ui.badge(PIPE.includes(c.lifecycle) ? 'Lead' : 'Customer', PIPE.includes(c.lifecycle) ? 'var(--blue)' : 'var(--green)')))); }
   sync();
   return h('div.cl-kp',
-    h('button.cl-from', { onclick: e => ui.menu(e.currentTarget, [{ header: 'Call from' }].concat(lines.map((l, i) => ({ label: l.label + ' · ' + fmt.phone(l.number), checked: i === idx, onTap: () => { UI.from[org.id] = i; page.refresh(); } })))) }, 'Call from', h('b', from.label + ' · ' + fmt.phone(from.number)), icon('chevron.up.chevron.down', 13)),
+    h('button.cl-from', { onclick: e => ui.menu(e.currentTarget, [{ header: 'Call from' }, { label: 'Automatic', subtitle: 'The number they called us on, or the closest local one', checked: isAuto, onTap: () => { UI.from[org.id] = 'auto'; page.refresh(); } }].concat(lines.map((l, i) => ({ label: l.label + ' · ' + fmt.phone(l.number), checked: i === idx, onTap: () => { UI.from[org.id] = i; page.refresh(); } })))) }, 'Call from', fromB, icon('chevron.up.chevron.down', 13)), isAuto && autoWhy,
     disp, sub, hits, pad(k => { if (UI.typed.length < 15) { UI.typed += k; sync(); } }), h('div.cl-go', h('span'), callBtn, del));
 }
 function recentView(page) { const cs = list().filter(c => !c.archived).slice(0, 25);
@@ -475,8 +495,9 @@ function whenCardCloses(fn) { let seen = false, n = 0; const t = setInterval(() 
 /** The caller card for a number nobody knows. Closing it ends the call and logs it. o: {number, to, by, quiet} */
 function callerCard(o) {
   const org = cur(), line = (org.lines || []).find(l => dg(l.number) === dg(o.to)) || (org.lines || [])[0] || { label: 'Main', number: o.to || '' }, number = norm(o.number), t0 = Date.now(); let ended = false, timerEl = null, notes = '';
-  const tick = setInterval(() => { if (timerEl) timerEl.textContent = 'On call · ' + mmss((Date.now() - t0) / 1000); }, 500);
-  const end = () => { if (ended) return; ended = true; clearInterval(tick); const dur = Math.max(1, Math.round((Date.now() - t0) / 1000)), st = ST(), n = notes.trim();
+  const tick = setInterval(() => { if (timerEl) timerEl.textContent = 'On call · ' + mmss((Date.now() - t0) / 1000); }, 500), R15 = WD.r15 || {};
+  R15.stashForCall && R15.stashForCall(); R15.callBegin && R15.callBegin({ dir: 'in', number, line, customerId: null, contact: null });
+  const end = () => { if (ended) return; ended = true; clearInterval(tick); R15.callEnd && R15.callEnd(); const dur = Math.max(1, Math.round((Date.now() - t0) / 1000)), st = ST(), n = notes.trim();
     const c = add({ dir: 'in', number, to: line.number, lineLabel: line.label, duration: dur, status: 'answered', by: me(), summary: n || 'Transcript and summary are processing…', transcript: [], note: n });
     if (!n) setTimeout(() => { c.summary = dur < st.threshold ? 'The call ended after ' + dur + ' s. Nobody spoke after the greeting.' : 'New caller asking what shredding costs for a small office. No record yet: create a lead to follow up.'; WD.changed(); }, 3500);
     WD.changed(); if (dur < st.threshold && !o.quiet) setTimeout(() => ui.banner({ title: 'Short call flagged · ' + dur + ' s', text: fmt.phone(number) + ' is on the Needs review list. Tap to call back.', icon: 'flag', color: 'var(--orange)', onTap: () => C.callBack(c) }), 700); };
@@ -559,4 +580,6 @@ WD.panel.addJump('Call log', () => C.openLog());
 WD.panel.addJump('Needs review (calls)', () => { UI.seg = 'review'; WD.nav.switchTab('dialer'); WD.changed(); });
 WD.panel.addJump('AI call review', () => { if (!WD.aip || !WD.aip.on()) return ui.toast('Turn AI Premium on in the panel first', 'sparkles'); WD.nav.switchTab('dialer'); WD.nav.push(C.reviewSpec()); });
 WD.panel.addJump('Phone and calls settings', () => { WD.nav.switchTab('settings'); WD.nav.push(C.settingsSpec()); });
+/* 5.1: view state kept separately for each business (core.js app.uiState). */
+if (WD.app.uiState) { WD.app.uiState('dialer', UI); }
 })();

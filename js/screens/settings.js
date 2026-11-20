@@ -71,7 +71,7 @@ function root() {
       WD.rc && WD.rc.displaySection(push),
       WD.aip && WD.aip.settingsSection(push, X14('AI Premium')),
       ui.section('Company',
-        ui.row({ icon: 'building', iconColor: 'var(--indigo)', title: 'Business', subtitle: 'Switch between the businesses you work for', detail: o.name, chevron: true, onTap: () => push(orgsSpec()) }),
+        ui.row({ icon: 'building', iconColor: 'var(--indigo)', title: 'Switch business', subtitle: data.orgs.length > 2 ? 'Choose which of your ' + data.orgs.length + ' businesses to work in' : 'Switch between the businesses you work for', detail: o.name, chevron: true, onTap: () => push(orgsSpec()) }),
         WD.rc && WD.rc.companyRows(push, gated, () => push(integrationsSpec()), INTEG.filter(connected).length),
         ui.row({ icon: 'lock', iconColor: 'var(--gray)', title: 'Sign-in and security', detail: (WD.signInPolicies.find(x => x.value === S.signInPolicy) || {}).label, chevron: true, onTap: () => WD.admin && push(WD.admin.signInSpec()) }),
         X14('Company'),
@@ -160,11 +160,11 @@ function passwordSheet() {
     render: () => ui.list(ui.section({ footer: 'At least 8 characters. Other devices are signed out; this iPhone stays signed in.' }, field('cur', 'Current', true), field('next', 'New'), field('again', 'Confirm'))) }, { detent: 'medium' });
   async function submit() { if (await ui.run('Updating password…', null, { done: 'Password changed' })) sheet.close(); }
 }
-const orgsSpec = () => ({ title: 'Business', render: () => ui.list(ui.section({ showFooter: true, footer: 'Routes, jobs, customers and team are separate for each business. When you switch, the one you leave stays exactly as you left it: the same screen, the same half-filled form. Calls from Quo open the right business by themselves (Settings → Company → Phone and calls).' },
+const orgsSpec = () => ({ title: 'Business', render: () => ui.list(ui.section({ showFooter: true, footer: 'Routes, jobs, customers and team are separate for each business. When you switch, the one you leave stays exactly as you left it: the same screen, the same half-filled form. Switching from here leaves this business on the screen you were using before you opened Settings, so each one comes back where you were working. Calls from Quo open the right business by themselves (Settings → Company → Phone and calls).' },
   data.orgs.map(o => { const cur = o.id === org().id; return ui.row({ leading: ui.avatar(o.name, { size: 36, icon: 'building' }), title: o.name, subtitle: [WD.roles[o.role] ? WD.roles[o.role].title : o.role, plural(o.trucks, 'truck'), o.plan].join(' · '),
     trailing: cur ? icon('checkmark', 20, 'var(--tint)') : null, onTap: cur ? null : () => switchOrg(o) }); }))) });
 /* The business you leave is parked exactly as it is (open screens, forms, scroll positions) and comes back that way. */
-async function switchOrg(o) { if (await ui.run('Switching to ' + o.name + '…', null, { min: 500, max: 900 })) { WD.app.switchOrg(o.id); ui.toast('Now in ' + o.name, 'building'); } }
+async function switchOrg(o) { if (await ui.run('Switching to ' + o.name + '…', null, { min: 500, max: 900 })) { WD.app.leaveSwitcher && WD.app.leaveSwitcher(); WD.app.switchOrg(o.id); ui.toast('Now in ' + o.name + ' · on the screen you left it on', 'building', 2600); } }
 
 /* ---------- Routes (personal preferences + admin defaults) ---------- */
 function routesSpec() {

@@ -412,3 +412,18 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .phone.desktop .page-body:not(.noscroll) > .list, .phone.desktop .page-body:not(.noscroll) > .large-title, .phone.desktop .page-body:not(.noscroll) > div:not(.wide) { max-width: 860px; margin-left: auto; margin-right: auto; }
 .phone.desktop .page-body > .wide { max-width: none; }
 .phone.desktop .banner { left: auto; right: 18px; width: 380px; }
+
+/* ---------- 5.1: desktop workspace (several modules side by side) ---------- */
+.tab-split, .side-work, .pane-bar { display: none; }
+.phone.desktop .tab .tab-split { display: grid; place-items: center; width: 26px; height: 26px; margin-left: auto; border-radius: 7px; color: var(--label2); opacity: 0; flex: none; }
+.phone.desktop .tab .tab-split .ic { width: 15px !important; height: 15px !important; }
+.phone.desktop .tab:hover .tab-split, .phone.desktop .tab:focus-visible .tab-split { opacity: 1; } .phone.desktop .tab .tab-split:hover { background: var(--fill2); color: var(--tint); }
+.phone.desktop .tab .tab-badge + .tab-split, .phone.desktop .tab .tab-split + .tab-badge { margin-left: 4px; }
+.phone.desktop .tab.open:not(.active) { background: color-mix(in srgb, var(--fill3) 55%, transparent); }
+.phone.desktop .side-work { display: flex; align-items: center; gap: 10px; margin-top: auto; border: 0; border-top: .5px solid var(--sep); background: none; color: var(--label); font: inherit; font-size: 15px; font-weight: 600; text-align: left; padding: 12px 12px 6px; cursor: pointer; flex: none; }
+.phone.desktop .side-work small { display: block; font-size: 12px; font-weight: 500; color: var(--label2); }
+.phone.desktop .tabpanes.multi { display: flex; }
+.phone.desktop .tabpanes.multi > .navstack.active { position: relative; inset: auto; flex: 1 1 0; min-width: 0; margin-top: 30px; overflow: visible; clip-path: inset(-30px 0 0 0); border-left: .5px solid var(--sep); }
+.phone.desktop .tabpanes.multi > .navstack > .pane-bar { display: flex; position: absolute; left: 0; right: 0; top: -30px; height: 30px; box-sizing: border-box; align-items: center; padding: 0 4px 0 12px; font-size: 13px; font-weight: 600; background: var(--fill3); border-bottom: .5px solid var(--sep); color: var(--label2); z-index: 3; }
+.phone.desktop .tabpanes.multi > .navstack.focus > .pane-bar { background: color-mix(in srgb, var(--tint) 18%, var(--cell)); color: var(--label); box-shadow: inset 0 2px 0 var(--tint); }
+.pane-bar span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .pane-bar button { border: 0; background: none; color: inherit; width: 28px; height: 26px; border-radius: 6px; cursor: pointer; display: grid; place-items: center; } .pane-bar button:hover { background: var(--fill2); }

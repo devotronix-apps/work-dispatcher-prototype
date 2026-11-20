@@ -428,4 +428,6 @@ WD.panel.addAction('Driver leaves a stop without billing', () => {
   const r = q.visibleRoutes()[0], j = r && q.stopList(r.id, today).find(x => !WD.closed[x.status]); if (!j) return ui.toast('No open stops', 'info.circle');
   api.setStatus(j.id, 'completed', 'left geofence'); ui.banner({ title: q.routeName(r), text: j.title + ' was completed but not billed — it stays bright on the board until it is.', icon: 'dollarsign.circle', color: 'var(--orange)' });
 });
+/* 5.1: view state kept separately for each business (core.js app.uiState). */
+if (WD.app.uiState) { WD.app.uiState('invoices', IV); }
 })();

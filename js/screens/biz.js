@@ -324,4 +324,6 @@ WD.panel.addJump('Business type and wording', () => openSet(BZ.wordingSpec()));
 WD.panel.addJump('Fleet and compliance', () => { WD.nav.switchTab('maintenance'); WD.nav.push(BZ.fleetSpec('trucks')); });
 WD.panel.addJump('Load sheet', () => { WD.nav.switchTab('board'); WD.nav.push(BZ.loadSpec(S.board.day)); });
 WD.panel.addJump('Route performance', () => { WD.nav.switchTab('reports'); WD.nav.push(BZ.perfSpec()); });
+/* 5.1: view state kept separately for each business (core.js app.uiState). */
+if (WD.app.uiState) { WD.app.uiState('biz.miles', ME); WD.app.uiState('biz.perf', PF); }
 })();

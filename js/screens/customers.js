@@ -686,8 +686,10 @@ function simulateCall(customerId) {
 }
 function callerCard(c, p, number) {
   const started = Date.now(), line = c ? lineFor('Main') : lineFor('Google Ads'); let timerEl = null, ended = false;
-  const tick = setInterval(() => { if (timerEl) timerEl.textContent = 'On call · ' + mmss((Date.now() - started) / 1000); }, 500);
-  const end = () => { if (ended) return; ended = true; clearInterval(tick); if (!c || !q.customer(c.id)) return;
+  const tick = setInterval(() => { if (timerEl) timerEl.textContent = 'On call · ' + mmss((Date.now() - started) / 1000); }, 500), R15 = WD.r15 || {};
+  /* 5.1: whatever was open is set aside as a draft, and the rest of the app knows who is on the line (r15.js). */
+  R15.stashForCall && R15.stashForCall(); R15.callBegin && R15.callBegin({ dir: 'in', number, line: { label: line.channel, number: line.number }, customerId: c ? c.id : null, contact: p ? p.name : null });
+  const end = () => { if (ended) return; ended = true; clearInterval(tick); R15.callEnd && R15.callEnd(); if (!c || !q.customer(c.id)) return;
     const i = addI({ customerId: c.id, type: 'call', dir: 'in', at: started, duration: Math.max(20, Math.round((Date.now() - started) / 1000)), contact: p.name, number, line, by: me(), summary: 'Transcript and summary are processing…', transcript: [] });
     setTimeout(() => { i.summary = 'Asked to confirm the next pickup and whether the driver can take a few extra boxes. Told them yes, at the per-box rate.'; i.transcript = [[p.name, 'Hi, just checking you’re still coming on the next visit?'], [me(), 'Yes, you’re on the schedule.'], [p.name, 'Can the driver take a few extra boxes?'], [me(), 'Sure, those are $8 a box.']]; WD.changed(); }, 4000); WD.changed(); };
   const leave = (sheet, fn) => { sheet.close(); setTimeout(fn, 420); };
@@ -705,6 +707,7 @@ function callerCard(c, p, number) {
       return [head, h('div.cu-btns', ui.button('Open customer', { kind: 'tinted', small: true, block: false, onTap: () => leave(sheet, () => { WD.nav.switchTab('customers'); openDetail(c.id); }) }),
           ui.button('New job', { kind: 'tinted', small: true, block: false, disabled: !WD.can('jobs.edit'), onTap: () => leave(sheet, () => newJob(c.id)) }), WD.can('crm.edit') && ui.button('Add note', { kind: 'tinted', small: true, block: false, onTap: () => addNote(c.id) })),
         WD.badDebtBanner && WD.badDebtBanner(c.id),
+        R15.callBrief && R15.callBrief(c, { number, incoming: true }),
         WD.x.contactSummary(c, timeline(c.id), describe),
         ui.list(ui.section(null, ui.row({ title: 'Last service', detail: c.stats.lastService ? fmt.day(c.stats.lastService, 'rel') : 'Never' }), WD.can('billing.view') && ui.row({ title: 'Balance', detail: h('span', { style: { color: owedBy(c) > 0 ? 'var(--red)' : null } }, fmt.money(owedBy(c))) }), ui.row({ title: 'Stage', trailing: lcBadge(c) })),
           ui.section('Open and upcoming jobs', up.length ? up.map(jobRow) : ui.row({ title: 'Nothing scheduled' })), ui.section({ header: 'Recent history', footer: WD.can('comms.view') ? 'Tap a call to read its transcript and summary.' : null }, timeline(c.id).slice(0, 4).map(tlRow)))];
@@ -899,4 +902,6 @@ WD.panel.addAction('Incoming call (unknown number)', () => simulateCall(null));
 WD.panel.addJump('Customer record', () => { WD.nav.switchTab('customers'); openDetail('c1'); });
 WD.panel.addJump('Leads', () => WD.can('leads.view') ? WD.nav.switchTab('crm') : showSeg('leads'));
 WD.panel.addJump('Tasks', () => showSeg('tasks'));
+/* 5.1: view state kept separately for each business (core.js app.uiState). */
+if (WD.app.uiState) { WD.app.uiState('customers', R); }
 })();

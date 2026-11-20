@@ -27,15 +27,20 @@ WD.css(`
 .bd-fold-list { max-height: 45vh; overflow-y: auto; } .bd-fold-list[hidden] { display: none; } .bd-fold-list .bd-strip { padding-left: 22px; } .bd-fold-list .bd-strip::after { inset: 0; }
 .bd-mseg { padding: 8px 10px 6px; }
 /* 5.0: Board ↔ Map switch in the top bar, the embedded map, the desktop split, calendar-time cards and capacity chips. */
-.bd-view { flex: none; display: flex; align-items: center; height: 44px; margin: 0 3px; }
-.bd-view button { position: relative; width: 34px; height: 32px; padding: 0; border: 0; background: var(--fill3); color: var(--label2); display: grid; place-items: center; cursor: pointer; }
-.bd-view button::after { content: ''; position: absolute; inset: -6px 0; }
-.bd-view button:first-child { border-radius: 8px 0 0 8px; } .bd-view button:last-child { border-radius: 0 8px 8px 0; }
-.bd-view button.on { background: var(--tint); color: #fff; }
-/* iPhone: the same switch as one 44-point control (both halves show, the current one filled); a tap goes to the other view. */
-button.bd-view.one { width: 44px; margin: 0; padding: 0; border: 0; background: none; justify-content: center; cursor: pointer; }
-.bd-view.one span { width: 21px; height: 30px; display: grid; place-items: center; background: var(--fill3); color: var(--label2); }
-.bd-view.one span:first-child { border-radius: 8px 0 0 8px; } .bd-view.one span:last-child { border-radius: 0 8px 8px 0; } .bd-view.one span.on { background: var(--tint); color: #fff; }
+.bd-vbtn { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 34px; margin: 0 6px; padding: 0 14px 0 11px; border: 0; border-radius: 17px; background: var(--tint); color: #fff; font: inherit; font-size: 15px; font-weight: 600; letter-spacing: -.2px; cursor: pointer; position: relative; white-space: nowrap; }
+.bd-vbtn::after { content: ''; position: absolute; inset: -5px 0; } .bd-vbtn:active { filter: brightness(.9); }
+/* iPhone: the same button floats over the bottom of the board or map, centered, 46 points tall. */
+.bd-vbtn.float { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); z-index: 7; height: 46px; margin: 0; padding: 0 22px 0 18px; border-radius: 23px; font-size: 17px; background: color-mix(in srgb, var(--tint) 86%, #000); box-shadow: 0 4px 16px rgba(0,0,0,.34), 0 0 0 1.5px rgba(255,255,255,.55); transition: bottom .22s ease; }
+.bd-holder { flex: 1; min-height: 0; min-width: 0; position: relative; display: flex; flex-direction: column; } .bd-holder .bd-col { padding-bottom: 72px; }
+/* 5.1: a wide column (one route on an iPhone, or a computer) gets a bigger name with the day's notes beside it instead of above the stops. */
+.bd-colhead.roomy { flex-wrap: nowrap; align-items: stretch; gap: 8px; padding: 5px 8px; min-height: 48px; }
+.bd-hname { display: flex; flex-wrap: wrap; align-items: center; align-content: center; gap: 1px 6px; min-width: 0; flex: 0 1 auto; max-width: 54%; } .bd-hname.alone { max-width: none; flex: 1; }
+.bd-colhead.roomy span.n { font-size: 17px; line-height: 21px; font-weight: 700; letter-spacing: -.3px; white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.bd-colhead.roomy.single span.n { font-size: 21px; line-height: 25px; letter-spacing: -.4px; } .bd-colhead.roomy .dot { width: 11px; height: 11px; }
+.bd-colhead.roomy span.c { margin-left: 0; white-space: nowrap; } .bd-colhead.roomy.single .bd-hnotes:not(.many) .bd-rnote { -webkit-line-clamp: 3; } .bd-colhead.roomy .bd-offrow { flex-basis: auto; order: 0; }
+.bd-hnotes { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 3px; }
+.bd-hnotes .bd-rnote, .bd-hnotes .bd-chip { margin: 0; } .bd-hnotes .bd-rnote { padding: 3px 6px; font-weight: 500; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.bd-hnotes.many .bd-rnote { -webkit-line-clamp: 1; } .bd-hnotes .bd-rnote b { font-weight: 800; }
 .bd-mapwrap { flex: 1; min-height: 0; min-width: 0; position: relative; display: flex; flex-direction: column; border-top: .5px solid var(--sep); }
 .bd-split { flex: 1; min-height: 0; display: flex; } .bd-split > .bd-wrap { flex: 0 0 60%; min-width: 0; } .bd-split > .bd-mapwrap { border-left: .5px solid var(--sep); }
 .bd-time { font-size: 13px; line-height: 16px; font-weight: 800; letter-spacing: -.1px; font-variant-numeric: tabular-nums; }
@@ -174,10 +179,29 @@ const jobsScreen = () => WD.screens.jobs || {};
 const ops2 = () => WD.ops2 || {}, calendar = () => !!(WD.r14 && WD.r14.calendar && WD.r14.calendar());
 if (S.board.view == null) S.board.view = 'board';   // 'board' | 'map': what Dispatch shows under the date bar
 const mapOnly = () => S.board.view === 'map' && S.board.mode !== 'month', splitView = () => !!S.desktop && !!S.board.split && S.board.view !== 'map' && S.board.mode !== 'month';
+const canMap = () => S.board.mode !== 'month' && !!(WD.screens.map && WD.screens.map.create);
+/** The Board ↔ Map button: shows the icon and name of the other view, and a tap goes there. */
+function viewBtn(floating) { const toMap = S.board.view !== 'map';
+  return h('button.bd-vbtn' + (floating ? '.float' : ''), { 'aria-label': toMap ? 'Showing the board. Switch to the map' : 'Showing the map. Switch to the board', title: toMap ? 'Show the map' : 'Show the board', onclick: () => setView(toMap ? 'map' : 'board') }, icon(toMap ? 'map' : 'columns', floating ? 19 : 17), h('span', toMap ? 'Map' : 'Board')); }
+/* On the map the button sits just above the map's own bottom card (the day's summary, or the stop that is selected) and follows it as the
+   card grows, shrinks or goes away, so it never covers what the card says. On the board it stays at the bottom edge. */
+let pillWatch = null;
+const viewPill = () => { if (pillWatch) { pillWatch.disconnect(); pillWatch = null; } if (S.desktop || !canMap() || S.board.select) return null; const pill = viewBtn(true); if (!mapOnly()) return pill;
+  const place = () => { const holder = pill.parentNode, card = holder && holder.querySelector('.mp-bottom'); if (!holder) return; let up = 12;
+    if (card && card.offsetHeight > 4 && getComputedStyle(card).display !== 'none') up = Math.max(12, Math.round((holder.getBoundingClientRect().bottom - card.getBoundingClientRect().top) / WD.scale()) + 10);
+    pill.style.bottom = up + 'px'; };
+  requestAnimationFrame(() => { const holder = pill.parentNode; if (!holder) return; place();
+    pillWatch = new MutationObserver(() => requestAnimationFrame(place)); pillWatch.observe(holder, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'hidden'] });
+    if (window.ResizeObserver) { const ro = new ResizeObserver(place), card = holder.querySelector('.mp-bottom'); if (card) ro.observe(card); const mo = pillWatch; pillWatch = { disconnect() { mo.disconnect(); ro.disconnect(); } }; } });
+  return pill; };
 function setView(v) { const b = S.board; if (b.view === v) return; b.view = v; if (v === 'map' && b.mode === 'month') b.mode = 'routes'; refresh(); }
 /* The live map inside Dispatch: made once, then only told to update. It follows the board's day and routes. */
 let emb = null, embWrap = null, embKey = '';
-WD.on('orgSwap', () => { if (emb) { emb.destroy(); emb = null; embWrap = null; } });
+/* Each business keeps its own scroll position, open warning list and embedded map. */
+const perOrg = {};
+WD.on('orgSwap', e => { if (emb) { emb.destroy(); emb = null; embWrap = null; }
+  perOrg[e.from] = { saved: scroller && scroller.isConnected && scroller.offsetParent && scroller.placed ? { top: scroller.scrollTop, left: scroller.scrollLeft } : saved, stripsOpen };
+  const p = perOrg[e.to] || { saved: { top: null, left: 0 }, stripsOpen: false }; saved = p.saved; stripsOpen = p.stripsOpen; scroller = null; page = null; });
 function mapPane() {
   const M = WD.screens.map, b = S.board; if (!M || !M.create) return h('div.bd-mapwrap', ui.empty({ icon: 'map', title: 'The map isn’t available' }));
   if (!emb) { emb = M.create(); embWrap = h('div.bd-mapwrap', emb.mount()); embKey = ''; }
@@ -193,7 +217,7 @@ function columns() {
 }
 function step(n) { const b = S.board; if (b.mode === 'month') { const d = D.parse(b.day); d.setDate(1); d.setMonth(d.getMonth() + n); b.day = D.key(d); } else b.day = D.add(b.day, n); keep(undefined, 0); refresh(); }
 /** Choose the scroll position for the next render (undefined = stay where we are, null = back to the top). */
-function keep(top, left) { const live = scroller && scroller.isConnected; saved = { top: top === undefined ? (live ? scroller.scrollTop : saved.top) : top, left: left === undefined ? (live ? scroller.scrollLeft : saved.left) : left }; scroller = null; }
+function keep(top, left) { const live = scroller && scroller.isConnected && !!scroller.offsetParent && !!scroller.placed; saved = { top: top === undefined ? (live ? scroller.scrollTop : saved.top) : top, left: left === undefined ? (live ? scroller.scrollLeft : saved.left) : left }; scroller = null; }
 function refresh() { if (page && page.el.isConnected) page.refresh(); }
 
 /* ---------- Header rows ---------- */
@@ -203,7 +227,7 @@ function topBar() {
   if (b.mode === 'month') { title = fmt.day(b.day, 'month'); sub = ''; }
   else if (b.mode === 'days' && b.dayCount > 1 && !mapOnly()) { title = fmt.day(b.day, 'md') + ' – ' + fmt.day(D.add(b.day, b.dayCount - 1), 'md'); sub = ''; }
   else if (sub === title) sub = '';
-  const route = b.mode === 'days' && q.route(b.routeId);
+  const route = b.mode === 'days' && (b.dayCount > 1 || mapOnly()) && q.route(b.routeId);
   const btn = (ic, label, fn, extra) => h('button.nav-btn', { 'aria-label': label, onclick: e => fn(e.currentTarget) }, extra || icon(ic, 23));
   const unit = b.mode === 'month' ? 'month' : 'day';
   /* Six 44-point buttons and the date do not fit across an iPhone, so AutoRoute is the first tool in the menu (and in each route heading's menu). */
@@ -211,26 +235,30 @@ function topBar() {
     h('div.bd-date', btn('chevron.left', 'Previous ' + unit, () => step(-1), icon('chevron.left', 20)),
       h('button.t' + (title.length > 11 ? '.long' : ''), { 'aria-label': 'Go to date, showing ' + title, onclick: pickDate }, h('b', title), route ? h('small.rt', ui.dot(q.routeColor(route)), q.routeName(route)) : sub && h('small' + (b.day === today ? '.today' : ''), sub)),
       btn('chevron.right', 'Next ' + unit, () => step(1), icon('chevron.right', 20))),
-    /* Board ↔ Map: the map of the same day and routes takes the board's place. On an iPhone the switch takes Search's spot; Search is first in the menu. */
-    b.mode !== 'month' && WD.screens.map && WD.screens.map.create && (view => S.desktop
-      ? h('div.bd-view', { role: 'group', 'aria-label': 'Show the board or the map' }, [['board', 'columns', 'Board'], ['map', 'map', 'Map']].map(([v, ic, label]) => h('button' + (view === v ? '.on' : ''), { 'aria-label': label, title: label, 'aria-pressed': String(view === v), onclick: () => setView(v) }, icon(ic, 18))))
-      : h('button.bd-view.one', { role: 'switch', 'aria-checked': String(view === 'map'), 'aria-label': view === 'map' ? 'Showing the map. Switch to the board' : 'Showing the board. Switch to the map', title: view === 'map' ? 'Show the board' : 'Show the map', onclick: () => setView(view === 'map' ? 'board' : 'map') }, h('span' + (view === 'board' ? '.on' : ''), icon('columns', 14)), h('span' + (view === 'map' ? '.on' : ''), icon('map', 14))))(b.view === 'map' ? 'map' : 'board'),
+    /* Board ↔ Map (5.1): one button that names the view a tap goes to. On a computer it sits here in the bar; on an iPhone it floats over the
+       bottom of the board (viewPill), where there is room for a label, and the date gets the width back. */
+    S.desktop && canMap() && viewBtn(),
     (S.desktop || b.mode === 'month') && btn('magnifyingglass', 'Search', () => jobsScreen().openSearch && jobsScreen().openSearch()),
     btn(null, 'Today', () => { b.day = today; keep(null); refresh(); }, h('span.bd-today', D.parse(today).getDate())),
     WD.can('jobs.edit') && btn('plus', 'New job', () => jobsScreen().openEditor && jobsScreen().openEditor({ day: b.day, routeId: b.mode === 'days' ? b.routeId : (q.visibleRoutes()[0] || q.routes()[0]).id })),
     btn('ellipsis.circle', 'View, routes and more · ' + ({ routes: 'Routes', days: 'Days', month: 'Month' })[b.mode] + ' view', el => boardMenu(el)));
 }
-const syncItems = () => [!S.desktop && S.board.mode !== 'month' && { label: 'Search jobs…', icon: 'magnifyingglass', onTap: () => jobsScreen().openSearch && jobsScreen().openSearch() },
-  WD.aip && WD.aip.on() && WD.can('jobs.edit') && ops2().routeReviewSpec && { label: 'AI route review…', subtitle: 'How to schedule and run the recurring routes', icon: 'sparkles', onTap: () => WD.nav.push(ops2().routeReviewSpec()) },
+/* The day's tools. The menu shows the ones used most and ends in “More…”, which opens the rest as its own menu, so nothing is hidden below a scroll. */
+const mainItems = anchor => [!S.desktop && S.board.mode !== 'month' && { label: 'Search jobs…', icon: 'magnifyingglass', onTap: () => jobsScreen().openSearch && jobsScreen().openSearch() },
   ops2().activePlan && ops2().activePlan() && { label: 'Route plan in progress', subtitle: ops2().planProgress(ops2().activePlan()), icon: 'checkmark.circle', onTap: () => WD.nav.push(ops2().planSpec(ops2().activePlan())) },
   WD.can('jobs.edit') && S.board.mode !== 'month' && { label: 'AutoRoute…', subtitle: 'Work out the best stop order', icon: 'sparkles', onTap: () => jobsScreen().openAutoRoute && jobsScreen().openAutoRoute(S.board.mode === 'days' ? S.board.routeId : null, { day: S.board.day }) },
   WD.can('jobs.edit') && WD.r9 && S.board.mode !== 'month' && { label: 'Select jobs to move…', subtitle: 'Several jobs to another route, day or both', icon: 'checkmark.circle', onTap: () => { S.board.select = new Set(); refresh(); } },
-  WD.can('jobs.edit') && WD.r11 && S.board.mode !== 'month' && { label: 'Note for the driver or office…', icon: 'note', onTap: () => WD.r11.pickNoteRoute(S.board.mode === 'days' ? [S.board.routeId] : q.visibleRoutes().map(r => r.id), S.board.day) },
-  WD.can('jobs.edit') && WD.ops && { label: 'Move a route’s jobs…', subtitle: 'Unfinished jobs to another day, another route, or both', icon: 'arrow.left.arrow.right', onTap: () => WD.ops.moveSheet({ routeId: S.board.mode === 'days' ? S.board.routeId : q.visibleRoutes().length === 1 ? q.visibleRoutes()[0].id : (q.visibleRoutes()[0] || q.routes()[0]).id, from: S.board.day }) },
+  { label: 'More…', icon: 'ellipsis.circle', onTap: () => { if (anchor.isConnected) ui.menu(anchor, [{ header: 'More for this day' }, ...moreItems()]); } }];
+const moreItems = () => [
+  WD.can('jobs.edit') && WD.r11 && S.board.mode !== 'month' && { label: 'Add a note for the driver or office…', icon: 'note', onTap: () => WD.r11.pickNoteRoute(S.board.mode === 'days' ? [S.board.routeId] : q.visibleRoutes().map(r => r.id), S.board.day) },
+  { label: 'Pending changes' + (S.pending.length ? ' (' + S.pending.length + ')' : ''), icon: 'sync', onTap: () => WD.screens.settings && WD.screens.settings.openPending && WD.screens.settings.openPending() },
+  { label: 'Refresh', icon: 'arrow.clockwise', onTap: async () => { if (S.offline) return ui.toast('Offline — showing saved jobs', 'wifi.slash'); ui.toast('Checking for changes…'); await WD.delay(900, 1400); ui.toast('Up to date', 'checkmark'); } },
+  WD.aip && WD.aip.on() && WD.can('jobs.edit') && ops2().routeReviewSpec && { label: 'AI route review…', subtitle: 'How to schedule and run the recurring routes', icon: 'sparkles', onTap: () => WD.nav.push(ops2().routeReviewSpec()) },
   WD.biz && S.board.mode !== 'month' && { label: 'Load sheet and truck capacity', icon: 'shippingbox', onTap: () => WD.nav.push(WD.biz.loadSpec(S.board.day)) },
-  WD.r8 && { label: 'Postponed, no date yet' + (WD.r8.postponed().length ? ' (' + WD.r8.postponed().length + ')' : ''), icon: 'clock', onTap: () => WD.r8.openPostponed() },
-  WD.can('jobs.edit') && WD.ops && { label: 'Holidays and schedule changes', icon: 'calendar', onTap: () => WD.ops.openSchedule() }, { label: 'Pending changes' + (S.pending.length ? ' (' + S.pending.length + ')' : ''), icon: 'sync', onTap: () => WD.screens.settings && WD.screens.settings.openPending && WD.screens.settings.openPending() },
-  { label: 'Refresh', icon: 'arrow.clockwise', onTap: async () => { if (S.offline) return ui.toast('Offline — showing saved jobs', 'wifi.slash'); ui.toast('Checking for changes…'); await WD.delay(900, 1400); ui.toast('Up to date', 'checkmark'); } }];
+  WD.can('jobs.edit') && WD.ops && { label: 'Holidays and schedule changes', icon: 'calendar', onTap: () => WD.ops.openSchedule() },
+  'divider',
+  WD.can('jobs.edit') && WD.ops && { label: 'Move a route’s jobs…', subtitle: 'Unfinished jobs to another day, another route, or both', icon: 'arrow.left.arrow.right', onTap: () => WD.ops.moveSheet({ routeId: S.board.mode === 'days' ? S.board.routeId : q.visibleRoutes().length === 1 ? q.visibleRoutes()[0].id : (q.visibleRoutes()[0] || q.routes()[0]).id, from: S.board.day }) },
+  WD.r8 && { label: 'Postponed, no date yet' + (WD.r8.postponed().length ? ' (' + WD.r8.postponed().length + ')' : ''), icon: 'clock', onTap: () => WD.r8.openPostponed() }];
 /* One menu holds what used to be a second header row: the view (Routes / Days / Month), which routes show, how much each card shows, and the day's tools. */
 function boardMenu(anchor) {
   const b = S.board; let m;
@@ -249,7 +277,7 @@ function boardMenu(anchor) {
         seg([1, 2, 3, 4, 5].filter(n => n <= Math.max(3, Math.min(5, q.visibleRoutes().length))).map(n => ({ value: n, label: String(n) })).concat({ value: 'all', label: 'All' }), b.cols, v => { b.cols = v; keep(undefined, 0); refresh(); })])]),
     ...(S.desktop && b.mode !== 'month' && WD.screens.map && WD.screens.map.create ? [{ label: 'Board and map side by side', subtitle: 'The map of the same day on the right', icon: 'map', checked: !!b.split && b.view !== 'map', onTap: () => { b.split = !(b.split && b.view !== 'map'); b.view = 'board'; keep(undefined, 0); refresh(); } }] : []),
     ...(b.mode !== 'month' ? [{ header: 'Card detail · or pinch the board' }, seg(DETAIL.map((label, value) => ({ value, label: label.replace(' detail', '') })), b.detail, v => setDetail(v, true))] : []),
-    'divider', ...syncItems(),
+    'divider', ...mainItems(anchor),
   ], { compact: true });
 }
 /* Warning lines: one shows as it is; two or more fold into a single row ("3 issues · Review") that opens the list in place.
@@ -387,8 +415,17 @@ function grid() {
   layout = { cols, colW, cap: colW < 84 ? 0 : colW < 110 ? 1 : 2 };
   /* Calendar scheduling lists each day by start time; jobs with no time come last under “No time set”. Stop order is untouched otherwise. */
   const lists = cols.map(c => ({ notes: q.jobsFor(c.routeId, c.day).filter(j => j.allDay), stops: cal && O2.byTime ? O2.byTime(q.stopList(c.routeId, c.day)) : q.stopList(c.routeId, c.day) }));
-  const head = (showHead || timeGrid) && h('div.bd-head', h('div.bd-hrow', timeGrid && h('div', { style: { width: gutter + 'px', flex: 'none' } }), cols.map((c, i) => h('div.bd-colhead' + (c.today && b.mode === 'days' ? '.today' : ''), { style: { width: colW + 'px' }, role: 'button', tabindex: '0', 'aria-label': c.title + ', ' + lists[i].stops.filter(j => !WD.calledOff(j)).length + ' stops. Notes, driver and AutoRoute for this ' + (b.mode === 'days' ? 'day' : 'route'), onclick: e => { if (e.currentTarget.dataset.held) { delete e.currentTarget.dataset.held; return; } colMenu(e.currentTarget, c); }, onpointerdown: e => holdHead(e, c), oncontextmenu: e => e.preventDefault() },
-    c.color && ui.dot(c.color), h('span.n', c.title), WD.rc && WD.rc.headTag && WD.rc.headTag(c), (t => t && h('span.bd-offrow', h('span.bd-off', { title: WD.timeOffLabel(t) }, offText(c, t))))(offFor(c)), (m => m && h('span.bd-offrow', h('span.bd-off.' + m.kind, { title: m.label }, m.label)))(WD.dayMark && WD.dayMark(c.routeId, c.day)), (n => n && h('span.bd-offrow', n))(O2.capChip && O2.capChip(c.routeId, c.day)), h('span.c', (d => d ? 'Leave ' + shortT(d.depart) + ' · ' : '')(data.routeDays[c.routeId + '|' + c.day]) + lists[i].stops.filter(j => !WD.calledOff(j)).length)))));
+  /* A wide column has room beside the name: the name is larger and the day's notes sit to its right, so the stops start higher. */
+  const roomy = colW >= 260 && !timeGrid, single = cols.length === 1;
+  const noteNodes = (c, i, inHead) => [(n => n && h('div.bd-rnote', { 'data-note': i, role: 'button', tabindex: '0', onclick: e => { e.stopPropagation(); if (WD.can('jobs.edit')) WD.r11.editNote(c.routeId, c.day); } }, inHead ? h('b', n.to === 'office' ? 'Office: ' : n.to === 'driver' ? 'Driver: ' : 'Driver and office: ') : h('small', n.to === 'office' ? 'Note for the office' : n.to === 'driver' ? 'Note for the driver' : 'Note for the driver and office'), n.text))(WD.r11 && WD.r11.noteFor(c.routeId, c.day)),
+    lists[i].notes.map(j => h('div.bd-chip', { style: { '--c': q.routeColor(j.routeId) }, role: 'button', tabindex: '0', 'aria-label': 'Note for the day, ' + j.title, onclick: e => { e.stopPropagation(); jobsScreen().openDetails && jobsScreen().openDetails(j.id); } }, icon('note', 11), j.title))].flat().filter(Boolean);
+  const anyNotes = roomy && cols.some((c, i) => noteNodes(c, i, true).length), headOn = showHead || timeGrid || (roomy && (b.mode === 'routes' || anyNotes));
+  const headCell = (c, i) => { const n = lists[i].stops.filter(j => !WD.calledOff(j)).length, name = single && b.mode === 'days' ? q.routeName(c.routeId) : c.title, hn = roomy ? noteNodes(c, i, true) : [];
+    const parts = [(c.color || (single && b.mode === 'days')) && ui.dot(c.color || q.routeColor(c.routeId)), h('span.n', name), WD.rc && WD.rc.headTag && WD.rc.headTag(c), (t => t && h('span.bd-offrow', h('span.bd-off', { title: WD.timeOffLabel(t) }, offText(c, t))))(offFor(c)), (m => m && h('span.bd-offrow', h('span.bd-off.' + m.kind, { title: m.label }, m.label)))(WD.dayMark && WD.dayMark(c.routeId, c.day)), (x => x && h('span.bd-offrow', x))(O2.capChip && O2.capChip(c.routeId, c.day)),
+      h('span.c', (d => d ? 'Leave ' + shortT(d.depart) + ' · ' : '')(data.routeDays[c.routeId + '|' + c.day]) + (roomy ? n + (n === 1 ? ' stop' : ' stops') : n))];
+    return h('div.bd-colhead' + (c.today && b.mode === 'days' && !single ? '.today' : '') + (roomy ? '.roomy' : '') + (roomy && single ? '.single' : ''), { style: { width: colW + 'px' }, role: 'button', tabindex: '0', 'aria-label': name + ', ' + n + ' stops. Notes, driver and AutoRoute for this ' + (b.mode === 'days' ? 'day' : 'route'), onclick: e => { if (e.currentTarget.dataset.held) { delete e.currentTarget.dataset.held; return; } colMenu(e.currentTarget, c); }, onpointerdown: e => holdHead(e, c), oncontextmenu: e => e.preventDefault() },
+      roomy ? [h('div.bd-hname' + (hn.length ? '' : '.alone'), parts), hn.length > 0 && h('div.bd-hnotes' + (hn.length > 1 ? '.many' : ''), hn)] : parts); };
+  const head = headOn && h('div.bd-head', h('div.bd-hrow', timeGrid && h('div', { style: { width: gutter + 'px', flex: 'none' } }), cols.map(headCell)));
   /* Calendar scheduling on a computer: a true time grid, hours down the side and each job placed by its start time and length (r14-ops.js). */
   if (timeGrid) {
     const tg = O2.timeGrid({ cols, colW, gutter, head, lists, style: cardStyle, open: id => jobsScreen().openDetails && jobsScreen().openDetails(id), add: canEdit ? (c, startAt) => jobsScreen().openEditor && jobsScreen().openEditor({ day: c.day, routeId: c.routeId, startAt }) : null });
@@ -397,10 +434,9 @@ function grid() {
     return h('div.bd-wrap', sc);
   }
   const body = h('div.bd-body', cols.map((c, i) => {
-    const { notes, stops } = lists[i], firstUntimed = cal ? stops.find(j => !j.startAt && !WD.calledOff(j)) : null;
+    const { stops } = lists[i], firstUntimed = cal ? stops.find(j => !j.startAt && !WD.calledOff(j)) : null;
     return h('div.bd-col' + (c.day < today ? '.past' : ''), { 'data-i': i, style: { width: colW + 'px' } },
-      (n => n && h('div.bd-rnote', { 'data-note': i, role: 'button', tabindex: '0', onclick: () => WD.can('jobs.edit') && WD.r11.editNote(c.routeId, c.day) }, h('small', n.to === 'office' ? 'Note for the office' : n.to === 'driver' ? 'Note for the driver' : 'Note for the driver and office'), n.text))(WD.r11 && WD.r11.noteFor(c.routeId, c.day)),
-      notes.map(j => h('div.bd-chip', { style: { '--c': q.routeColor(j.routeId) }, role: 'button', tabindex: '0', 'aria-label': 'Note for the day, ' + j.title, onclick: () => jobsScreen().openDetails && jobsScreen().openDetails(j.id) }, icon('note', 11), j.title)),
+      !(roomy && headOn) && noteNodes(c, i, false),
       (k => stops.map(j => [j === firstUntimed && h('div.bd-notime', 'No time set'), cell(j, WD.calledOff(j) ? '–' : ++k, cal && O2.calInfo ? O2.calInfo(j, stops) : null)]))(0),
       !stops.length && h('div.bd-empty', 'No stops'),
       canEdit && h('div.bd-add', { 'data-add': i, role: 'button', tabindex: '0', 'aria-label': 'Add stop to ' + c.title }, icon('plus', 13), h('span.l', 'Add stop')));
@@ -410,11 +446,12 @@ function grid() {
   const more = cols.length > per && h('button.bd-morecols', { hidden: true, onclick: () => { const left = Math.min(el.scrollWidth - el.clientWidth, el.scrollLeft + colW * per); el.scrollTo ? el.scrollTo({ left, behavior: 'smooth' }) : (el.scrollLeft = left); } });
   const syncMore = () => { if (!more) return; const n = Math.ceil((el.scrollWidth - el.clientWidth - el.scrollLeft) / colW - .15); more.hidden = n < 1; if (n > 0) { more.textContent = n + ' more →'; more.setAttribute('aria-label', 'Show ' + n + ' more ' + (b.mode === 'days' ? 'day' : 'route') + (n === 1 ? '' : 's')); } };
   if (more) el.addEventListener('scroll', syncMore, { passive: true });
+  el.addEventListener('scroll', () => { if (el === scroller && el.offsetParent && el.placed) saved = { top: el.scrollTop, left: el.scrollLeft }; }, { passive: true });
   el.addEventListener('pointerdown', onPointerDown); el.addEventListener('wheel', onWheel, { passive: false }); el.addEventListener('keydown', onKey); el.addEventListener('click', onClick);
   el.addEventListener('touchstart', touchStart, { passive: false }); el.addEventListener('touchmove', touchMove, { passive: false }); el.addEventListener('touchend', touchEnd); el.addEventListener('touchcancel', touchEnd);
   const top = saved.top, left = saved.left, reveal = revealId; revealId = null;
   requestAnimationFrame(() => {
-    if (!el.isConnected) return; el.scrollTop = top == null ? 0 : top; el.scrollLeft = left; syncMore();
+    if (!el.isConnected) return; el.scrollTop = top == null ? 0 : top; el.scrollLeft = left; if (el.offsetParent) el.placed = true; syncMore();
     const target = reveal && el.querySelector('.bd-job[data-job="' + reveal + '"]');
     if (target) { const r = target.getBoundingClientRect(), box = el.getBoundingClientRect(); if (r.bottom > box.bottom - 10 || r.top < box.top + 30) el.scrollTop += r.top - box.top - box.height / 3; const cx = r.left - box.left; if (cx < 0 || cx + r.width > box.width) el.scrollLeft += cx - 4; }
     if (drag) { el.querySelector('.bd-body').append(drag.ghost); drag.target = null; dragMove(drag.last); }
@@ -608,12 +645,14 @@ function pickDate() {
 /* ---------- Page ---------- */
 function render(p) {
   page = p; const b = S.board;
-  if (scroller && scroller.isConnected) saved = { top: scroller.scrollTop, left: scroller.scrollLeft };
+  /* A board that is hidden (another tab is in front) reports a scroll position of 0, so only a visible one is read; the scroll listener in grid() keeps `saved` current. */
+  /* `placed` is set once a board has been scrolled to its remembered position while on screen; one drawn while hidden never was, and reads 0. */
+  if (scroller && scroller.isConnected && scroller.offsetParent && scroller.placed) saved = { top: scroller.scrollTop, left: scroller.scrollLeft };
   if (!q.route(b.routeId)) { const mine = data.routes.find(r => r.driverId === S.me.id); b.routeId = (mine || q.visibleRoutes()[0] || q.routes()[0]).id; }
   /* While jobs are being selected the bar takes the place of the warning lines, right under the date. */
   /* Under the bar: the month, the live map of the same day and routes, or the board (on a computer optionally with the map beside it). */
   return [topBar(), selectBar() || strips([statusStrip(), addressStrip(), WD.r11 && WD.r11.boardStrips(inView), WD.rc && WD.rc.assignStrip && WD.rc.assignStrip(b.mode === 'month' ? [] : columns()), offStrip(), markStrip(), ops2().boardStrips && ops2().boardStrips(b.mode === 'month' ? [] : columns())]),
-    b.mode === 'month' ? monthView() : mapOnly() ? mapPane() : splitView() ? h('div.bd-split', grid(), mapPane()) : grid()];
+    b.mode === 'month' ? monthView() : h('div.bd-holder' + (WD.r15 && WD.r15.cardClass ? WD.r15.cardClass() : ''), { style: WD.r15 && WD.r15.cardVars ? WD.r15.cardVars() : null }, mapOnly() ? mapPane() : splitView() ? h('div.bd-split', grid(), mapPane()) : grid(), viewPill())];
 }
 WD.screens.board = {
   root: () => ({ title: 'Dispatch', navbar: false, noScroll: true, live: false, render, onChange: p => { if (pinch) staleWhilePinching = true; else if (!drag) p.refresh(); }, onReappear: p => p.refresh() }),

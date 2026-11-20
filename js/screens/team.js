@@ -284,4 +284,6 @@ WD.panel.addJump('Team locations', () => { WD.nav.switchTab('shift'); WD.nav.pus
 WD.panel.addJump('Hours and overtime (HR)', () => { WD.nav.switchTab('shift'); WD.nav.push(timesheetsSpec()); });
 WD.panel.addJump('Time cards (HR)', () => { WD.nav.switchTab('shift'); WD.nav.push(timesheetsSpec()); WD.nav.push(reportSpec('cards')); });
 WD.panel.addJump('Overtime rules', () => { WD.nav.switchTab('settings'); WD.nav.push(rulesSpec()); });
+/* 5.1: view state kept separately for each business (core.js app.uiState). */
+if (WD.app.uiState) { WD.app.uiState('timesheets', RS); }
 })();

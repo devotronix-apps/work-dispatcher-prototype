@@ -416,14 +416,16 @@ function attentionLine(page) {
     a.fresh > 0 && go(a.fresh + ' new', stage('fresh')), a.due > 0 && go(a.due + ' due', stage('due')), a.fb > 0 && go(a.fb + ' feedback', () => { R.seg = 'feedback'; page.refresh(); }));
 }
 function root() {
-  const C2 = () => WD.crm2 || {}, needs = () => R.side === 'needs' && !!C2().needsView;
-  return { title: 'CRM', large: true, trailing: page => needs() ? [canEdit() && { icon: 'plus', label: 'New customer request', onTap: () => C2().newInquiry() }].filter(Boolean)
+  const C2 = () => WD.crm2 || {}, needs = () => R.side === 'needs' && !!C2().needsView, R15 = () => WD.r15 || {}, assign = () => R.side === 'assign' && !!R15().assignView;
+  return { title: 'CRM', large: true, trailing: page => assign() ? [canEdit() && { icon: 'plus', label: 'New follow-up', onTap: () => K.newTask() }].filter(Boolean) : needs() ? [canEdit() && { icon: 'plus', label: 'New customer request', onTap: () => C2().newInquiry() }].filter(Boolean)
     : [R.seg === 'pipeline' && { icon: 'line.3.horizontal.decrease', label: 'Sort and filter', onTap: (p, el) => ui.menu(el, [{ header: 'Sort by' }, ...SORTS.map(([v, label]) => ({ label, checked: R.sort === v, onTap: () => { R.sort = v; page.refresh(); } })), 'divider', { label: 'Show and hide…', icon: 'eye.slash', onTap: () => R.openFilter && R.openFilter() }], { compact: true }) },
       canEdit() && (R.seg === 'tasks' ? { icon: 'plus', label: 'New follow-up', onTap: () => K.newTask() } : { icon: 'plus', label: 'New lead', onTap: () => newLead() })].filter(Boolean),
     render: page => { const due = data.tasks.filter(t => !t.done && t.due <= today).length, segs = [{ value: 'pipeline', label: 'Pipeline' }, { value: 'tasks', label: 'Tasks' + (due ? ' · ' + due : '') }, F.quotes && { value: 'quotes', label: 'Quotes' }, F.referrals && { value: 'referrals', label: 'Referrals' }, F.feedback && { value: 'feedback', label: 'Feedback' + (CO.feedbackOpen() ? ' · ' + CO.feedbackOpen() : '') }].filter(Boolean);
       if (!segs.some(s => s.value === R.seg)) R.seg = 'pipeline';
       /* Two sides: Leads (the pipeline and its segments) and Customer needs (requests from existing customers, r14-crm.js). */
-      const open = C2().openCount ? C2().openCount() : 0, side = C2().needsView ? h('div.cu-seg.cr-side', ui.segmented([{ value: 'leads', label: 'Leads · ' + pipe().length }, { value: 'needs', label: 'Customer needs' + (open ? ' · ' + open : '') }], needs() ? 'needs' : 'leads', v => { R.side = v; page.refresh(); page.body.scrollTop = 0; })) : null;
+      const open = C2().openCount ? C2().openCount() : 0, side = C2().needsView ? h('div.cu-seg.cr-side', ui.segmented([{ value: 'leads', label: 'Leads · ' + pipe().length }, { value: 'needs', label: (S.desktop ? 'Customer needs' : 'Needs') + (open ? ' · ' + open : '') }, R15().assignView && { value: 'assign', label: 'Assignments' }].filter(Boolean), assign() ? 'assign' : needs() ? 'needs' : 'leads', v => { R.side = v; page.refresh(); page.body.scrollTop = 0; })) : null;
+      /* 5.1: Assignments — what every person has on their plate (r15.js). */
+      if (assign()) return [side, R15().assignView(page)];
       if (needs()) return [side, C2().needsView(page)];
       const desk = S.desktop && R.seg === 'pipeline' && C2().desktop;
       return [side, attentionLine(page), segs.length > 1 && h('div.cu-seg.cr-seg', ui.segmented(segs, R.seg, v => { R.seg = v; page.refresh(); })), R.seg === 'tasks' ? K.tasksView() : R.seg === 'quotes' ? quotesView() : R.seg === 'referrals' ? referralsView(page) : R.seg === 'feedback' ? CO.feedbackView(page) : desk ? (R.openFilter = null, C2().desktop(page)) : pipelineView(page)]; } };
@@ -450,4 +452,6 @@ WD.panel.addAction('New lead from the website form', () => { const id = 'c' + Da
   const c = K.mk({ id, name: n[0], channel: 'Website', contacts: [{ name: n[1], role: '', phone: '+1512555' + String(1000 + data.customers.length * 7).slice(-4), email: n[2] }], address: n[3], x: 300 + (data.customers.length * 97) % 400, y: 200 + (data.customers.length * 53) % 500, next: 0, cnotes: 'Website form: “We need a console for patient records. What does it cost?”' });
   Object.assign(c, { source: 'form', createdAt: +WD.now(), changes: [] }); c.locations.forEach(l => { l.items = []; }); K.addI({ customerId: id, type: 'note', at: +WD.now(), text: c.notes, by: 'RouteClerk · website form' }); WD.changed();
   ui.banner({ title: 'New lead · website form', text: n[0] + ' — ' + n[1] + ' asked for a price.', icon: 'funnel', color: 'var(--purple)', duration: 7000, onTap: () => { if (WD.can('leads.view')) { WD.nav.switchTab('crm'); openLead(id); } } }); });
+/* 5.1: view state kept separately for each business (core.js app.uiState). */
+if (WD.app.uiState) { WD.app.uiState('crm', R); }
 })();

@@ -4,9 +4,9 @@
 'use strict';
 const WD = window.WD = { screens: {}, data: {} };
 /** Prototype version (Settings → About). Bump on every publish; the “what’s new” tutorial shows once per version. */
-WD.version = '5.0';
+WD.version = '5.1';
 /** Earlier releases kept on the published site under v/<version>/ (Settings → Older versions). Add the outgoing version on every publish. */
-WD.olderVersions = ['4.3', '4.2', '4.1'];
+WD.olderVersions = ['5.0', '4.3', '4.2', '4.1'];
 const $ = (s, r) => (r || document).querySelector(s);
 
 /* ================= DOM helper ================= */
@@ -572,6 +572,8 @@ app.menu = [
   { id: 'reports', title: 'Reports', icon: 'chart.bar', can: () => WD.can('analytics.view') || WD.can('billing.view') },
   { id: 'calc', title: 'Price Calc', icon: 'calculator', can: () => WD.can('jobs.edit') || WD.can('billing.manage') || WD.can('crm.edit') },
   { id: 'maintenance', title: 'Maintenance', icon: 'wrench', can: () => WD.can('maintenance.view') },
+  /* 5.1: an add-on module, off until a company turns it on (bids.js). The entry stays in the menu so it can be found and turned on. */
+  { id: 'bids', title: 'Bids and Prospects', icon: 'flag', can: () => WD.can('crm.view') || WD.can('settings.manage'), badge: () => WD.bids && WD.bids.badge ? WD.bids.badge() : 0 },
   { id: 'settings', title: 'Settings', icon: 'gearshape', fixed: true },
 ];
 /* Each person arranges the app for their own job (Settings → Display → Tabs and menu): any section can take one of the four places in the
@@ -602,19 +604,43 @@ const parked = {};
 const BOARD0 = () => ({ day: D.today(), mode: 'routes', routeId: null, dayCount: S.desktop ? 7 : 3 });
 const setBoard = b => { Object.keys(S.board).forEach(k => delete S.board[k]); Object.assign(S.board, b); };
 app.parkedOrgs = () => Object.keys(parked);
+/* 5.1: view state. A screen keeps its choices (which side of the CRM, the Dialer's tab, invoice filters, a typed number or address, sort
+   orders) in an object of its own. Each such object is registered here; switching business saves a copy for the business being left and
+   puts back the copy of the one being opened, or the starting values the first time a business is opened. Without this the hidden screens
+   of a business would redraw with the other business's choices. Plain values, arrays and plain objects are copied; anything else
+   (a page, a map) is kept by reference, because the parked screens it belongs to come back unchanged. */
+const uiReg = [];
+const snap = v => Array.isArray(v) ? v.map(snap) : v instanceof Set ? new Set(v) : v instanceof Map ? new Map(v) : v && typeof v === 'object' && Object.getPrototypeOf(v) === Object.prototype ? Object.fromEntries(Object.keys(v).map(k => [k, snap(v[k])])) : v;
+const putState = (obj, from) => { Object.keys(obj).forEach(k => { delete obj[k]; }); Object.assign(obj, snap(from)); };
+app.uiState = (name, obj) => { if (obj && !uiReg.some(r => r.obj === obj)) uiReg.push({ name, obj, init: snap(obj) }); return obj; };
+const saveUi = () => ({ states: uiReg.map(r => [r.obj, snap(r.obj)]), officeSeg: app.officeSeg });
+const loadUi = saved => { const m = new Map(saved ? saved.states : []); uiReg.forEach(r => putState(r.obj, m.has(r.obj) ? m.get(r.obj) : r.init)); app.officeSeg = saved ? saved.officeSeg : null; };
+/** 5.1: called just before switching from the Business page in Settings. That page is where every switch starts, so parking it would make each
+    business come back on the same Settings page. Instead the business is left on the screen the person was using before they opened Settings. */
+app.leaveSwitcher = () => { if (!tabState) return; const st = tabState.stacks[tabState.active]; if (tabState.active === 'more' && st) { if (st.pages.length > 1) st.popToRoot(); if (tabState.prev && tabState.prev !== 'more') tabState.select(tabState.prev); } };
+/** Choose a business: with two there is only one place to go; with more, a list. → true when it switched. */
+app.pickOrg = async () => { const all = WD.data.orgs || [], cur = (S.org || {}).id, others = all.filter(o => o.id !== cur); if (!others.length) return false;
+  const id = others.length === 1 ? others[0].id : await ui.actionSheet({ title: 'Switch business', message: 'You are in ' + (S.org || {}).name + '. Each business comes back on the screen you left it on.', buttons: others.map(o => ({ label: o.name, value: o.id })) });
+  if (!id || app.switchOrg(id) === false) return false; ui.toast('Now in ' + all.find(o => o.id === id).name, 'building'); return true; };
 app.switchOrg = id => {
   const to = (WD.data.orgs || []).find(o => o.id === id), from = S.org && S.org.id; if (!to || !tabState || from === id) return false;
-  const view = $('#root > .tabview'), mine = sheets.splice(0);
-  parked[from] = { view, tabState, sheets: mine, board: { ...S.board }, shift: S.shift, pending: S.pending, abandoned: S.abandoned, folded: S.folded };
+  /* The view in front is the one that is not parked. (Taking the first .tabview parked the wrong one as soon as a second business had been opened, which left two businesses' screens on top of each other.) */
+  const view = $('#root > .tabview:not(.parked)'), mine = sheets.splice(0);
+  parked[from] = { view, tabState, sheets: mine, board: { ...S.board }, ui: saveUi(), shift: S.shift, pending: S.pending, abandoned: S.abandoned, folded: S.folded };
   view.classList.add('parked'); mine.forEach(sh => { sh.el.classList.add('parked'); sh.backdrop.classList.add('parked'); });
   if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
   WD.emit('orgSwap', { from, to: id }); S.org = to; S.me = (WD.data.users || []).find(u => u.id === (S.me || {}).id) || S.me;
-  const p = parked[id];
+  const p = parked[id]; loadUi(p ? p.ui : null);
   if (p) { delete parked[id]; tabState = p.tabState; p.view.classList.remove('parked'); p.sheets.forEach(sh => { sh.el.classList.remove('parked'); sh.backdrop.classList.remove('parked'); sheets.push(sh); });
     setBoard(p.board); S.shift = p.shift; S.pending = p.pending; S.abandoned = p.abandoned; S.folded = p.folded; }
   else { setBoard(BOARD0()); S.shift = null; S.pending = []; S.abandoned = []; S.folded = {}; tabState = null; app.showMain(null, true); }
   syncPushedBack(); syncPanel(); WD.emit('org', id); WD.changed(); return true;
 };
+/* 5.1 drafts: sheets (a half-filled job, lead or invoice) can be set aside whole when a call comes in, and brought back or thrown away later.
+   A set-aside sheet is hidden exactly like a parked business's, so nothing typed into it is lost. */
+app.stashSheets = keep => { const out = sheets.filter(sh => !keep || !keep(sh)); out.forEach(sh => { sheets.splice(sheets.indexOf(sh), 1); sh.el.classList.add('parked'); sh.backdrop.classList.add('parked'); }); if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); syncPushedBack(); return out; };
+app.restoreSheets = list => { list.forEach(sh => { sh.el.classList.remove('parked'); sh.backdrop.classList.remove('parked'); overlays().append(sh.backdrop, sh.el); sheets.push(sh); }); syncPushedBack(); WD.changed(); };
+app.openSheets = () => sheets.slice();
 const nav = WD.nav = {
   /** The stack a push should go to: the top sheet if one is open, else the active tab (or the sign-in flow). */
   current: () => sheets.length ? sheets[sheets.length - 1].stack : tabState ? tabState.stacks[tabState.active] : rootStack,
@@ -632,18 +658,20 @@ app.showMain = (tabId, keep) => {
   if (!keep) { ui.closeAllSheets(); clearRoot(); }
   const more = app.tabs.find(t => t.menu), panes = h('div.tabpanes'), bar = h('div.tabbar'), state = tabState = { stacks: {}, active: null, buttons: {} };
   let tabs = [];
-  state.cur = 'settings';
+  state.cur = 'settings'; state.open = [];   // desktop workspace: the modules on screen, left to right (up to PANES)
   /** (Re)build the bar from the person's layout. Open screens keep their place; a screen that left the bar is closed. */
   state.syncBar = () => {
     tabs = app.barIds().map(app.dest).concat(more); state.buttons = {}; bar.replaceChildren(); bar.className = 'tabbar n' + tabs.length; const many = (WD.data.orgs || []).length > 1; bar.style.setProperty('--org', many && S.org && S.org.color || 'transparent');
     if (S.desktop) bar.appendChild(h('button.side-org', { 'aria-label': 'Business: ' + (S.org || {}).name, onclick: e => state.orgMenu(e.currentTarget) }, h('i'), h('span', (S.org || {}).name, h('small', many ? 'Switch business' : 'RouteClerk'))));
-    tabs.forEach(t => { const b = state.buttons[t.id] = h('button.tab' + (state.active === t.id ? '.active' : ''), { 'aria-label': t.title, onclick: () => t.menu ? (S.desktop ? state.go('settings') : state.openMenu(b)) : state.select(t.id) }, WD.icon(t.menu && S.desktop ? 'gearshape' : t.icon, 27), h('span', t.menu && S.desktop ? 'Settings' : t.title)); bar.appendChild(b); });
-    Object.keys(state.stacks).forEach(id => { if (tabs.some(t => t.id === id) || id === state.active) return; const st = state.stacks[id]; st.el.remove(); stacks.delete(st); delete state.stacks[id]; });
+    tabs.forEach(t => { const b = state.buttons[t.id] = h('button.tab' + (state.active === t.id ? '.active' : ''), { 'aria-label': t.title, onclick: () => t.menu ? (S.desktop ? state.go('settings') : state.openMenu(b)) : state.select(t.id) }, WD.icon(t.menu && S.desktop ? 'gearshape' : t.icon, 27), h('span', t.menu && S.desktop ? 'Settings' : t.title), S.desktop && h('i.tab-split', { role: 'button', title: 'Open ' + (t.menu ? 'Settings' : t.title) + ' beside what is on screen', 'aria-label': 'Open ' + (t.menu ? 'Settings' : t.title) + ' beside what is on screen', onclick: e => { e.stopPropagation(); state.openBeside(t.id); } }, WD.icon('columns', 15))); bar.appendChild(b); });
+    if (S.desktop) bar.appendChild(h('button.side-work', { 'aria-label': 'Workspace: modules on screen', onclick: e => state.workMenu(e.currentTarget) }, WD.icon('columns', 18), h('span', 'Workspace', h('small', state.open.length > 1 ? state.open.length + ' modules side by side' : 'One module · add more'))));
+    Object.keys(state.stacks).forEach(id => { if (tabs.some(t => t.id === id) || id === state.active) return; const st = state.stacks[id]; state.open = state.open.filter(k => k !== id); st.el.remove(); stacks.delete(st); delete state.stacks[id]; });
     if (state.cur !== 'settings' && tabs.some(t => t.id === state.cur) && state.active !== 'more') { const old = state.stacks.more; if (old) { old.el.remove(); stacks.delete(old); delete state.stacks.more; } state.cur = 'settings'; }
     state.badges();
   };
-  const orgItems = () => (WD.data.orgs || []).filter(o => o.id !== (S.org || {}).id).map(o => ({ label: 'Switch to ' + o.name, icon: 'building', onTap: () => { app.switchOrg(o.id); ui.toast('Now in ' + o.name, 'building'); } }));
-  state.orgMenu = anchor => ui.menu(anchor, orgItems());
+  /* Two businesses: “Switch to <the other one>”. Three or more: “Switch business…”, which lists them. */
+  const orgItems = () => { const others = (WD.data.orgs || []).filter(o => o.id !== (S.org || {}).id); return !others.length ? [] : others.length === 1 ? [{ label: 'Switch to ' + others[0].name, icon: 'building', onTap: () => app.pickOrg() }] : [{ label: 'Switch business…', subtitle: 'Now in ' + (S.org || {}).name, icon: 'building', onTap: () => app.pickOrg() }]; };
+  state.orgMenu = anchor => ui.menu(anchor, [{ header: 'Switch business' }].concat((WD.data.orgs || []).map(o => ({ label: o.name, checked: o.id === (S.org || {}).id, onTap: () => { if (o.id !== (S.org || {}).id && app.switchOrg(o.id) !== false) ui.toast('Now in ' + o.name, 'building'); } }))));
   state.openMenu = anchor => ui.menu(anchor, app.menuItems().map(m => { const n = app.menuBadge(m); return { label: m.title + (n ? '  (' + n + ')' : ''), icon: m.icon, onTap: () => state.go(m.id) }; }).concat('divider', { label: 'Arrange tabs and menu…', icon: 'square.grid', onTap: () => { state.go('settings'); if (WD.rc && WD.rc.sectionsSpec) nav.push(WD.rc.sectionsSpec()); } }, ...(orgItems().length ? ['divider'].concat(orgItems()) : [])));
   /** Open a section wherever it lives: its own tab when it is in the bar, otherwise the Menu tab's stack (a different section replaces that stack). */
   state.go = id => { if (tabs.some(t => t.id === id && !t.menu)) return state.select(id);
@@ -652,20 +680,44 @@ app.showMain = (tabId, keep) => {
     state.cur = m.id; state.select('more'); };
   state.select = id => {
     const t = tabs.find(x => x.id === id) || tabs[0]; id = t.id;
+    /* Desktop workspace: a module that is already on screen is brought into focus; otherwise it takes the place of the focused one. */
+    if (S.desktop && state.open.length > 1 && state.open.includes(id) && state.active !== id) return state.focus(id);
     if (state.active === id) { state.stacks[id].popToRoot(); return; }
-    if (!state.stacks[id]) {
-      const mod = WD.screens[t.menu ? state.cur : id], st = state.stacks[id] = makeStack(); st.el.dataset.tab = id; panes.appendChild(st.el);
-      st.push(mod && mod.root ? mod.root() : { title: t.title, large: true, render: () => ui.empty({ icon: t.icon, title: t.title, text: 'This screen is not part of the prototype yet.' }) }, false);
-    }
-    Object.entries(state.stacks).forEach(([k, st]) => st.el.classList.toggle('active', k === id));
-    Object.entries(state.buttons).forEach(([k, b]) => b.classList.toggle('active', k === id));
-    state.active = id; const p = state.stacks[id].top(); if (p.spec.live !== false) p.refresh(); p.spec.onReappear && p.spec.onReappear(p);
+    if (state.active) state.prev = state.active;
+    ensure(t);
+    if (S.desktop && state.open.length > 1) { const i = state.open.indexOf(state.active); state.open[i < 0 ? 0 : i] = id; } else state.open = [id];
+    state.active = id; show(); saveWork();
+    const p = state.stacks[id].top(); if (p.spec.live !== false) p.refresh(); p.spec.onReappear && p.spec.onReappear(p);
     WD.emit('tab', id);
   };
+  const PANES = 3, title = id => { const t = tabs.find(x => x.id === id); return !t ? id : t.menu ? (app.dest(state.cur) || { title: 'Settings' }).title : t.title; };
+  const saveWork = () => { if (S.desktop) store.set('wd.work', JSON.stringify(state.open)); };
+  function ensure(t) { const id = t.id; if (state.stacks[id]) return;
+    const mod = WD.screens[t.menu ? state.cur : id], st = state.stacks[id] = makeStack(); st.el.dataset.tab = id; panes.appendChild(st.el);
+    /* In a workspace each module has a strip with its name and a close button; pressing anywhere in a module makes it the one new screens open in. */
+    st.el.appendChild(h('div.pane-bar', h('span'), h('button', { 'aria-label': 'Close this module', title: 'Close this module', onclick: e => { e.stopPropagation(); state.closePane(id); } }, WD.icon('xmark', 13))));
+    st.el.addEventListener('pointerdown', () => { if (state.open.length > 1 && state.active !== id && state.open.includes(id)) state.focus(id); }, true);
+    st.push(mod && mod.root ? mod.root() : { title: t.title, large: true, render: () => ui.empty({ icon: t.icon, title: t.title, text: 'This screen is not part of the prototype yet.' }) }, false); }
+  function show() { const many = state.open.length > 1; panes.classList.toggle('multi', many);
+    Object.entries(state.stacks).forEach(([k, st]) => { const on = state.open.includes(k); st.el.classList.toggle('active', on); st.el.classList.toggle('focus', many && k === state.active); st.el.style.order = on ? state.open.indexOf(k) : ''; const lab = st.el.querySelector(':scope > .pane-bar > span'); if (lab) lab.textContent = title(k); });
+    Object.entries(state.buttons).forEach(([k, b]) => { b.classList.toggle('active', k === state.active); b.classList.toggle('open', many && state.open.includes(k)); });
+    const w = bar.querySelector('.side-work small'); if (w) w.textContent = many ? state.open.length + ' modules side by side' : 'One module · add more'; }
+  state.focus = id => { if (!state.open.includes(id)) return; state.active = id; show(); WD.emit('tab', id); };
+  /** Desktop: put another module on screen beside the ones already there (up to three). */
+  state.openBeside = id => { const t = tabs.find(x => x.id === id); if (!t || !S.desktop) return; if (state.open.includes(id)) return state.focus(id);
+    if (state.open.length >= PANES) return ui.toast('Three modules fit side by side. Close one first.', 'columns', 2600);
+    ensure(t); state.open.push(id); state.active = id; show(); saveWork(); requestAnimationFrame(() => { state.open.forEach(k => { const p = state.stacks[k] && state.stacks[k].top(); if (p) p.refresh(); }); }); WD.emit('tab', id); };
+  state.closePane = id => { if (state.open.length < 2) return; state.open = state.open.filter(k => k !== id); if (state.active === id) state.active = state.open[0]; show(); saveWork(); requestAnimationFrame(() => state.open.forEach(k => { const p = state.stacks[k] && state.stacks[k].top(); if (p) p.refresh(); })); WD.emit('tab', state.active); };
+  state.workMenu = anchor => { const rest = tabs.filter(t => !state.open.includes(t.id));
+    ui.menu(anchor, [{ header: 'On screen now' }, ...state.open.map(k => ({ label: title(k), checked: true, disabled: state.open.length < 2, onTap: () => state.closePane(k) })),
+      ...(state.open.length < PANES ? [{ header: 'Open beside' + (state.open.length > 1 ? ' them' : ' it') }, ...rest.map(t => ({ label: t.menu ? 'Settings' : t.title, checked: false, onTap: () => state.openBeside(t.id) }))] : [{ header: 'Three modules fit. Untick one to change it.' }]),
+      ...(state.open.length > 1 ? ['divider', { label: 'Back to one module', icon: 'xmark', onTap: () => { state.open = [state.active]; show(); saveWork(); const p = state.stacks[state.active].top(); p.refresh(); } }] : [])]); };
   state.badges = () => tabs.forEach(t => { const b = state.buttons[t.id], n = t.menu ? (t.badge ? t.badge() : 0) : app.menuBadge(t); const old = b.querySelector('.tab-badge'); if (old) old.remove(); if (n) b.appendChild(h('span.tab-badge', n)); });
   state.syncBar();
   $('#root').appendChild(h('div.tabview', panes, bar));
   const first = tabId || (S.role === 'driver' && WD.screens.shift ? 'shift' : 'board'); if (tabs.some(t => t.id === first)) state.select(first); else if (app.dest(first)) state.go(first); else state.select(tabs[0].id); state.badges();
+  /* Desktop: bring back the workspace this person left (which modules were side by side). */
+  if (S.desktop && !keep) { try { const W = JSON.parse(store.get('wd.work') || '[]').filter(id => tabs.some(t => t.id === id)); if (W.length > 1 && !tabId) { const at = state.active; W.filter(id => id !== at).slice(0, 2).forEach(id => state.openBeside(id)); state.focus(at); } } catch (e) { /* no saved workspace */ } }
 };
 WD.on('change', () => tabState && tabState.badges());
 /** Finish signing in and show the tabs. */

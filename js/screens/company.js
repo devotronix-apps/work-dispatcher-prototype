@@ -534,4 +534,6 @@ WD.panel.addAction('Customer pays in the bookkeeping program', () => { const r =
   const a = data.jobs.find(j => open(j) && j.type === 'regular' && CO.containers(j).length && (data.customers.find(c => c.id === j.customerId) || {}).billingMode !== 'serviceNote'); if (a) data.customers.find(c => c.id === a.customerId).scanContainers = true;
   const b = data.jobs.find(j => open(j) && j.type === 'purge' && !(j.items || []).some(i => i.id === 'hdd')); if (b) { b.items = (b.items || []).concat({ id: 'hdd', qty: 3, rate: data.priceBook.find(x => x.id === 'hdd').rate }); b.hddScan = true; } })();
 unpaidRecs().filter(r => r.jobId || r.status === 'Overdue').slice(0, 2).forEach((r, i) => { r.ext = { method: i ? 'Check #5521 (entered in the office)' : 'Card (customer portal)', at: +WD.now() - (3 + i) * 36e5 }; });
+/* 5.1: view state kept separately for each business (core.js app.uiState). */
+if (WD.app.uiState) { WD.app.uiState('feedback', fbState); }
 })();

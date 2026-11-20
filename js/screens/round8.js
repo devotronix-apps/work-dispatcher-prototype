@@ -350,4 +350,6 @@ WD.panel.addJump('Postponed jobs', () => { WD.nav.switchTab('board'); R8.openPos
 WD.panel.addJump('Purge pricing', () => openSet(R8.pricingSpec()));
 R8.newJobNear = newJobNear;
 WD.panel.addJump('Export and backup', () => openSet(R8.exportSpec()));
+/* 5.1: view state kept separately for each business (core.js app.uiState). */
+if (WD.app.uiState) { WD.app.uiState('export', EX); WD.app.uiState('planMap', PM); }
 })();
