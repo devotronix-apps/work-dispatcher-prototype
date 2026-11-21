@@ -146,6 +146,8 @@ function gen(c) {
 }
 data.customers.forEach(c => c.locations.forEach(l => { if (!l.items) l.items = WD.parseItems(l.containers); }));
 data.customers.forEach(gen);
+/* Some inbound calls were answered by the AI phone agent (after hours, or while every line was busy), so the timeline shows who was a person and who was not. */
+data.interactions.forEach((i, k) => { if (i.type === 'call' && i.dir === 'in' && k % 6 === 2) { i.by = 'AI phone agent'; i.summary = 'Answered by the AI phone agent. ' + i.summary; } });
 
 /* Billing mirror: invoices from completed jobs, older paid history, and an overdue invoice for any balance due. */
 const addInvoice = o => { const j = o.jobId && q.job(o.jobId), inv = { id: 'inv' + (++invSeq), payments: [], at: stamp(o.day, j ? (j.departedAt != null ? j.departedAt : 8 * 60 + (j.seq || 1) * 40) + 40 : 9 * 60), ...o }; data.invoices.push(inv); return inv; };
@@ -183,9 +185,9 @@ data.mergeSuggestions = [
 function timeline(cid) {
   const out = data.interactions.filter(i => i.customerId === cid);
   q.jobsForCustomer(cid).forEach(j => { if (j.status !== 'completed' && j.status !== 'skipped') return; const r = q.route(j.routeId), drv = q.driverFor(j.routeId);
-    out.push({ id: 'job-' + j.id, type: 'job', customerId: cid, jobId: j.id, at: stamp(j.day, j.departedAt != null ? j.departedAt : 8 * 60 + (j.seq || 1) * 40), title: j.status === 'completed' ? 'Service completed' : 'Stop skipped', snippet: j.title + (j.containers ? ' · ' + j.containers : ''), who: q.routeName(r) + (drv ? ' · ' + drv.name : '') }); });
+    out.push({ id: 'job-' + j.id, type: 'job', customerId: cid, jobId: j.id, at: stamp(j.day, j.departedAt != null ? j.departedAt : 8 * 60 + (j.seq || 1) * 40), title: j.status === 'completed' ? 'Service completed' : 'Stop skipped', snippet: j.title + (j.containers ? ' · ' + j.containers : ''), who: q.routeName(r) + (drv ? ' · ' + drv.name : ''), by: drv ? drv.name : null }); });
   if (WD.can('billing.view')) {
-    data.invoices.forEach(inv => { if (inv.customerId === cid) out.push({ id: 'inv-' + inv.id, type: 'invoice', customerId: cid, invoiceId: inv.id, at: inv.at, title: 'Invoice ' + inv.number + (inv.auto ? ' auto-charged' : ' sent'), snippet: fmt.money(inv.amount) + ' · ' + inv.status, who: 'Invoice Ninja' }); });
+    data.invoices.forEach(inv => { if (inv.customerId === cid) out.push({ id: 'inv-' + inv.id, type: 'invoice', customerId: cid, invoiceId: inv.id, at: inv.at, title: 'Invoice ' + inv.number + (inv.auto ? ' auto-charged' : ' sent'), snippet: fmt.money(inv.amount) + ' · ' + inv.status, who: 'Invoice Ninja', by: inv.auto ? 'Automatic' : inv.by || null }); });
     data.payments.forEach(pay => { if (pay.customerId !== cid) return; const inv = data.invoices.find(x => x.id === pay.invoiceId); out.push({ id: 'pay-' + pay.id, type: 'payment', customerId: cid, invoiceId: pay.invoiceId, at: pay.at, title: 'Payment received', snippet: fmt.money(pay.amount) + ' · ' + pay.method, who: inv ? inv.number : '' }); });
   }
   return out.sort((a, b) => b.at - a.at);
@@ -203,8 +205,17 @@ function describe(i) {
     default: return { title: i.title, snippet: i.snippet, who: i.who };
   }
 }
+/* 5.3: who dealt with the customer, on every entry: the employee, the AI, an automatic message, or nobody. */
+const handledBy = i => { switch (i.type) {
+  case 'call': return i.by || null;
+  case 'text': { const out = [...new Set((i.messages || []).filter(m => m.dir === 'out' && m.by).map(m => m.by))]; return out.length ? out : null; }
+  case 'email': return i.dir === 'out' ? i.by || (/certificate|schedule|reminder|receipt/i.test(i.subject || '') ? 'Automatic' : staffFromEmail(i.from)) : null;
+  case 'note': return i.by === 'RouteClerk' ? 'Automatic' : i.by || null;
+  default: return i.by || null; } };
+const staffFromEmail = from => { const n = String(from || '').split('@')[0], u = (data.users || []).find(x => x.name.split(' ')[0].toLowerCase() === n); return u ? u.name : null; };
+const nobody = i => i.type === 'voicemail' || (i.type === 'call' && i.dir === 'in' && !i.by) ? 'Nobody answered' : i.type === 'text' || (i.type === 'email' && i.dir === 'in') || i.type === 'form' || i.type === 'sheet' ? 'No reply from us yet' : null;
 const tlRow = i => { const d = describe(i), [ic, col] = TYPES[i.type];
-  return ui.row({ class: 'cu-tl', icon: ic, iconColor: col, title: d.title, subtitle: [h('div.cu-1l', d.snippet), h('div.cu-who', d.who)], detail: fmt.rel(i.at), chevron: true, onTap: () => openEntry(i) }); };
+  return ui.row({ class: 'cu-tl', icon: ic, iconColor: col, title: d.title, subtitle: [h('div.cu-1l', d.snippet), h('div.cu-who', d.who), h('div', { style: 'margin-top:4px' }, ui.who(handledBy(i), { none: nobody(i) }))], detail: fmt.rel(i.at), chevron: true, onTap: () => openEntry(i) }); };
 function openEntry(i) {
   if (i.type === 'job') return openJob(i.jobId);
   if (i.type === 'invoice' || i.type === 'payment') return WD.nav.push(invoicePage(i.invoiceId));
@@ -500,7 +511,8 @@ function jobsSections(c) {
   const jobs = q.jobsForCustomer(c.id), up = jobs.filter(isUpcoming), past = jobs.filter(j => !isUpcoming(j)).reverse();
   if (!jobs.length) return ui.section('Jobs', ui.row({ title: 'No jobs yet' }), WD.can('jobs.edit') && ui.row({ title: 'New job', tint: true, onTap: () => newJob(c.id) }));
   return [up.length ? ui.section('Upcoming jobs', up.slice(0, 3).map(jobRow)) : null,
-    ui.section('Recent jobs', past.slice(0, 3).map(jobRow), !past.length && ui.row({ title: 'No completed jobs yet' }), ui.row({ title: 'All jobs', detail: String(jobs.length), chevron: true, onTap: () => WD.nav.push(allJobsPage(c.id)) }))];
+    ui.section('Recent jobs', past.slice(0, 3).map(jobRow), !past.length && ui.row({ title: 'No completed jobs yet' }), ui.row({ title: 'All jobs', detail: String(jobs.length), chevron: true, onTap: () => WD.nav.push(allJobsPage(c.id)) })),
+    WD.eta && WD.eta.custSection(c)];
 }
 const allJobsPage = cid => ({ title: 'All jobs', render: () => { const jobs = q.jobsForCustomer(cid);
   return ui.list(ui.section('Upcoming', jobs.filter(isUpcoming).map(jobRow)), ui.section({ header: 'Past', footer: 'Jobs loaded on this iPhone. Older history is on the server.' }, jobs.filter(j => !isUpcoming(j)).reverse().map(jobRow))); } });

@@ -54,6 +54,11 @@ WD.css(`
 .cl-go { display: grid; grid-template-columns: repeat(3, 72px); gap: 0 26px; justify-content: center; margin-top: 8px; align-items: center; }
 .cl-callbtn { appearance: none; border: 0; width: 64px; height: 64px; border-radius: 50%; background: var(--green); color: #fff; display: grid; place-items: center; cursor: pointer; }
 .cl-callbtn:disabled { opacity: .45; } .cl-callbtn:active { opacity: .7; }
+.cl-fab { position: absolute; right: 14px; bottom: 14px; z-index: 6; appearance: none; border: 0; height: 48px; padding: 0 18px 0 14px; border-radius: 24px; background: var(--tint); color: #fff; font-size: 16px; font-weight: 600; display: inline-flex; align-items: center; gap: 7px; cursor: pointer; box-shadow: 0 6px 18px rgba(0,0,0,.24), 0 1px 3px rgba(0,0,0,.18); }
+.cl-fab:active { opacity: .8; } .page.behind > .cl-fab { display: none; }
+.cl-dial .segmented button { font-size: 13px; letter-spacing: -.3px; padding: 0 2px; }
+.cl-alllink { margin: 14px 4px 70px; font-size: 13px; color: var(--label2); } .cl-alllink button { appearance: none; border: 0; background: none; padding: 0; color: var(--tint); font: inherit; font-weight: 600; cursor: pointer; }
+.cl-fu { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; margin: 8px 0 2px; font-size: 13px; color: var(--label2); } .cl-fu > span { display: inline-flex; align-items: center; gap: 4px; margin-right: auto; }
 .cl-del { appearance: none; border: 0; background: none; color: var(--label2); width: 72px; height: 72px; display: grid; place-items: center; cursor: pointer; }
 .cl-di { width: 32px; height: 32px; border-radius: 50%; flex: none; display: grid; place-items: center; margin-right: 12px; background: color-mix(in srgb, var(--c) 15%, transparent); color: var(--c); }
 .cl-pick { width: 32px; flex: none; margin-right: 12px; display: grid; place-items: center; color: var(--label3); } .cl-pick.on { color: var(--tint); }
@@ -220,12 +225,12 @@ const dirIcon = c => { const un = c.status !== 'answered', col = c.status === 'm
   return h('div.cl-di', { style: { '--c': col }, title: (c.dir === 'in' ? 'Inbound' : 'Outbound') + (un ? ', ' + c.status : '') }, icon(c.status === 'voicemail' ? 'voicemail' : c.status === 'missed' ? 'phone.down' : c.dir === 'in' ? 'arrow.down' : 'arrow.up.right', 17)); };
 const statusBadge = c => c.status === 'answered' ? ui.badge(c.dir === 'in' ? 'Answered' : 'Talked', 'var(--green)') : c.status === 'missed' ? ui.badge(c.dir === 'in' ? 'Missed' : 'No answer', c.dir === 'in' ? 'var(--red)' : 'var(--gray)') : ui.badge(c.dir === 'in' ? 'Voicemail' : 'Left voicemail', c.dir === 'in' ? 'var(--orange)' : 'var(--gray)');
 const orgTag = org => h('span.cl-org', { style: { '--c': org.color } }, h('i'), org.short || org.name);
-const subLine = c => [c.customerId && c.contact, fmt.phone(c.number), c.lineLabel + ' line', c.by && first(c.by)].filter(Boolean).join(' · ');
+const subLine = c => [c.customerId && c.contact, fmt.phone(c.number), c.lineLabel + ' line'].filter(Boolean).join(' · ');
 /** One call as a list row. o: {select, picked, onTap, info: fn} */
 function callRow(c, o = {}) { const st = ST(), y = why(c, st), open = !!y && !c.resolved && !c.archived;
   return ui.row({ leading: o.select ? h('div.cl-pick' + (o.picked ? '.on' : ''), icon(o.picked ? 'checkmark.circle.fill' : 'circle', 24)) : dirIcon(c),
     title: h('span.cl-t', nameOf(c), open && h('i.cl-flagdot', { title: 'Needs review' })),
-    subtitle: [h('div', subLine(c)), c.summary && h('div.cl-snip', c.summary), h('div.cl-badges', statusBadge(c), open && !['Missed', 'Voicemail'].includes(y) && ui.badge(y, 'var(--orange)'), c.resolved && ui.badge('Resolved', 'var(--gray)'), c.archived && ui.badge('Archived', 'var(--gray)'))],
+    subtitle: [h('div', subLine(c)), c.summary && h('div.cl-snip', c.summary), h('div.cl-badges', statusBadge(c), open && !['Missed', 'Voicemail'].includes(y) && ui.badge(y, 'var(--orange)'), c.resolved && ui.badge('Resolved', 'var(--gray)'), c.archived && ui.badge('Archived', 'var(--gray)'), c.triedBack && !c.resolved && ui.badge('Called back · no answer', 'var(--orange)'), ui.who(c.by, { none: c.dir === 'in' && c.status !== 'answered' ? 'Nobody answered' : null }))],
     trailing: [h('div.cl-meta', h('div', when(c.at)), h('div', durLabel(c))), o.info && ui.iconBtn('info.circle', 'Call details', o.info)], onTap: o.onTap }); }
 const pad = (onKey, mini) => h('div.cl-pad' + (mini ? '.mini' : ''), [['1', ''], ['2', 'ABC'], ['3', 'DEF'], ['4', 'GHI'], ['5', 'JKL'], ['6', 'MNO'], ['7', 'PQRS'], ['8', 'TUV'], ['9', 'WXYZ'], ['*', ''], ['0', '+'], ['#', '']].map(([k, l]) => h('button.cl-key', { 'aria-label': k, onclick: () => onKey(k) }, k, h('small', l))));
 /** A sheet to choose one of this business's customers or leads. */
@@ -281,6 +286,7 @@ function place(o) {
     const cleared = autoResolve(data, c); WD.changed();
     setTimeout(() => {
       if (cleared.length) ui.banner({ title: 'Called back · flag cleared', text: nameOf(c) + ' is off the Needs review list' + (cleared.length > 1 ? ' (' + cleared.length + ' calls)' : '') + '. Tap to undo.', icon: 'checkmark', color: 'var(--green)', duration: 6000, onTap: () => { cleared.forEach(x => { x.resolved = false; x.resolvedAt = x.resolvedBy = x.resolvedHow = null; }); WD.changed(); } });
+      else if (back && !dur && WD.can('crm.edit')) { back.triedBack = +WD.now(); WD.changed(); C.followUp(back); }
       else if (back && isOpen(back)) ui.banner({ title: 'Still needs review', text: (!st.autoResolve ? 'Calling back doesn’t clear flags by itself' : dur ? 'That call was under ' + st.threshold + ' s' : 'Nobody answered') + ', so ' + nameOf(back) + ' stays on the list. Tap to resolve it anyway.', icon: 'flag', color: 'var(--orange)', duration: 7000, onTap: () => C.resolve(back, 'Resolved by hand after calling back') });
       else ui.toast(cu ? 'Call logged to ' + cu.name : 'Call logged', 'checkmark');
     }, 500);
@@ -299,6 +305,27 @@ function place(o) {
     h('button.cl-end', { 'aria-label': 'End call', onclick: () => sheet.close() }, icon('phone.down', 32)), h('div.caption.secondary', { style: 'margin-top:6px' }, 'End')) }, { detent: 'large', dismissable: false });
 }
 C.place = place;
+/* 5.3: a call back that nobody answers offers a follow-up text and email, so the person knows we tried. What was sent is kept on the call
+   (c.followText, c.followEmail), on the customer's timeline, and shows in the inbox and the AI call review. */
+const personOf = c => { const cu = custOf(c), p = cu && ((cu.contacts || []).find(x => dg(x.phone) === dg(c.number)) || (cu.contacts || [])[0]); return { cu, p, name: p ? first(p.name.replace(/^(Dr|Mr|Mrs|Ms)\.? /, '')) : '' }; };
+const followText = c => { const { name } = personOf(c); return 'Hi' + (name ? ' ' + name : '') + ', this is ' + first(me()) + ' from ' + cur().name + '. Sorry we missed you. I just tried calling you back. Call or text us here whenever it suits you.'; };
+C.textFollow = c => { const X = WD.texts; if (!X || !X.compose) return null; const sh = X.compose({ number: c.number, text: followText(c), onSent: () => { c.followText = +WD.now(); c.texted = c.followText; WD.changed(); } }); return sh && sh.closed; };
+C.emailFollow = c => { if (!canEdit()) return null; const { cu, p, name } = personOf(c), kind = c.status === 'voicemail' ? 'voicemail' : c.status === 'missed' ? 'call' : 'call';
+  const f = { to: (p && p.email) || '', subject: 'We tried to call you back', body: 'Hi' + (name ? ' ' + name : '') + ',\n\nThank you for your ' + kind + ' ' + when(c.at) + '. I tried calling you back at ' + fmt.phone(c.number) + ' and missed you.\n\nYou can reach us at ' + fmt.phone(c.to || ((cur().lines || [])[0] || {}).number || '') + ', or reply to this email with a good time to call.\n\n' + me() + '\n' + cur().name };
+  const send = async page => { if (!/^\S+@\S+\.\S+$/.test(f.to.trim())) return ui.toast('Enter an email address', 'envelope'); if (!f.body.trim()) return ui.toast('Write a message first', 'envelope');
+    if (!await ui.run('Sending…', () => { c.followEmail = +WD.now(); if (cu && K().addI) K().addI({ customerId: cu.id, type: 'email', dir: 'out', at: +WD.now(), subject: f.subject, snippet: f.body.replace(/\s+/g, ' ').slice(0, 140), to: f.to.trim(), from: cur().name, by: me() }); if (p && !p.email) p.email = f.to.trim(); }, { done: 'Email sent' })) return;
+    page.dismiss(); };
+  return ui.sheet({ title: 'Follow-up email', leading: [{ label: 'Cancel', onTap: pg => pg.dismiss() }], trailing: page => [{ label: 'Send', bold: true, onTap: () => send(page) }], render: page => { const ta = h('textarea', { rows: 9, 'aria-label': 'Message', oninput: e => { f.body = e.target.value; } }); ta.value = f.body;
+    return ui.list(ui.section({ fold: false, footer: p && p.email ? null : cu ? 'No email is on file for ' + cu.name + '. The address you type is saved on the contact.' : 'This number isn’t a customer yet, so the email isn’t kept on a record.' },
+        ui.inputRow({ label: 'To', type: 'email', caps: 'off', placeholder: 'name@company.com', value: f.to, autofocus: !f.to, onInput: v => { f.to = v; } }), ui.inputRow({ label: 'Subject', value: f.subject, onInput: v => { f.subject = v; } })),
+      ui.section({ header: 'Message', fold: false, footer: 'Sent from ' + cur().name + ' with your name on it.' }, h('div.tx-new', ta)), h('div', { style: 'margin-top:14px' }, ui.button('Send email', { icon: 'envelope', onTap: () => send(page) }))); } }, { detent: 'large' }).closed; };
+/** Nobody answered the call back: offer the follow-up. */
+C.followUp = async c => { const who = nameOf(c), pick = await ui.actionSheet({ title: 'No answer from ' + who, message: 'Send a follow-up so they know you called back. The call stays in the inbox until it is resolved.', buttons: [{ label: 'Send a text', value: 'text' }, { label: 'Send an email', value: 'email' }, { label: 'Text and email', value: 'both' }] });
+  if (!pick) return; if (pick !== 'email') await C.textFollow(c); if (pick !== 'text') { if (pick === 'both') await WD.delay(350); await C.emailFollow(c); } };
+/** The follow-up line under a call that was called back without an answer: what was sent, and buttons for what was not. */
+C.followBar = c => c.triedBack && !c.resolved && WD.can('crm.edit') ? h('div.cl-fu', h('span', icon('phone.down', 13), 'Called back ' + when(c.triedBack) + ', no answer'),
+  c.followText ? ui.badge('Text sent', 'var(--green)') : ui.button('Text', { kind: 'tinted', small: true, block: false, icon: 'message', onTap: () => C.textFollow(c) }),
+  c.followEmail ? ui.badge('Email sent', 'var(--green)') : ui.button('Email', { kind: 'tinted', small: true, block: false, icon: 'envelope', onTap: () => C.emailFollow(c) })) : null;
 /** Call the number of a logged call back: from the line it came in on, or for a call we placed, the line C.pickLine chooses. */
 C.callBack = c => place({ number: c.number, to: c.dir === 'in' ? c.to : null, customerId: c.customerId, contact: c.contact, back: c });
 function textTo(c) { if (!canEdit()) return; const cu = custOf(c), nm = first(c.contact || ''), un = c.status !== 'answered' && c.dir === 'in';
@@ -352,6 +379,7 @@ function keypadView(page) {
   const autoWhy = h('div.cl-autowhy');
   const del = h('button.cl-del', { 'aria-label': 'Delete', onclick: () => { UI.typed = UI.typed.slice(0, -1); sync(); } }, icon('delete.left', 28));
   function sync() { const t = UI.typed, n = t.replace(/\D/g, '');
+    { const fab = page.el.querySelector(':scope > .cl-fab'); if (fab) fab.style.display = t ? 'none' : ''; }
     disp.textContent = t ? (/[*#]/.test(t) || n.length > 10 ? t : fmt.phoneTyping(t)) : 'Enter a number'; disp.classList.toggle('blank', !t); del.style.visibility = t ? 'visible' : 'hidden'; callBtn.disabled = n.length < 3;
     const found = []; if (n.length >= 2) for (const c of data.customers || []) { if (c.archived) continue; const p = (c.contacts || []).find(x => dg(x.phone).includes(n)); if (p) found.push({ c, p }); if (found.length >= 12) break; }
     if (isAuto) { const pk = n.length >= 3 ? C.pickLine(t) : null; fromB.textContent = pk ? pk.line.label + ' · ' + fmt.phone(pk.line.number) : 'Automatic · local number'; autoWhy.textContent = pk ? 'Automatic: ' + pk.why : 'Automatic: the number they called us on, or the closest local one'; }
@@ -360,38 +388,49 @@ function keypadView(page) {
   sync();
   return h('div.cl-kp',
     h('button.cl-from', { onclick: e => ui.menu(e.currentTarget, [{ header: 'Call from' }, { label: 'Automatic', subtitle: 'The number they called us on, or the closest local one', checked: isAuto, onTap: () => { UI.from[org.id] = 'auto'; page.refresh(); } }].concat(lines.map((l, i) => ({ label: l.label + ' · ' + fmt.phone(l.number), checked: i === idx, onTap: () => { UI.from[org.id] = i; page.refresh(); } })))) }, 'Call from', fromB, icon('chevron.up.chevron.down', 13)), isAuto && autoWhy,
-    h('div.cl-zone', disp, sub, hits), pad(k => { if (UI.typed.length < 15) { UI.typed += k; sync(); } }), h('div.cl-go', h('span'), callBtn, del));
+    h('div.cl-zone', disp, sub, hits), pad(k => { if (UI.typed.length < 15) { UI.typed += k; sync(); } }), h('div.cl-go', WD.texts && WD.texts.compose && WD.can('crm.edit') ? h('button.cl-del.cl-txt', { style: 'color:var(--tint)', 'aria-label': 'Text this number', title: 'Text this number', onclick: () => WD.texts.compose({ number: UI.typed }) }, icon('message', 27)) : h('span'), callBtn, del));
 }
 /* 5.2: Calls is one segment with an Inbox (what still needs someone) and All, and an agent filter shared with Texts (r16.js). */
 const TS = () => WD.staff, agentOK = c => !TS() || TS().agentOK(c.by);
-function callsView(page) { const T = TS(), n = C.reviewCount(); if (!T) return [recentView(page)];
-  return [T.liveStrip(), T.boxBar('callBox', n, page, T.agentNames()), T.box('callBox') === 'inbox' ? reviewView(page) : recentView(page)]; }
+/* 5.3: the Dialer's Calls and Texts segments are inboxes: only what is still unresolved. Every call, resolved or not, is in the Call log
+   (the floating button), so nobody mistakes the inbox for the whole history. */
+function callsView(page) { const T = TS(), n = C.reviewCount(); if (!T) return [reviewView(page)];
+  return [T.liveStrip(), T.inboxHead('Call inbox', n ? plural(n, 'call') + ' still to deal with' : 'Nothing waiting', 'calls', page), reviewView(page),
+    h('div.cl-alllink', 'Resolved calls leave the inbox. ', h('button', { onclick: () => page.push(C.logSpec()) }, 'The Call log has every call.'))]; }
 function recentView(page) { const cs = list().filter(c => !c.archived && agentOK(c)).slice(0, 25);
   return cs.length ? ui.section({ footer: 'Tap a call to call back from the same line. ⓘ opens the call. The call log has every call and the filters.' }, cs.map(c => callRow(c, { onTap: () => C.callBack(c), info: () => page.push(C.detailSpec(c.id)) })),
     ui.row({ title: 'Open the call log', tint: true, center: true, onTap: () => page.push(C.logSpec()) })) : ui.empty({ icon: 'phone', title: 'No calls yet', text: 'Calls on your Quo numbers show here.' }); }
 function reviewView(page) { const st = ST(), cs = list().filter(c => isOpen(c, st) && agentOK(c)), edit = WD.can('crm.edit');
   return [C.aiCard(s => page.push(s)),
-    cs.length ? [h('div.footnote.secondary', { style: 'margin:12px 4px 0' }, plural(cs.length, 'call') + ' not answered or under ' + st.threshold + ' s. Each stays here until someone resolves it' + (st.autoResolve ? ' or calls back.' : '.')),
+    cs.length ? [h('div.footnote.secondary', { style: 'margin:12px 4px 0' }, 'Not answered or under ' + st.threshold + ' s. Each stays here until someone resolves it' + (st.autoResolve ? ' or calls back.' : '.')),
       cs.map(c => { const y = why(c, st); return h('div.cl-rev', h('div.cl-rev-top', { onclick: () => page.push(C.detailSpec(c.id)) }, dirIcon(c),
         h('div.cl-rev-main', h('div.cl-t', nameOf(c)), h('div.footnote.secondary', subLine(c)), c.summary && c.status !== 'missed' && h('div.cl-snip.footnote', c.summary)),
         h('div.cl-meta', ui.badge(y, y === 'Missed' ? 'var(--red)' : 'var(--orange)'), h('div', when(c.at)))),
-        h('div.cl-rev-btns', ui.button('Call back now', { small: true, icon: 'phone.fill', onTap: () => C.callBack(c) }), ui.button('Resolve', { kind: 'gray', small: true, icon: 'checkmark', disabled: !edit, onTap: () => C.resolve(c) }))); }),
+        C.followBar(c), h('div.cl-rev-btns', ui.button('Call back now', { small: true, icon: 'phone.fill', onTap: () => C.callBack(c) }), ui.button('Resolve', { kind: 'gray', small: true, icon: 'checkmark', disabled: !edit, onTap: () => C.resolve(c) }))); }),
       edit && cs.length > 1 && h('div', { style: 'margin-top:14px' }, ui.button('Resolve all ' + cs.length, { kind: 'plain', onTap: async () => { if (await ui.actionSheet({ title: 'Resolve all ' + cs.length + ' calls?', message: 'They leave this list. You can undo right after.', buttons: [{ label: 'Resolve all', value: true }] })) C.resolve(cs); } }))]
-    : ui.empty({ icon: 'checkmark.circle', title: 'Nothing to review', text: 'Missed calls, voicemails and calls under ' + st.threshold + ' s show here until someone resolves them.' })]; }
-function root() { return { title: 'Dialer', trailing: page => [{ label: 'Call log', onTap: () => page.push(C.logSpec()) }], render: page => {
+    : ui.empty({ icon: 'checkmark.circle', title: 'Call inbox clear', text: 'Missed calls, voicemails and calls under ' + st.threshold + ' s show here until someone resolves them. The Call log has every call.' })]; }
+/* 5.3: the Dialer always opens on the keypad when its tab is pressed (onTabTap), a new text can be written from any segment (the pencil in the
+   bar, the message button beside Call, New text in Texts), and the bar offers the log that matches the segment: the call log or the text log. */
+/** The floating log button: the Call log, or the Text log while the Text inbox is showing. On the keypad it gives way to the delete key once a number is typed. */
+function logFab(page) { const old = page.el.querySelector(':scope > .cl-fab'); if (old) old.remove(); const X = TS() && WD.texts, texts = UI.seg === 'texts' && X && X.logSpec;
+  const el = h('button.cl-fab', { 'aria-label': texts ? 'Text log: every text' : 'Call log: every call', onclick: () => page.push(texts ? X.logSpec() : C.logSpec()) }, icon('list.bullet', 19), texts ? 'Text log' : 'Call log');
+  if (UI.seg === 'keypad' && UI.typed) el.style.display = 'none'; page.el.appendChild(el); }
+function root() { return { title: 'Dialer', trailing: page => { const X = TS() && WD.texts;
+    return [X && X.compose && WD.can('crm.edit') && { icon: 'square.and.pencil', label: 'New text', onTap: () => X.compose() }]; }, render: page => {
   if (!WD.can('crm.view')) return ui.empty({ icon: 'lock', title: 'The dialer needs customer access', text: 'Ask an admin to change your role.' });
   const n = C.reviewCount(), T = TS(), tn = T && WD.texts ? WD.texts.inboxCount() : 0; if (UI.seg === 'recent' || UI.seg === 'review') { if (T) T.ui.callBox = UI.seg === 'review' ? 'inbox' : 'all'; UI.seg = 'calls'; }
   if (!['keypad', 'calls', 'texts', 'team'].includes(UI.seg) || (!T && UI.seg !== 'calls')) UI.seg = 'keypad';
-  return ui.list(h('div.cl-dial', ui.segmented([{ value: 'keypad', label: 'Keypad' }, { value: 'calls', label: 'Calls' + (n ? ' · ' + n : '') }].concat(T ? [{ value: 'texts', label: 'Texts' + (tn ? ' · ' + tn : '') }, { value: 'team', label: 'Team' }] : []), UI.seg, v => { UI.seg = v; page.refresh(); })),
+  logFab(page);
+  return ui.list(h('div.cl-dial', ui.segmented([{ value: 'keypad', label: 'Keypad' }, { value: 'calls', label: 'Call inbox' + (n ? ' · ' + n : '') }].concat(T ? [{ value: 'texts', label: 'Text inbox' + (tn ? ' · ' + tn : '') }, { value: 'team', label: 'Team' }] : []), UI.seg, v => { UI.seg = v; page.refresh(); })),
     UI.seg === 'keypad' ? keypadView(page) : UI.seg === 'calls' ? callsView(page) : UI.seg === 'texts' ? T.textsView(page) : T.teamView(page)); } }; }
 C.ui = UI;
-WD.screens.dialer = { root };
+WD.screens.dialer = { root, onTabTap: () => { UI.seg = 'keypad'; } };
 
 /* ================= Call log ================= */
 /** Every call, in and out, on every number, with filters. preset: any of {dir, status, line, by, who, range, dur, flagged, text, resolved,
     archived, customerId}, e.g. C.logSpec({customerId: 'c1', resolved: true}) for one customer's calls. */
 C.logSpec = (preset = {}) => {
-  const F = Object.assign({ dir: '', status: '', line: '', by: '', who: '', range: '', from: D.add(D.today(), -7), to: D.today(), dur: '', flagged: false, text: '', resolved: false, archived: false, customerId: null }, preset);
+  const F = Object.assign({ dir: '', status: '', line: '', by: '', who: '', range: '', from: D.add(D.today(), -7), to: D.today(), dur: '', state: '', flagged: false, text: '', archived: false, customerId: null }, preset);
   const sel = new Set(); let selMode = false, sort = { k: 'at', d: -1 }, limit = 60;
   const VAL = { at: c => c.at, dir: c => c.dir, who: c => nameOf(c).toLowerCase(), number: c => dg(c.number), line: c => c.lineLabel || '', by: c => c.by || '', duration: c => c.duration, status: c => c.status, summary: c => c.summary || '' };
   const COLS = [['at', 'Time'], ['dir', 'In/out'], ['who', 'Who'], ['number', 'Number'], ['line', 'Our number'], ['by', 'Staff'], ['duration', 'Length'], ['status', 'Status'], ['summary', 'Summary']];
@@ -400,14 +439,16 @@ C.logSpec = (preset = {}) => {
     const st = ST(), all = list(), edit = WD.can('crm.edit'), desk = !!S.desktop, org = cur(), bar = h('div.cl-chips'), act = h('div.cl-act'), res = h('div.cl-res');
     const uniq = f => [...new Set(all.map(f).filter(Boolean))].sort(), numOf = l => (all.find(c => c.lineLabel === l) || {}).to;
     const DEFS = [['dir', 'Direction', [['in', 'Inbound'], ['out', 'Outbound']]], ['status', 'Status', [['answered', 'Answered'], ['missed', 'Missed'], ['voicemail', 'Voicemail']]],
-      ['line', 'Our number', uniq(c => c.lineLabel).map(l => [l, l + ' · ' + fmt.phone(numOf(l))])], ['by', 'Staff', uniq(c => c.by).map(n => [n, n])],
+      ['state', 'Resolved or not', [['open', 'Unresolved (in the inbox)'], ['resolved', 'Resolved'], ['fine', 'Never needed review']]],
+      ['line', 'Number called', (org.lines || []).map(l => l.label).concat(uniq(c => c.lineLabel)).filter((l, i, a) => a.indexOf(l) === i).map(l => [l, l + ' · ' + fmt.phone(numOf(l) || ((org.lines || []).find(x => x.label === l) || {}).number || '')])], ['by', 'Staff', uniq(c => c.by).map(n => [n, n])],
       ['who', 'Caller', [['known', 'Customers and leads'], ['customer', 'Customers only'], ['lead', 'Leads only'], ['unknown', 'Unknown numbers']]],
       ['range', 'Date', [['today', 'Today'], ['7', 'Last 7 days'], ['30', 'Last 30 days'], ['custom', 'Custom range']]], ['dur', 'Length', [['short', 'Under ' + st.threshold + ' s'], ['long', st.threshold + ' s or longer']]]];
-    const TOG = [['flagged', 'Flagged', 'flag'], ['resolved', 'Resolved', 'checkmark.circle'], ['archived', 'Archived', 'archivebox']];
+    const TOG = [['flagged', 'Flagged', 'flag'], ['archived', 'Archived', 'archivebox']];
     const set = (k, v) => { F[k] = v; limit = 60; draw(); };
     const rows = () => { const t = F.text.trim().toLowerCase(), td = dg(t), now = +WD.now(), today = D.today();
       return all.filter(c => {
-        if (c.archived ? !F.archived : c.resolved && !F.resolved) return false;
+        if (c.archived && !F.archived) return false;
+        if (F.state && (F.state === 'open' ? !isOpen(c, st) : F.state === 'resolved' ? !c.resolved : c.resolved || !!why(c, st))) return false;
         if ((F.dir && c.dir !== F.dir) || (F.status && c.status !== F.status) || (F.line && c.lineLabel !== F.line) || (F.by && c.by !== F.by) || (F.customerId && c.customerId !== F.customerId)) return false;
         if (F.who) { const cu = custOf(c), lead = !!cu && PIPE.includes(cu.lifecycle); if (F.who === 'unknown' ? cu : F.who === 'known' ? !cu : F.who === 'lead' ? !lead : !cu || lead) return false; }
         if (F.range === 'today' && D.key(new Date(c.at)) !== today) return false; if ((F.range === '7' || F.range === '30') && now - c.at > +F.range * DAY) return false;
@@ -427,7 +468,7 @@ C.logSpec = (preset = {}) => {
       fill(act, chips, chips.length > 1 && ui.button('Clear all', { kind: 'plain', small: true, block: false, onTap: () => { DEFS.forEach(([k]) => { F[k] = ''; }); TOG.forEach(([k]) => { F[k] = false; }); F.customerId = null; draw(); } }), dates && h('div', { style: 'flex-basis:100%' }, dates)); };
     const drawRes = () => { const rs = rows(), openN = rs.filter(c => isOpen(c, st)).length; [...sel].forEach(id => { if (!rs.some(c => c.id === id)) sel.delete(id); });
       const picked = () => rs.filter(c => sel.has(c.id)), flip = id => { sel.has(id) ? sel.delete(id) : sel.add(id); drawRes(); }, done = () => { sel.clear(); selMode = false; drawRes(); };
-      const head = h('div.cl-rhead', h('div.footnote.secondary', plural(rs.length, 'call') + (openN ? ' · ' + openN + ' to review' : '') + (!F.resolved && !F.archived ? ' · resolved and archived calls are hidden' : '')), h('span.spacer'),
+      const head = h('div.cl-rhead', h('div.footnote.secondary', plural(rs.length, 'call') + (openN ? ' · ' + openN + ' unresolved' : '') + ' · resolved calls included' + (!F.archived ? ' · archived hidden' : '')), h('span.spacer'),
         edit && !desk && rs.length ? ui.button(selMode ? 'Done' : 'Select', { kind: 'plain', small: true, block: false, onTap: () => { selMode = !selMode; if (!selMode) sel.clear(); drawRes(); } }) : null);
       const b = (label, fn, kind) => ui.button(label, { kind: kind || 'tinted', small: true, block: false, disabled: !sel.size, onTap: fn });
       const bulk = edit && (selMode || sel.size) ? h('div.cl-bulk', h('b', sel.size + ' selected'), h('span.spacer'),
@@ -435,7 +476,7 @@ C.logSpec = (preset = {}) => {
         b('Resolve', () => { const p = picked(); done(); C.resolve(p); }), b('Archive', () => { const p = picked(); done(); C.archive(p); }), picked().some(c => c.resolved || c.archived) && b('Reopen', () => { const p = picked(); done(); C.reopen(p); }, 'gray'),
         desk && ui.button('Cancel', { kind: 'plain', small: true, block: false, onTap: done })) : null;
       const more = rs.length > limit && ui.button('Show ' + Math.min(60, rs.length - limit) + ' more', { kind: 'plain', onTap: () => { limit += 60; drawRes(); } });
-      if (!rs.length) return fill(res, head, ui.empty({ icon: 'phone', title: 'No calls match', text: all.length ? 'Remove a filter, or switch on Resolved to see calls that were handled.' : 'Calls on your Quo numbers show here.' }));
+      if (!rs.length) return fill(res, head, ui.empty({ icon: 'phone', title: 'No calls match', text: all.length ? 'Remove a filter or widen the dates. The log holds every call, resolved or not.' : 'Calls on your Quo numbers show here.' }));
       if (desk) { const sorted = rs.slice().sort((a, c2) => { const x = VAL[sort.k](a), y2 = VAL[sort.k](c2); return (x < y2 ? -1 : x > y2 ? 1 : 0) * sort.d || c2.at - a.at; }).slice(0, limit);
         return fill(res, head, bulk, h('table.cl-tab',
           h('thead', h('tr', edit && h('th.c', { title: 'Select all', onclick: () => { if (sel.size === rs.length) sel.clear(); else rs.forEach(c => sel.add(c.id)); drawRes(); } }, icon(sel.size && sel.size === rs.length ? 'checkmark.circle.fill' : 'circle', 18)),
@@ -452,7 +493,7 @@ C.logSpec = (preset = {}) => {
     const draw = () => { drawBar(); drawAct(); drawRes(); };
     draw();
     return h('div.cl-log' + (desk ? '.wide' : ''), C.aiCard(s => page.push(s)), h('div', { style: 'margin-top:4px' }, ui.searchField({ placeholder: 'Name, number or summary', value: F.text, onInput: v => { F.text = v; limit = 60; drawRes(); } })), bar, act, res,
-      h('div', { style: 'margin-top:14px' }, ui.note('All calls on ' + (org.lines || []).map(l => l.label + ' ' + fmt.phone(l.number)).join(' and ') + ', received from Quo as each call ends. ' + (desk ? 'Click a column to sort.' : 'Tap Select to resolve or archive several at once.'))));
+      h('div', { style: 'margin-top:14px' }, ui.note('Every call, in and out, resolved or not, on ' + (org.lines || []).map(l => l.label + ' ' + fmt.phone(l.number)).join(' and ') + ', received from Quo as each call ends. ' + (desk ? 'Click a column to sort.' : 'Tap Select to resolve or archive several at once.'))));
   } };
 };
 C.openLog = preset => { WD.nav.switchTab('dialer'); WD.nav.push(C.logSpec(preset)); };
@@ -485,6 +526,7 @@ C.reviewSpec = () => ({ title: 'AI call review', render: page => {
   const item = it => { const c = it.call, here = it.org.id === frontId();
     return h('div.cl-ai', h('div.w', { onclick: () => inOrg(it, x => WD.nav.push(C.detailSpec(x.id))) }, h('b', it.verb + ' ' + it.name), ' — ' + it.what,
         h('div.mt', statusBadge(c), when(c.at) + ' · ' + c.lineLabel + ' line', multi() && orgTag(it.org), c.taskMade && ui.badge('Follow-up added', 'var(--green)'))),
+      here && C.followBar(c),
       h('div.bt', ui.button('Call back', { small: true, block: false, icon: 'phone.fill', onTap: () => inOrg(it, x => C.callBack(x)) }),
         !c.taskMade && ui.button('Create task', { kind: 'tinted', small: true, block: false, onTap: () => inOrg(it, x => { if (mkTask(x, it.verb + ': ' + it.what)) page.refresh(); }) }),
         ui.button('Mark done', { kind: 'gray', small: true, block: false, onTap: () => { c.aiDone = true; if (isOpen(c, ST(it.d))) stamp(c, 'Marked done in the AI call review'); WD.changed(); page.refresh();

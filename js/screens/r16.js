@@ -19,6 +19,7 @@ const cst = () => { const s = data.callSettings || (data.callSettings = { thresh
 const org = () => S.org || (data.orgs || [])[0] || { id: 'o', name: 'RouteClerk' };
 
 WD.css(`
+.tm-inhead { display: flex; align-items: center; gap: 10px; margin: 12px 2px 2px; } .tm-inhead > div { flex: 1; min-width: 0; } .tm-inhead b { display: block; font-size: 20px; line-height: 24px; letter-spacing: -.4px; } .tm-inhead small { display: block; font-size: 13px; color: var(--label2); }
 .tm-bar { display: flex; gap: 8px; align-items: center; margin: 10px 0 2px; }
 .tm-bar .segmented { flex: 1; }
 .tm-ag { appearance: none; border: 0; background: var(--fill3); color: var(--label); border-radius: 10px; min-height: 44px; padding: 0 12px; font-size: 14px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; white-space: nowrap; max-width: 46%; overflow: hidden; text-overflow: ellipsis; }
@@ -33,6 +34,9 @@ WD.css(`
 .tx-b { max-width: 78%; padding: 8px 12px; border-radius: 18px; font-size: 16px; line-height: 21px; background: var(--fill3); color: var(--label); align-self: flex-start; white-space: pre-wrap; }
 .tx-b.out { align-self: flex-end; background: var(--green); color: #fff; }
 .tx-by { font-size: 12px; color: var(--label2); align-self: flex-start; margin: 0 6px 6px; } .tx-by.out { align-self: flex-end; }
+.tx-new { padding: 8px 12px; } .tx-new textarea { width: 100%; min-height: 104px; border: 0; padding: 4px 0; font: inherit; font-size: 17px; background: none; color: var(--label); resize: none; outline: none; }
+.tx-newbar { padding: 0 0 10px; }
+.tx-dir { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--fill3); color: var(--green); flex: none; } .tx-dir.out { color: var(--tint); }
 .tx-send { display: flex; gap: 8px; align-items: flex-end; padding: 8px 0; }
 .tx-send textarea { flex: 1; min-height: 44px; border: 1px solid var(--sep); border-radius: 20px; padding: 10px 14px; font: inherit; font-size: 16px; background: var(--cell); color: var(--label); resize: none; }
 .tm-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 8px; margin: 10px 0; }
@@ -102,6 +106,55 @@ X.threadSpec = id => { let draft = ''; return { title: 'Text', render: page => {
       edit && WD.files && ui.row({ icon: 'doc', title: 'Send a company file', subtitle: 'W-9, COI, license, references…', chevron: true, onTap: () => WD.files.send({ customerId: t.customerId, to: t.customerId ? undefined : t.number }) }),
       edit && !t.resolved && ui.row({ icon: 'flag', title: t.flag ? 'Remove the review flag' : 'Flag for review', onTap: () => { t.flag = !t.flag; t.flagBy = t.flag ? me() : null; WD.changed(); page.refresh(); } }))); } }; };
 
+/* ================= 5.3: write a new text, and the log of every message ================= */
+const dg = v => String(v || '').replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '');
+/** People with a phone number whose name, company or number matches what was typed. */
+const findPeople = text => { const t = String(text || '').trim().toLowerCase(), n = dg(text), out = []; if (t.length < 2) return out;
+  for (const c of data.customers || []) { if (c.archived) continue;
+    for (const p of c.contacts || []) { if (!p.phone) continue; if ((n.length >= 2 && dg(p.phone).includes(n)) || (!/^[\d\s()+.-]+$/.test(t) && (c.name + ' ' + p.name).toLowerCase().includes(t))) { out.push({ c, p }); break; } }
+    if (out.length >= 5) break; }
+  return out; };
+/** Send a text to a number: it joins the conversation with that number, or starts one. → the conversation. */
+X.sendTo = (number, text, o = {}) => { let t = threads().find(x => dg(x.number) === dg(number));
+  if (!t) { const hit = (data.customers || []).map(c => ({ c, p: (c.contacts || []).find(p => dg(p.phone) === dg(number)) })).find(x => x.p && !x.c.archived);
+    t = { id: org().id + 't' + (threads().length + 1) + '-' + now().toString(36), number: hit ? hit.p.phone : number, customerId: hit ? hit.c.id : null, contact: hit ? hit.p.name : null, line: o.line || ((org().lines || [])[0] || { label: 'Main' }).label, messages: [], resolved: false, resolvedHow: null, resolvedBy: null, resolvedAt: null, flag: false, flagBy: null };
+    threads().push(t); }
+  if (o.line) t.line = o.line; t.resolved = false; X.send(t, text); return t; };
+/** The New text sheet. preset: {number, text}. Sending opens the conversation on the Dialer. */
+X.compose = (preset = {}) => { if (!canEdit()) return ui.toast('You can’t send texts with this role', 'lock');
+  const lines = org().lines || [], d = { to: preset.number ? fmt.phoneTyping(dg(preset.number)) : '', pick: null, text: preset.text || '', line: (lines[0] || { label: 'Main' }).label };
+  { const m = d.to && findPeople(d.to).find(x => dg(x.p.phone) === dg(d.to)); if (m) d.pick = m; }
+  const number = () => d.pick ? d.pick.p.phone : d.to;
+  const send = page => { const n = dg(number()), v = d.text.trim(); if (n.length < 7) return ui.toast(/\d/.test(d.to) ? 'That number is too short' : 'Choose a person or enter a number', 'message'); if (!v) return ui.toast('Write a message first', 'message');
+    const t = X.sendTo(number(), v, { line: d.line }); page.dismiss(); if (preset.onSent) { preset.onSent(t); return ui.toast('Text sent · logged as ' + first(me()), 'checkmark'); } WD.nav.switchTab('dialer'); WD.nav.push(X.threadSpec(t.id)); ui.toast('Sent · logged as ' + first(me()), 'checkmark'); };
+  return ui.sheet({ title: 'New text', leading: [{ label: 'Cancel', onTap: p => p.dismiss() }], trailing: page => [{ label: 'Send', bold: true, onTap: () => send(page) }], render: page => {
+    const hits = h('div'), ta = h('textarea', { rows: 4, placeholder: 'Text message', 'aria-label': 'Message', oninput: e => { d.text = e.target.value; } }); ta.value = d.text;
+    const showHits = () => { const found = d.pick ? [] : findPeople(d.to); hits.replaceChildren(...found.map(x => ui.row({ leading: ui.avatar(x.c.name, { size: 34 }), title: x.p.name, subtitle: x.c.name + ' · ' + fmt.phone(x.p.phone), onTap: () => { d.pick = x; page.refresh(); setTimeout(() => ta.focus(), 60); } }))); };
+    const had = d.pick && threads().find(x => dg(x.number) === dg(d.pick.p.phone)); showHits();
+    return ui.list(
+      ui.section({ header: 'To', fold: false, footer: d.pick ? (had ? 'You already have a conversation with this number. The message is added to it.' : 'This starts a new conversation.') : 'Type a name, a company or a phone number. Any number works, a customer or not.' },
+        d.pick ? ui.row({ leading: ui.avatar(d.pick.c.name, { size: 40 }), title: d.pick.p.name, subtitle: d.pick.c.name + ' · ' + fmt.phone(d.pick.p.phone), trailing: h('button.nav-btn', { 'aria-label': 'Choose someone else', onclick: () => { d.pick = null; d.to = ''; page.refresh(); } }, icon('xmark', 18)) })
+          : ui.inputRow({ icon: 'person', placeholder: 'Name or number', value: d.to, autofocus: !d.to, caps: 'words', onInput: v => { d.to = v; showHits(); } }), hits),
+      lines.length > 1 && ui.section({ header: 'From', fold: false }, lines.map(l => ui.row({ title: l.label, detail: fmt.phone(l.number), trailing: d.line === l.label ? icon('checkmark', 18, 'var(--tint)') : null, onTap: () => { d.line = l.label; page.refresh(); } }))),
+      ui.section({ header: 'Message', fold: false, footer: 'Your name is kept with every message you send.' }, h('div.tx-new', ta)),
+      h('div', { style: 'margin-top:14px' }, ui.button('Send', { icon: 'message', onTap: () => send(page) }))); } }, { detent: 'large' }); };
+/** Every text sent and received, newest first, one row per message. */
+X.logSpec = () => { const f = { dir: 'all', text: '', n: 60, view: 'msgs' }; return { title: 'Text log', search: { placeholder: 'Search texts', onInput: (v, page) => { f.text = v; f.n = 60; page.refresh(); } },
+  trailing: () => canEdit() ? [{ icon: 'square.and.pencil', label: 'New text', onTap: () => X.compose() }] : [], render: page => {
+    const t0 = f.text.trim().toLowerCase(), all = threads().flatMap(t => t.messages.map(m => ({ t, m }))).sort((a, b) => b.m.at - a.m.at);
+    const rows = all.filter(({ t, m }) => (f.dir === 'all' || m.dir === f.dir) && (!t0 || (nameOfT(t) + ' ' + (t.contact || '') + ' ' + m.text + ' ' + (m.by || '') + ' ' + t.number).toLowerCase().includes(t0) || (dg(t0).length > 2 && dg(t.number).includes(dg(t0)))));
+    const count = dir => all.filter(x => x.m.dir === dir).length;
+    const pickView = h('div', { style: 'padding-bottom:8px' }, ui.segmented([{ value: 'msgs', label: 'Every message' }, { value: 'threads', label: 'By conversation' }], f.view, v => { f.view = v; page.refresh(); }));
+    if (f.view === 'threads') { const ts = X.list().filter(t => !t0 || (nameOfT(t) + ' ' + (t.contact || '') + ' ' + t.number + ' ' + t.messages.map(m => m.text).join(' ')).toLowerCase().includes(t0));
+      return ui.list(pickView, ts.length ? ui.section({ footer: plural(ts.length, 'conversation') + ', answered and resolved ones included.' }, ts.map(t => textRow(t, page))) : ui.empty({ icon: 'message', title: 'No texts match', text: 'Try another word.' })); }
+    return ui.list(pickView, h('div', { style: 'padding-bottom:8px' }, ui.segmented([{ value: 'all', label: 'All · ' + all.length }, { value: 'in', label: 'Received · ' + count('in') }, { value: 'out', label: 'Sent · ' + count('out') }], f.dir, v => { f.dir = v; f.n = 60; page.refresh(); })),
+      rows.length ? ui.section({ footer: plural(rows.length, 'message') + (rows.length < all.length ? ' of ' + all.length : '') + '. Tap one to open its conversation.' },
+        rows.slice(0, f.n).map(({ t, m }) => ui.row({ leading: h('div.tx-dir' + (m.dir === 'out' ? '.out' : ''), icon(m.dir === 'out' ? 'arrow.up.right' : 'arrow.down', 16)), title: nameOfT(t),
+          subtitle: [h('div.tx-snip', m.text), h('div.footnote.secondary', { style: 'margin-top:3px' }, (m.dir === 'out' ? 'Sent by ' + (m.by || 'the office') : 'Received' + (t.contact ? ' from ' + t.contact : '')) + ' · ' + t.line + ' line')],
+          trailing: h('div.tx-meta', h('div', fmt.rel(m.at))), onTap: () => page.push(X.threadSpec(t.id)) })),
+        rows.length > f.n && ui.row({ title: 'Show more', tint: true, center: true, onTap: () => { f.n += 60; page.refresh(); } }))
+      : ui.empty({ icon: 'message', title: all.length ? 'No texts match' : 'No texts yet', text: all.length ? 'Try another word, or choose All.' : 'Texts on your numbers show here.' })); } }; };
+
 /* ================= Agent filter, inbox bar, who is on a call ================= */
 const UI3 = T.ui = { callBox: 'inbox', textBox: 'inbox', agent: '', win: '30', from: null, to: null, heat: 'calls', rAgent: '' };
 T.agentOK = by => !UI3.agent || (UI3.agent === '-' ? !by : [].concat(by || []).includes(UI3.agent));
@@ -110,6 +163,10 @@ T.boxBar = (key, inboxN, page, names) => { const cur = UI3[key], lab = !UI3.agen
   const btn = h('button.tm-ag' + (UI3.agent ? '.on' : ''), { 'aria-label': 'Filter by agent', onclick: e => ui.menu(e.currentTarget, [{ header: 'Show ' + (key === 'callBox' ? 'calls' : 'texts') + ' handled by' }, { label: 'All agents', checked: !UI3.agent, onTap: () => { UI3.agent = ''; page.refresh(); } }].concat(names.map(n => ({ label: n, checked: UI3.agent === n, onTap: () => { UI3.agent = n; page.refresh(); } })), [{ label: 'Nobody (missed, unanswered)', checked: UI3.agent === '-', onTap: () => { UI3.agent = '-'; page.refresh(); } }])) }, icon('person', 16), lab, icon('chevron.up.chevron.down', 12));
   return h('div.tm-bar', ui.segmented([{ value: 'inbox', label: 'Inbox' + (inboxN ? ' · ' + inboxN : '') }, { value: 'all', label: 'All' }], cur, v => { UI3[key] = v; page.refresh(); }), btn); };
 T.box = key => UI3[key];
+/** The heading of an inbox on the Dialer: its name, what is in it, and the agent filter. kind: 'calls' | 'texts'. */
+T.inboxHead = (title, sub, kind, page) => { const names = T.agentNames(), lab = !UI3.agent ? 'All agents' : UI3.agent === '-' ? 'Nobody' : first(UI3.agent);
+  const btn = h('button.tm-ag' + (UI3.agent ? '.on' : ''), { 'aria-label': 'Filter by agent', onclick: e => ui.menu(e.currentTarget, [{ header: 'Show ' + kind + ' handled by' }, { label: 'All agents', checked: !UI3.agent, onTap: () => { UI3.agent = ''; page.refresh(); } }].concat(names.map(n => ({ label: n, checked: UI3.agent === n, onTap: () => { UI3.agent = n; page.refresh(); } })), [{ label: 'Nobody (missed, unanswered)', checked: UI3.agent === '-', onTap: () => { UI3.agent = '-'; page.refresh(); } }])) }, icon('person', 16), lab, icon('chevron.up.chevron.down', 12));
+  return h('div.tm-inhead', h('div', h('b', title), h('small', sub + ' · unresolved only')), btn); };
 T.agentNames = () => office().map(u => u.name);
 
 /** Who is on the phone right now. In the product this comes from the phone system's live call events. */
@@ -121,12 +178,14 @@ const stateText = p => p.state === 'call' ? (p.dir === 'out' ? 'Calling ' : 'On 
 T.liveStrip = () => { const on = T.presence().filter(p => p.state === 'call'); return on.length ? h('div.tm-live', { 'aria-label': 'On calls now' }, on.map(p => h('div.tm-pill', ui.avatar(p.u.name, { size: 30 }), h('div', h('b', first(p.u.name) + (S.me && p.u.id === S.me.id ? ' (you)' : '')), h('span.s', (p.dir === 'out' ? 'Calling · ' : 'On a call · ') + p.mins + ' min')), h('i.tm-dot.call')))) : null; };
 
 /** The Texts segment of the Dialer. */
-T.textsView = page => { const all = X.list(), inbox = all.filter(X.waiting), src = (UI3.textBox === 'inbox' ? inbox : all).filter(t => T.agentOK(X.agents(t).length ? X.agents(t) : null)), late = inbox.filter(X.isOpen), edit = canEdit();
-  return [T.boxBar('textBox', inbox.length, page, T.agentNames()),
+T.textsView = page => { UI3.textBox = 'inbox'; const all = X.list(), inbox = all.filter(X.waiting), src = inbox.filter(t => T.agentOK(X.agents(t).length ? X.agents(t) : null)), late = inbox.filter(X.isOpen), edit = canEdit();
+  return [edit && h('div.tx-newbar', ui.button('New text', { icon: 'square.and.pencil', kind: 'tinted', small: true, onTap: () => X.compose() })),
+    T.inboxHead('Text inbox', inbox.length ? plural(inbox.length, 'conversation') + ' waiting for a reply' : 'Nothing waiting', 'texts', page),
     UI3.textBox === 'inbox' && late.length ? h('div.footnote.secondary', { style: 'margin:8px 4px 0' }, plural(late.length, 'conversation') + ' waiting more than ' + cst().textWait + ' min, flagged for review.') : null,
     src.length ? ui.section({ footer: UI3.textBox === 'inbox' ? 'A conversation leaves the inbox when someone replies or resolves it, and comes back if the customer writes again.' : 'Every conversation on your numbers, resolved ones included.' }, src.map(t => textRow(t, page)))
       : ui.empty({ icon: UI3.textBox === 'inbox' ? 'checkmark.circle' : 'message', title: UI3.textBox === 'inbox' ? 'Inbox clear' : 'No texts match', text: UI3.agent ? 'Nothing for this agent. Choose All agents to see everyone.' : 'Texts that need a reply show here.' }),
-    edit && UI3.textBox === 'inbox' && src.length > 1 && h('div', { style: 'margin-top:12px' }, ui.button('Resolve all ' + src.length, { kind: 'plain', onTap: async () => { if (await ui.actionSheet({ title: 'Resolve ' + src.length + ' conversations?', message: 'They leave the inbox. You can undo right after.', buttons: [{ label: 'Resolve all', value: true }] })) X.resolve(src); } }))]; };
+    edit && UI3.textBox === 'inbox' && src.length > 1 && h('div', { style: 'margin-top:12px' }, ui.button('Resolve all ' + src.length, { kind: 'plain', onTap: async () => { if (await ui.actionSheet({ title: 'Resolve ' + src.length + ' conversations?', message: 'They leave the inbox. You can undo right after.', buttons: [{ label: 'Resolve all', value: true }] })) X.resolve(src); } })),
+    h('div.cl-alllink', 'Answered and resolved conversations leave the inbox. ', h('button', { onclick: () => page.push(X.logSpec()) }, 'The Text log has every text.'))]; };
 
 /** The Team segment of the Dialer: who is on a call, and today's numbers per person. */
 T.teamView = page => { const ps = T.presence(), today = agg(D.today(), D.today()), lead = Q().leadId === (S.me || {}).id, nq = findings().filter(f => f.status === 'open').length;

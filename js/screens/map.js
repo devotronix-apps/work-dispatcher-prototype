@@ -269,6 +269,9 @@ function createMap(opts) {
   const st = { get day() { return S.board.day || D.today(); }, set day(k) { S.board.day = k; }, hidden: new Set(), extra: new Set(), showTrucks: true, sel: null, follow: null, labels: false };
   /* A driver's map starts with only their own route. The other routes are one tap away on the chips. */
   { const mine = S.me && S.me.role === 'driver' && data.routes.find(r => r.driverId === S.me.id); if (mine) q.routes().forEach(r => { if (r.id !== mine.id) st.hidden.add(r.id); }); }
+  const hidden0 = new Set(st.hidden);   // the routes hidden when the map opened: part of its default view (5.3 Home)
+  const mapHome = { atHome: () => st.day === D.today() && st.showTrucks && !st.follow && !st.extra.size && st.hidden.size === hidden0.size && [...st.hidden].every(id => hidden0.has(id)),
+    reset: () => { st.hidden = new Set(hidden0); st.extra.clear(); st.showTrucks = true; st.sel = null; st.follow = null; st.day = shownDay = D.today(); update(); fit(true); WD.changed(); } };
   let shownDay = st.day;
   let W = 393, H = 769, view = { s: 1, x0: 0, y0: 0 }, fitted = false, raf = 0, anim = 0, ro = null;
   const base = buildBase();
@@ -417,6 +420,7 @@ function createMap(opts) {
     const labelBtn = btn(st.labels ? 'chevron.right' : 'questionmark.circle', st.labels ? 'Hide the names of the map tools' : 'Show the names of the map tools', () => { st.labels = !st.labels; drawUI(); const b = side.querySelector('.mp-btn'); if (b) b.focus({ preventScroll: true }); }, false, st.labels ? 'Hide names' : 'Names');
     labelBtn.setAttribute('aria-expanded', String(st.labels));
     fill(side, 
+      !embedded && !mapHome.atHome() && h('div.mp-grp.mp-glass', btn('house', 'Home: back to the default map', () => mapHome.reset(), false, 'Home')),
       h('div.mp-grp.mp-glass', labelBtn, btn('list.bullet', 'Stops list', openList), WD.r8 && btn('calendar', 'Planning map: jobs near an address in the coming weeks', () => WD.r8.openPlanMap(), false, 'Planning map'), WD.can('jobs.edit') && btn('sparkles', 'AutoRoute', autoRoute), canLive && btn('truck', st.showTrucks ? 'Hide trucks' : 'Show trucks', () => { st.showTrucks = !st.showTrucks; ui.toast(st.showTrucks ? 'Showing live trucks' : 'Trucks hidden', 'truck', 1400); update(); }, !st.showTrucks)),
       h('div.mp-grp.mp-glass', btn(S.shift ? 'location.fill' : 'location', 'Show my location', locate, false, 'My location'), btn('mp.fit', 'Show all stops', () => { stopFollow(); fit(true); })),
       h('div.mp-grp.mp-glass', btn('plus', 'Zoom in', () => zoomAt({ x: W / 2, y: H / 2 }, 1.7, true)), btn('minus', 'Zoom out', () => zoomAt({ x: W / 2, y: H / 2 }, 1 / 1.7, true))));

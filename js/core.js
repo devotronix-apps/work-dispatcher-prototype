@@ -4,9 +4,9 @@
 'use strict';
 const WD = window.WD = { screens: {}, data: {} };
 /** Prototype version (Settings → About). Bump on every publish; the “what’s new” tutorial shows once per version. */
-WD.version = '5.2';
+WD.version = '5.3';
 /** Earlier releases kept on the published site under v/<version>/ (Settings → Older versions). Add the outgoing version on every publish. */
-WD.olderVersions = ['5.1', '5.0', '4.3', '4.2', '4.1'];
+WD.olderVersions = ['5.2', '5.1', '5.0', '4.3', '4.2', '4.1'];
 const $ = (s, r) => (r || document).querySelector(s);
 
 /* ================= DOM helper ================= */
@@ -135,6 +135,7 @@ const I = WD.icons = {
   'arrow.left.arrow.right': '<path d="M8 4L4 8l4 4M4 8h16M16 12l4 4-4 4M20 16H4"/>',
   'arrow.triangle.turn.up.right': '<path d="M5 20v-6a4 4 0 0 1 4-4h10M15 6l4 4-4 4"/>',
   pencil: '<path d="M4 20l1-4.500L16.500 4a2.100 2.100 0 0 1 3 3L8 18.500 4 20zM14.500 6l3 3"/>',
+  paintbrush: '<path d="M20.500 3.500c-3 1.500-7.500 6-9.500 9l2.500 2.500c3-2 7.500-6.500 9-9.500a1.500 1.500 0 0 0-2-2zM9.500 14A3.500 3.500 0 0 0 6 17.500c0 1.500-1 2.500-2.500 3 3.500 1 8 0 8-4a2.500 2.500 0 0 0-2-2.500z"/>',
   'square.and.pencil': '<path d="M11 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-5M18.500 3.500a2.100 2.100 0 0 1 3 3L12 16l-4 1 1-4 9.500-9.500z"/>',
   trash: '<path d="M4 7h16M9.500 7V4.500h5V7M6.500 7l1 13h9l1-13M10 11v5.500M14 11v5.500"/>',
   paperclip: '<path d="M20 11.500l-8 8a5 5 0 0 1-7-7l8.500-8.500a3.400 3.400 0 0 1 4.800 4.800L10 17a1.800 1.800 0 0 1-2.500-2.500L15 7"/>',
@@ -245,6 +246,14 @@ ui.progress = fraction => h('div.progress', h('i', { style: { width: Math.round(
 ui.badge = (text, color, solid) => h('span.badge' + (solid ? '.solid' : ''), { style: { '--c': color } }, text);
 ui.dot = color => h('span.dot', { style: { background: color } });
 const AVATAR = ['#FF9500', '#34C759', '#007AFF', '#AF52DE', '#FF2D55', '#30B0C7', '#5856D6', '#A2845E'];
+/** Who dealt with a customer: an employee (small avatar and first name), the AI (purple, with the sparkle), an automatic message, or nobody.
+    by: a name, a list of names, 'AI …' / 'RouteClerk AI', 'Automatic', or null. o.none: text to show when nobody did (default: nothing shown). */
+ui.isAI = by => /^(ai\b|routeclerk ai)|\bai (phone )?agent\b|^ai premium/i.test(String(by || ''));
+ui.who = (by, o = {}) => { const names = [].concat(by || []).filter(Boolean);
+  if (!names.length) return o.none ? h('span.who.none', WD.icon('person', 12), o.none) : null;
+  return h('span.who-set', names.map(n => ui.isAI(n) ? h('span.who.ai', { title: 'Handled by AI: ' + n }, WD.icon('sparkles', 12), 'AI' + (/approved by/i.test(n) ? ' · ' + n.replace(/^.*approved by\s*/i, 'OK’d by ').split(' ').slice(0, 3).join(' ') : ''))
+    : /^(automatic|routeclerk|invoice ninja|system)$/i.test(n) ? h('span.who.auto', { title: 'Sent automatically' }, WD.icon('repeat', 12), 'Automatic')
+    : h('span.who', { title: 'Handled by ' + n }, h('i', { style: { background: ui.avatarColor(n) } }, n.trim().charAt(0).toUpperCase()), o.full ? n : n.split(' ')[0]))); };
 ui.avatarColor = name => { let n = 0; for (const c of String(name)) n = (n * 31 + c.charCodeAt(0)) >>> 0; return AVATAR[n % AVATAR.length]; };
 ui.avatar = (name, o = {}) => { const size = o.size || 40; let n = 0; for (const c of String(name)) n = (n * 31 + c.charCodeAt(0)) >>> 0;
   return h('div.avatar', { style: { width: size + 'px', height: size + 'px', fontSize: Math.round(size * 0.4) + 'px', '--c': o.color || AVATAR[n % AVATAR.length] } }, o.icon ? WD.icon(o.icon, size * 0.55) : F.initials(name)); };
@@ -485,6 +494,7 @@ function makePage(spec, stack, prev) {
     lead.replaceChildren(); trail.replaceChildren();
     if (prev && spec.back !== false) { const pt = evalSpec(prev.spec.title) || 'Back'; add(lead, h('button.nav-btn.back', { 'aria-label': 'Back', onclick: () => stack.pop() }, WD.icon('chevron.left', 25), h('span', spec.backLabel || (pt.length > 11 || pt.length + (title.textContent || '').length > 24 ? 'Back' : pt)))); }
     list(evalSpec(spec.leading)).forEach(b => add(lead, navButton(b, page)));
+    { const hm = !prev && !stack.sheet && spec.home; if (hm && !hm.atHome()) add(trail, navButton(app.homeButton(hm, page), page)); }
     list(evalSpec(spec.trailing)).forEach(b => add(trail, navButton(b, page)));
     if (accessory) { accessory.replaceChildren(); add(accessory, evalSpec(spec.accessory)); }
     if (toolbar) { toolbar.replaceChildren(); add(toolbar, evalSpec(spec.toolbar)); }
@@ -613,6 +623,18 @@ const uiReg = [];
 const snap = v => Array.isArray(v) ? v.map(snap) : v instanceof Set ? new Set(v) : v instanceof Map ? new Map(v) : v && typeof v === 'object' && Object.getPrototypeOf(v) === Object.prototype ? Object.fromEntries(Object.keys(v).map(k => [k, snap(v[k])])) : v;
 const putState = (obj, from) => { Object.keys(obj).forEach(k => { delete obj[k]; }); Object.assign(obj, snap(from)); };
 app.uiState = (name, obj) => { if (obj && !uiReg.some(r => r.obj === obj)) uiReg.push({ name, obj, init: snap(obj) }); return obj; };
+/* 5.3 Home. A tab that can change its view (a selector, a filter, a sort order, another day) says what its default view is:
+   app.home(id, { atHome: () => true while nothing differs from the default, reset: () => put the default back }).
+   The root page of that tab then gets a Home button, first in the trailing group of its navigation bar, only while the view differs from the
+   default; a tap restores the default and the button goes away. Screens that draw their own top bar (Dispatch, Map) call app.homes[id] themselves.
+   app.viewHome(names, { skip }) builds one from view-state objects registered with app.uiState: the default is what the object held at start. */
+app.homes = {};
+app.home = (id, def) => { app.homes[id] = def; return def; };
+const plain = v => v && typeof v === 'object' && Object.getPrototypeOf(v) === Object.prototype;
+const same = (a, b) => a === b || (Array.isArray(a) && Array.isArray(b) ? a.length === b.length && a.every((x, i) => same(x, b[i])) : plain(a) && plain(b) ? Object.keys({ ...a, ...b }).every(k => same(a[k], b[k])) : false);
+app.viewHome = (names, o = {}) => { const regs = () => uiReg.filter(r => names.includes(r.name)), keys = r => Object.keys(r.init).filter(k => !(o.skip || []).includes(k));
+  return { atHome: () => regs().every(r => keys(r).every(k => same(r.obj[k], r.init[k]))) && (!o.atHome || o.atHome()), reset: () => { regs().forEach(r => keys(r).forEach(k => { r.obj[k] = snap(r.init[k]); })); if (o.reset) o.reset(); } }; };
+app.homeButton = (hm, page) => ({ icon: 'house', label: 'Home: back to the default view', onTap: () => { hm.reset(); if (page) { page.body.scrollTop = 0; page.refresh(); } WD.changed(); } });
 const saveUi = () => ({ states: uiReg.map(r => [r.obj, snap(r.obj)]), officeSeg: app.officeSeg });
 const loadUi = saved => { const m = new Map(saved ? saved.states : []); uiReg.forEach(r => putState(r.obj, m.has(r.obj) ? m.get(r.obj) : r.init)); app.officeSeg = saved ? saved.officeSeg : null; };
 /** 5.1: called just before switching from the Business page in Settings. That page is where every switch starts, so parking it would make each
@@ -663,7 +685,7 @@ app.showMain = (tabId, keep) => {
   state.syncBar = () => {
     tabs = app.barIds().map(app.dest).concat(more); state.buttons = {}; bar.replaceChildren(); bar.className = 'tabbar n' + tabs.length; const many = (WD.data.orgs || []).length > 1; bar.style.setProperty('--org', many && S.org && S.org.color || 'transparent');
     if (S.desktop) bar.appendChild(h('button.side-org', { 'aria-label': 'Business: ' + (S.org || {}).name, onclick: e => state.orgMenu(e.currentTarget) }, h('i'), h('span', (S.org || {}).name, h('small', many ? 'Switch business' : 'RouteClerk'))));
-    tabs.forEach(t => { const b = state.buttons[t.id] = h('button.tab' + (state.active === t.id ? '.active' : ''), { 'aria-label': t.title, onclick: () => t.menu ? (S.desktop ? state.go('settings') : state.openMenu(b)) : state.select(t.id) }, WD.icon(t.menu && S.desktop ? 'gearshape' : t.icon, 27), h('span', t.menu && S.desktop ? 'Settings' : t.title), S.desktop && h('i.tab-split', { role: 'button', title: 'Open ' + (t.menu ? 'Settings' : t.title) + ' beside what is on screen', 'aria-label': 'Open ' + (t.menu ? 'Settings' : t.title) + ' beside what is on screen', onclick: e => { e.stopPropagation(); state.openBeside(t.id); } }, WD.icon('columns', 15))); bar.appendChild(b); });
+    tabs.forEach(t => { const b = state.buttons[t.id] = h('button.tab' + (state.active === t.id ? '.active' : ''), { 'aria-label': t.title, onclick: () => t.menu ? (S.desktop ? state.go('settings') : state.openMenu(b)) : state.tap(t.id) }, WD.icon(t.menu && S.desktop ? 'gearshape' : t.icon, 27), h('span', t.menu && S.desktop ? 'Settings' : t.title), S.desktop && h('i.tab-split', { role: 'button', title: 'Open ' + (t.menu ? 'Settings' : t.title) + ' beside what is on screen', 'aria-label': 'Open ' + (t.menu ? 'Settings' : t.title) + ' beside what is on screen', onclick: e => { e.stopPropagation(); state.openBeside(t.id); } }, WD.icon('columns', 15))); bar.appendChild(b); });
     if (S.desktop) bar.appendChild(h('button.side-work', { 'aria-label': 'Workspace: modules on screen', onclick: e => state.workMenu(e.currentTarget) }, WD.icon('columns', 18), h('span', 'Workspace', h('small', state.open.length > 1 ? state.open.length + ' modules side by side' : 'One module · add more'))));
     Object.keys(state.stacks).forEach(id => { if (tabs.some(t => t.id === id) || id === state.active) return; const st = state.stacks[id]; state.open = state.open.filter(k => k !== id); st.el.remove(); stacks.delete(st); delete state.stacks[id]; });
     if (state.cur !== 'settings' && tabs.some(t => t.id === state.cur) && state.active !== 'more') { const old = state.stacks.more; if (old) { old.el.remove(); stacks.delete(old); delete state.stacks.more; } state.cur = 'settings'; }
@@ -672,12 +694,14 @@ app.showMain = (tabId, keep) => {
   /* Two businesses: “Switch to <the other one>”. Three or more: “Switch business…”, which lists them. */
   const orgItems = () => { const others = (WD.data.orgs || []).filter(o => o.id !== (S.org || {}).id); return !others.length ? [] : others.length === 1 ? [{ label: 'Switch to ' + others[0].name, icon: 'building', onTap: () => app.pickOrg() }] : [{ label: 'Switch business…', subtitle: 'Now in ' + (S.org || {}).name, icon: 'building', onTap: () => app.pickOrg() }]; };
   state.orgMenu = anchor => ui.menu(anchor, [{ header: 'Switch business' }].concat((WD.data.orgs || []).map(o => ({ label: o.name, checked: o.id === (S.org || {}).id, onTap: () => { if (o.id !== (S.org || {}).id && app.switchOrg(o.id) !== false) ui.toast('Now in ' + o.name, 'building'); } }))));
-  state.openMenu = anchor => ui.menu(anchor, app.menuItems().map(m => { const n = app.menuBadge(m); return { label: m.title + (n ? '  (' + n + ')' : ''), icon: m.icon, onTap: () => state.go(m.id) }; }).concat('divider', { label: 'Arrange tabs and menu…', icon: 'square.grid', onTap: () => { state.go('settings'); if (WD.rc && WD.rc.sectionsSpec) nav.push(WD.rc.sectionsSpec()); } }, ...(orgItems().length ? ['divider'].concat(orgItems()) : [])));
+  state.openMenu = anchor => ui.menu(anchor, app.menuItems().map(m => { const n = app.menuBadge(m); return { label: m.title + (n ? '  (' + n + ')' : ''), icon: m.icon, onTap: () => state.tap(m.id) }; }).concat('divider', { label: 'Arrange tabs and menu…', icon: 'square.grid', onTap: () => { state.go('settings'); if (WD.rc && WD.rc.sectionsSpec) nav.push(WD.rc.sectionsSpec()); } }, ...(orgItems().length ? ['divider'].concat(orgItems()) : [])));
   /** Open a section wherever it lives: its own tab when it is in the bar, otherwise the Menu tab's stack (a different section replaces that stack). */
   state.go = id => { if (tabs.some(t => t.id === id && !t.menu)) return state.select(id);
     const m = app.dest(id) || app.menu.find(x => x.id === 'settings'), old = state.stacks.more;
     if (old && state.cur !== m.id) { old.el.remove(); stacks.delete(old); delete state.stacks.more; if (state.active === 'more') state.active = null; }
     state.cur = m.id; state.select('more'); };
+  /** A person pressed a tab or a menu section (not code switching tabs): the screen's onTabTap runs first. */
+  state.tap = id => { const m = WD.screens[id], hook = m && m.onTabTap; if (hook) hook(); state.go(id); if (hook) WD.changed(); };
   state.select = id => {
     const t = tabs.find(x => x.id === id) || tabs[0]; id = t.id;
     /* Desktop workspace: a module that is already on screen is brought into focus; otherwise it takes the place of the focused one. */
@@ -697,7 +721,8 @@ app.showMain = (tabId, keep) => {
     /* In a workspace each module has a strip with its name and a close button; pressing anywhere in a module makes it the one new screens open in. */
     st.el.appendChild(h('div.pane-bar', h('span'), h('button', { 'aria-label': 'Close this module', title: 'Close this module', onclick: e => { e.stopPropagation(); state.closePane(id); } }, WD.icon('xmark', 13))));
     st.el.addEventListener('pointerdown', () => { if (state.open.length > 1 && state.active !== id && state.open.includes(id)) state.focus(id); }, true);
-    st.push(mod && mod.root ? mod.root() : { title: t.title, large: true, render: () => ui.empty({ icon: t.icon, title: t.title, text: 'This screen is not part of the prototype yet.' }) }, false); }
+    const spec = mod && mod.root ? mod.root() : null, hm = app.homes[t.menu ? state.cur : id]; if (spec && hm && !spec.home) spec.home = hm;
+    st.push(spec || { title: t.title, large: true, render: () => ui.empty({ icon: t.icon, title: t.title, text: 'This screen is not part of the prototype yet.' }) }, false); }
   function show() { const many = state.open.length > 1; panes.classList.toggle('multi', many);
     Object.entries(state.stacks).forEach(([k, st]) => { const on = state.open.includes(k); st.el.classList.toggle('active', on); st.el.classList.toggle('focus', many && k === state.active); st.el.style.order = on ? state.open.indexOf(k) : ''; const lab = st.el.querySelector(':scope > .pane-bar > span'); if (lab) lab.textContent = title(k); });
     Object.entries(state.buttons).forEach(([k, b]) => { b.classList.toggle('active', k === state.active); b.classList.toggle('open', many && state.open.includes(k)); });
@@ -732,6 +757,15 @@ app.signIn = () => { S.signedIn = true; store.set('wd.lastSignIn', String(Date.n
 app.signOut = () => { store.set('wd.signedOut', '1'); S.signedIn = false; S.shift = null; ui.closeAllSheets(); if (WD.screens.auth && WD.screens.auth.show) WD.screens.auth.show(); else app.showMain(); syncPanel(); };
 app.setRole = role => { S.role = role; S.me = (WD.data.users || []).find(u => u.role === role && u.status !== 'invited') || S.me; if (S.signedIn) app.showMain(); syncPanel(); WD.emit('role', role); };
 app.setTheme = t => { S.theme = t; screen().dataset.theme = t; store.set('wd.theme', t); syncPanel(); WD.changed(); };
+/** Display → Theme colors (5.3). Each person picks an accent color (buttons, links, the selected tab) and the background of segmented controls.
+    null = the standard color. The choice is kept on this device, like the appearance and the text size. */
+WD.accentColors = [{ value: null, label: 'Blue', hex: '#007AFF' }, { value: '#5856D6', label: 'Indigo' }, { value: '#AF52DE', label: 'Purple' }, { value: '#0E8F9E', label: 'Teal' }, { value: '#248A3D', label: 'Green' }, { value: '#C2570C', label: 'Orange' }, { value: '#D6336C', label: 'Pink' }, { value: '#D70015', label: 'Red' }];
+WD.segColors = [{ value: null, label: 'Gray', hex: '#E3E3E8' }, { value: '#CFE6FF', label: 'Light blue' }, { value: '#CDEFD8', label: 'Mint' }, { value: '#FFE0C2', label: 'Peach' }, { value: '#E3D9FB', label: 'Lavender' }, { value: '#FFF1B8', label: 'Yellow' }, { value: '#FFD6E0', label: 'Pink' }];
+S.colors = { accent: null, seg: null };
+const hexOK = v => /^#[0-9a-f]{6}$/i.test(v || '') ? v.toUpperCase() : null;
+const applyColors = () => { const st = screen().style, c = S.colors, set = (k, v) => v ? st.setProperty(k, v) : st.removeProperty(k);
+  set('--tint', c.accent); set('--seg-bg', c.seg); set('--seg-border', c.seg && 'color-mix(in srgb, ' + c.seg + ' 62%, #000)'); set('--seg-label', c.seg && (WD.readableOn ? WD.readableOn(c.seg) : '#1C1C1E')); };
+app.setColors = change => { S.colors = { accent: hexOK(change.accent === undefined ? S.colors.accent : change.accent), seg: hexOK(change.seg === undefined ? S.colors.seg : change.seg) }; applyColors(); store.set('wd.colors', JSON.stringify(S.colors)); WD.changed(); };
 /** Display → Text size. The whole interface is scaled, the way Dynamic Type enlarges an iPhone app. */
 WD.textSizes = [{ value: 0.9, label: 'Small' }, { value: 1, label: 'Default' }, { value: 1.12, label: 'Large' }, { value: 1.25, label: 'Extra large' }, { value: 1.4, label: 'Largest' }];
 app.setTextSize = z => { S.textSize = z = +z || 1; [$('#root'), overlays()].forEach(el => { el.style.zoom = z === 1 ? '' : z; }); store.set('wd.textSize', String(z)); WD.changed(); };
@@ -858,6 +892,7 @@ function fit() {
 function tick() { const t = $('.sb-time'); if (t) t.textContent = F.time(WD.nowMins(), true); }
 app.start = () => {
   if (store.get('wd.theme')) S.theme = store.get('wd.theme'); screen().dataset.theme = S.theme; if (+store.get('wd.textSize')) app.setTextSize(+store.get('wd.textSize'));
+  try { const c = JSON.parse(store.get('wd.colors') || 'null'); if (c) { S.colors = { accent: hexOK(c.accent), seg: hexOK(c.seg) }; applyColors(); } } catch (e) { /* no saved colors */ }
   S.me = (WD.data.users || []).find(u => u.role === S.role) || { id: 'u0', name: 'You', role: 'owner' };
   S.org = (WD.data.orgs || [])[0] || { id: 'o1', name: 'Company' };
   S.board.day = D.today();

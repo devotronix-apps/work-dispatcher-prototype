@@ -220,6 +220,13 @@ function step(n) { const b = S.board; if (b.mode === 'month') { const d = D.pars
 function keep(top, left) { const live = scroller && scroller.isConnected && !!scroller.offsetParent && !!scroller.placed; saved = { top: top === undefined ? (live ? scroller.scrollTop : saved.top) : top, left: left === undefined ? (live ? scroller.scrollLeft : saved.left) : left }; scroller = null; }
 function refresh() { if (page && page.el.isConnected) page.refresh(); }
 
+/* 5.3 Home. The default board: today, every route side by side (Routes view), the board rather than the map, three routes across, the
+   standard card detail, and the routes that were showing when the app opened. Home puts all of that back at once. */
+const firstVisible = new WeakMap(), startVisible = r => { if (!firstVisible.has(r)) firstVisible.set(r, !!r.visible); return firstVisible.get(r); };
+const boardHome = WD.app.home('board', {
+  atHome: () => { const b = S.board; return b.day === D.today() && b.mode === 'routes' && b.view === 'board' && !b.split && !b.select && b.detail === 1 && (S.desktop || b.cols === 3) && b.dayCount === (S.desktop ? 7 : 3) && q.routes().every(r => !!r.visible === startVisible(r)); },
+  reset: () => { const b = S.board; q.routes().forEach(r => { r.visible = startVisible(r); }); Object.assign(b, { day: D.today(), mode: 'routes', view: 'board', split: false, select: null, detail: 1, cols: 3, dayCount: S.desktop ? 7 : 3 }); keep(null, 0); refresh(); WD.changed(); },
+});
 /* ---------- Header rows ---------- */
 function topBar() {
   const b = S.board, today = D.today();
@@ -237,6 +244,7 @@ function topBar() {
       btn('chevron.right', 'Next ' + unit, () => step(1), icon('chevron.right', 20))),
     /* Board ↔ Map (5.1): one button that names the view a tap goes to. On a computer it sits here in the bar; on an iPhone it floats over the
        bottom of the board (viewPill), where there is room for a label, and the date gets the width back. */
+    !boardHome.atHome() && btn('house', 'Home: back to the default board', () => { boardHome.reset(); ui.toast('Default board', 'house', 1200); }),
     S.desktop && canMap() && viewBtn(),
     (S.desktop || b.mode === 'month') && btn('magnifyingglass', 'Search', () => jobsScreen().openSearch && jobsScreen().openSearch()),
     btn(null, 'Today', () => { b.day = today; keep(null); refresh(); }, h('span.bd-today', D.parse(today).getDate())),
@@ -372,6 +380,8 @@ function cell(job, number, ci) {
         ci && ci.overlap && !WD.closed[job.status] ? h('div.bd-tag.ov', ci.overlap) : null,
         tag ? h('div.bd-tag', tag + (job.rescheduledTo ? ' · ' + fmt.day(job.rescheduledTo, 'md') : '')) : notBilled ? h('div.bd-tag.nb', 'Not billed') : noAddr ? h('div.bd-tag.na', noAddr) : job.offWindow && !WD.closed[job.status] ? h('div.bd-tag.na', { title: job.offWindow }, 'Outside window') : null,
         WD.cardTags && !WD.closed[job.status] && (t => t.length ? h('div.d12', t) : null)(WD.cardTags(job)),
+        /* 5.3: every stop shows its ETA, worked out again as the day goes on; red when it falls outside the time the customer was given. */
+        !tag && !WD.closed[job.status] && WD.eta && WD.eta.cardChip(job),
         !tag && h('div.bd-job-sub.d1', fx.map(x => x[1]).join(' · ') || (key.length ? null : type.title)),
         !tag && h('div.d2', details(job, key)))),
     picking && canSelect(job) && h('span.bd-check', icon('checkmark', 11)));
@@ -651,7 +661,7 @@ function render(p) {
   if (!q.route(b.routeId)) { const mine = data.routes.find(r => r.driverId === S.me.id); b.routeId = (mine || q.visibleRoutes()[0] || q.routes()[0]).id; }
   /* While jobs are being selected the bar takes the place of the warning lines, right under the date. */
   /* Under the bar: the month, the live map of the same day and routes, or the board (on a computer optionally with the map beside it). */
-  return [topBar(), selectBar() || strips([statusStrip(), addressStrip(), WD.r11 && WD.r11.boardStrips(inView), WD.rc && WD.rc.assignStrip && WD.rc.assignStrip(b.mode === 'month' ? [] : columns()), offStrip(), markStrip(), ops2().boardStrips && ops2().boardStrips(b.mode === 'month' ? [] : columns())]),
+  return [topBar(), selectBar() || strips([statusStrip(), addressStrip(), WD.r11 && WD.r11.boardStrips(inView), WD.rc && WD.rc.assignStrip && WD.rc.assignStrip(b.mode === 'month' ? [] : columns()), offStrip(), markStrip(), WD.eta && b.mode !== 'month' && WD.eta.boardStrip(columns()), ops2().boardStrips && ops2().boardStrips(b.mode === 'month' ? [] : columns())]),
     b.mode === 'month' ? monthView() : h('div.bd-holder' + (WD.r15 && WD.r15.cardClass ? WD.r15.cardClass() : ''), { style: WD.r15 && WD.r15.cardVars ? WD.r15.cardVars() : null }, mapOnly() ? mapPane() : splitView() ? h('div.bd-split', grid(), mapPane()) : grid(), viewPill())];
 }
 WD.screens.board = {

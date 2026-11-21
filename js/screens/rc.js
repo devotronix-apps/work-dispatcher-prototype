@@ -19,6 +19,12 @@ WD.css(`
 .rc-ai ul { margin: 6px 0 0; padding-left: 18px; } .rc-ai li { margin: 3px 0; } .rc-ai b { font-weight: 600; }
 .rc-ai .btn { margin-top: 10px; }
 .rc-ai.lock { background: var(--cell); border: 1px dashed var(--sep); } .rc-ai.lock .k { color: var(--label2); }
+.rc-sw { display: flex; flex-wrap: wrap; gap: 12px; padding: 14px 16px; background: var(--cell); }
+.rc-sw button, .rc-sw-any { appearance: none; width: 40px; height: 40px; border-radius: 50%; border: 0; background: var(--c, var(--fill3)); box-shadow: inset 0 0 0 1px var(--seg-edge); cursor: pointer; position: relative; display: grid; place-items: center; color: var(--label2); padding: 0; }
+.rc-sw button.on, .rc-sw-any.on { box-shadow: 0 0 0 2px var(--cell), 0 0 0 4.5px var(--label); }
+.rc-sw-any input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.rc-sw-now { display: inline-flex; gap: 4px; margin-right: 2px; } .rc-sw-now i { width: 18px; height: 18px; border-radius: 50%; box-shadow: inset 0 0 0 1px var(--seg-edge); }
+.rc-prev { padding: 14px 16px; background: var(--cell); }
 .rc-size { display: flex; align-items: flex-end; gap: 4px; padding: 10px 16px 12px; background: var(--cell); }
 .rc-size button { flex: 1; border: 0; background: var(--fill3); border-radius: 9px; height: 52px; display: grid; place-items: center; color: var(--label); cursor: pointer; font-weight: 600; }
 .rc-size button.on { background: var(--tint); color: #fff; }
@@ -102,8 +108,20 @@ RC.sectionsSpec = () => ({ title: 'Tabs and menu', render: page => {
     hiddenOnes.length > 0 && ui.section({ header: 'Hidden', fold: false, footer: 'Hidden sections leave your menu only. Settings always stays.' }, hiddenOnes.map(d => ui.row({ icon: d.icon, iconColor: 'var(--gray)', title: d.title, trailing: ui.button('Show', { kind: 'tinted', small: true, block: false, onTap: () => set(p => { p.hidden = { ...(p.hidden || {}), [d.id]: false }; }) }) }))),
     ui.section(null, ui.row({ title: 'Put everything back the way it came', tint: true, center: true, onTap: () => set(p => { p.bar = null; p.order = null; p.hidden = {}; }) })));
 } });
+/* 5.3: Theme colors. The accent tints buttons, links and the selected tab; the other color is the background of every segmented control. */
+const swatches = (list, cur, set, name) => { const custom = cur && !list.some(c => c.value === cur), pick = h('input', { type: 'color', value: cur || list[0].hex, 'aria-label': 'Any other ' + name, onchange: e => set(e.target.value) });
+  return h('div.rc-sw', list.map(c => h('button' + ((c.value || null) === (cur || null) ? '.on' : ''), { 'aria-label': c.label, 'aria-pressed': String((c.value || null) === (cur || null)), title: c.label, style: { '--c': c.value || c.hex }, onclick: () => set(c.value) })),
+    h('label.rc-sw-any' + (custom ? '.on' : ''), { title: 'Any other color', style: custom ? { '--c': cur } : null }, pick, custom ? null : icon('plus', 16))); };
+const colorName = (list, cur) => (list.find(c => (c.value || null) === (cur || null)) || { label: 'Custom' }).label;
+RC.colorsSpec = () => ({ title: 'Theme colors', render: page => { const c = S.colors, A = WD.app;
+  return ui.list(note('Choose the colors this app uses on your device. They apply in light and dark appearance and nobody else’s app changes.'),
+    ui.section({ header: 'Accent · ' + colorName(WD.accentColors, c.accent), fold: false, footer: 'Buttons, links and the selected tab.' }, swatches(WD.accentColors, c.accent, v => A.setColors({ accent: v }), 'accent color')),
+    ui.section({ header: 'Segmented controls · ' + colorName(WD.segColors, c.seg), fold: false, footer: 'The background behind selectors such as Keypad | Calls | Texts. The outline follows the color you choose, and the labels stay readable on it.' }, swatches(WD.segColors, c.seg, v => A.setColors({ seg: v }), 'background color')),
+    ui.section({ header: 'Preview', fold: false }, h('div.rc-prev', ui.segmented(['Keypad', 'Calls', 'Texts'], 'Keypad', () => {}), h('div.hstack', { style: 'gap:10px;margin-top:12px' }, ui.button('Button', { small: true, block: false }), ui.button('Tinted', { kind: 'tinted', small: true, block: false }), h('span', { style: 'color:var(--tint);font-weight:600' }, 'A link')))),
+    ui.section(null, ui.row({ title: 'Use the standard colors', tint: true, center: true, disabled: !c.accent && !c.seg, onTap: () => A.setColors({ accent: null, seg: null }) }))); } });
 RC.displaySection = push => ui.section({ header: 'Display', fold: false, footer: 'Text size changes every screen. These choices are yours and stay on this device.' },
   ui.row({ icon: S.theme === 'dark' ? 'moon' : 'sun', iconColor: 'var(--indigo)', title: 'Appearance', trailing: h('div', { style: 'width:128px' }, ui.segmented([{ value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }], S.theme, v => WD.app.setTheme(v))) }),
+  ui.row({ icon: 'paintbrush', iconColor: 'var(--pink)', title: 'Theme colors', subtitle: 'Accent color and the background of segmented controls', trailing: h('span.rc-sw-now', h('i', { style: { background: S.colors.accent || 'var(--blue)' } }), h('i', { style: { background: S.colors.seg || 'var(--fill)' } })), chevron: true, onTap: () => push(RC.colorsSpec()) }),
   ui.row({ icon: 'textformat', iconColor: 'var(--blue)', title: 'Text size', detail: (WD.textSizes.find(t => t.value === S.textSize) || {}).label }),
   h('div.rc-size', WD.textSizes.map((t, i) => h('button' + (t.value === S.textSize ? '.on' : ''), { 'aria-label': 'Text size ' + t.label, style: { fontSize: 13 + i * 4 + 'px' }, onclick: () => WD.app.setTextSize(t.value) }, 'A'))),
   ui.row({ icon: 'square.grid', iconColor: 'var(--gray)', title: 'Tabs and menu', subtitle: 'Choose what sits in the bottom bar, and the order of the menu', detail: (n => n ? n + ' hidden' : '')(Object.values(S.prefs.hidden).filter(Boolean).length), chevron: true, onTap: () => push(RC.sectionsSpec()) }),
