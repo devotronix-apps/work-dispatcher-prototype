@@ -14,7 +14,14 @@ const isLead = c => (K().PIPE || []).includes(c.lifecycle);
 const openRecord = c => { if (isLead(c) && WD.can('leads.view') && WD.screens.crm && WD.screens.crm.openLead) WD.screens.crm.openLead(c.id); else if (WD.screens.customers && WD.screens.customers.openDetail) WD.screens.customers.openDetail(c.id); };
 
 WD.css(`
-/* Job cards on Dispatch: clear (border only) or a faint fill, chosen in Settings → Display. The border carries the job-type color; the stop number keeps the route color. */
+/* Job cards on Dispatch. The standard card is neutral (board.js). The other styles are a choice in Settings → Display: filled with the job-type color (.cs-solid),
+   clear with a job-type border (.cs-clear) or a faint fill (.cs-faint). The stop number keeps the route color in all of them. */
+.bd-holder.cs-solid .bd-job .bd-job-in { background: var(--c); color: var(--fg, #fff); border: 3px solid var(--ring); padding: 4px; box-shadow: none; } .bd-holder.cs-solid .bd-num { box-shadow: 0 0 0 1.5px rgba(255,255,255,.9); }
+.bd-holder.cs-solid .bd-job.faded .bd-job-in, .bd-holder.cs-solid .bd-job.struck .bd-job-in { background: color-mix(in srgb, var(--c) 20%, color-mix(in srgb, var(--gray) 22%, var(--cell))); color: var(--label); }
+.bd-holder.cs-solid .bd-tag, .bd-holder.cs-solid .bd-flag { background: rgba(0,0,0,.78); color: #fff; } .bd-holder.cs-solid .bd-type { background: rgba(0,0,0,.2); color: inherit; }
+.bd-holder.cs-solid .bd-tag.na, .bd-holder.cs-solid .bd-flag.bad, .bd-holder.cs-solid .bd-q, .bd-holder.cs-solid .bd-eta.out { background: #fff; color: #C4001A; } .bd-holder.cs-solid .bd-tag.nb, .bd-holder.cs-solid .bd-flag.warn { background: #fff; color: #8A5200; }
+.bd-holder.cs-solid .bd-job.unpaid .bd-job-in, .bd-holder.cs-solid .bd-job.blocked .bd-job-in { border-color: var(--red); }
+.bd-holder.cs-clear .bd-job .bd-job-in, .bd-holder.cs-faint .bd-job .bd-job-in { border: 3px solid var(--c); padding: 4px; box-shadow: none; }
 .bd-holder.cs-clear .bd-job .bd-job-in, .bd-holder.cs-faint .bd-job .bd-job-in { background: var(--cell); color: var(--label); border-color: var(--c); }
 .bd-holder.cs-faint .bd-job .bd-job-in { background: color-mix(in srgb, var(--ct, var(--c)) 20%, var(--cell)); }
 .bd-holder.cs-clear .bd-job.faded .bd-job-in, .bd-holder.cs-clear .bd-job.struck .bd-job-in, .bd-holder.cs-faint .bd-job.faded .bd-job-in, .bd-holder.cs-faint .bd-job.struck .bd-job-in { background: color-mix(in srgb, var(--gray) 16%, var(--cell)); border-color: color-mix(in srgb, var(--c) 45%, var(--gray)); }
@@ -61,25 +68,26 @@ WD.css(`
 `);
 
 /* ================= Job cards on Dispatch ================= */
-/* S.prefs.card = { style: 'solid' | 'clear' | 'faint', tint: 'type' | '#rrggbb' }. solid = the job-type color fills the card (the default). */
-const CARD0 = { style: 'solid', tint: 'type' }, TINTS = [['#8E8E93', 'Gray'], ['#007AFF', 'Blue'], ['#34C759', 'Green'], ['#FFCC00', 'Yellow'], ['#FF9500', 'Orange'], ['#FF2D55', 'Pink'], ['#AF52DE', 'Purple'], ['#30B0C7', 'Teal']];
-const card = () => { S.prefs = S.prefs || {}; if (!S.prefs.card) { let v = null; try { v = JSON.parse(store.get('wd.card') || 'null'); } catch (e) { v = null; } S.prefs.card = Object.assign({}, CARD0, v || {}); } return S.prefs.card; };
-const setCard = o => { Object.assign(card(), o); store.set('wd.card', JSON.stringify(card())); WD.changed(); };
-R.cardClass = () => { const c = card(); return c.style === 'clear' ? '.cs-clear' : c.style === 'faint' ? '.cs-faint' : ''; };
+/* S.prefs.card = { style: 'calm' | 'solid' | 'clear' | 'faint', tint: 'type' | '#rrggbb' }. calm = a neutral card with the route color on the left edge (the default);
+   solid = the job-type color fills the card. */
+const CARD0 = { style: 'calm', tint: 'type' }, TINTS = [['#8E8E93', 'Gray'], ['#007AFF', 'Blue'], ['#34C759', 'Green'], ['#FFCC00', 'Yellow'], ['#FF9500', 'Orange'], ['#FF2D55', 'Pink'], ['#AF52DE', 'Purple'], ['#30B0C7', 'Teal']];
+const card = () => { S.prefs = S.prefs || {}; if (!S.prefs.card) { let v = null; try { v = JSON.parse(store.get('wd.card2') || 'null'); } catch (e) { v = null; } S.prefs.card = Object.assign({}, CARD0, v || {}); } return S.prefs.card; };
+const setCard = o => { Object.assign(card(), o); store.set('wd.card2', JSON.stringify(card())); WD.changed(); };
+R.cardClass = () => { const c = card(); return c.style === 'clear' ? '.cs-clear' : c.style === 'faint' ? '.cs-faint' : c.style === 'solid' ? '.cs-solid' : ''; };
 R.cardVars = () => { const c = card(); return c.style === 'faint' && c.tint !== 'type' ? { '--ct': c.tint } : null; };
-const cardLabel = () => { const c = card(); return c.style === 'clear' ? 'Clear, border only' : c.style === 'faint' ? 'Faint ' + (c.tint === 'type' ? 'job-type color' : ((TINTS.find(t => t[0].toLowerCase() === String(c.tint).toLowerCase()) || [0, 'custom color'])[1]).toLowerCase()) : 'Job-type color'; };
+const cardLabel = () => { const c = card(); return c.style === 'clear' ? 'Clear, border only' : c.style === 'faint' ? 'Faint ' + (c.tint === 'type' ? 'job-type color' : ((TINTS.find(t => t[0].toLowerCase() === String(c.tint).toLowerCase()) || [0, 'custom color'])[1]).toLowerCase()) : c.style === 'solid' ? 'Job-type color' : 'Standard'; };
 R.cardStyleSpec = () => ({ title: 'Job cards on Dispatch', render: page => { const c = card(), re = () => page.refresh();
-  const sample = (title, key, col, ring, cls) => h('div.bd-job' + (cls || ''), h('div.bd-job-in', { style: { '--c': col, '--ring': ring, '--fg': WD.readableOn ? WD.readableOn(col) : '#fff' } }, h('span.bd-num', '1'), h('div.bd-job-main', h('div.bd-job-title', title), h('div.bd-job-key', key))));
+  const sample = (title, key, col, ring, cls) => h('div.bd-job' + (cls || ''), h('div.bd-job-in', { style: { '--c': col, '--ring': ring, '--fg': WD.readableOn ? WD.readableOn(col) : '#fff', '--nfg': WD.readableOn ? WD.readableOn(ring) : '#fff' } }, h('span.bd-num', '1'), h('div.bd-job-main', h('div.bd-job-title', title), h('div.bd-job-key', key))));
   return ui.list(
-    ui.section({ header: 'Preview', fold: false }, h('div.r5-prev.bd-holder' + R.cardClass(), { style: R.cardVars() }, sample('Harlow & Finch Law', '4 consoles', '#3A3A3C', '#007AFF'), sample('Purge · 22 boxes', 'Window 9–11', '#FFD60A', '#34C759'), sample('County Records', 'PO required', '#5856D6', '#FF9500'))),
-    ui.section({ header: 'Background', fold: false, showFooter: true, footer: c.style === 'solid' ? 'The job-type color fills each card and the route’s color rims it.' : 'The job-type color becomes the card’s border, the stop number keeps the route’s color, and the text is the normal text color. Warning stripes and labels are unchanged.' },
-      [['solid', 'Job-type color', 'The card is filled with the color of its job type'], ['clear', 'Clear, border only', 'No fill on any job: a colored border on the board’s background'], ['faint', 'Faint color', 'A light tint of the color you choose below']].map(([v, t, sub]) => ui.row({ title: t, subtitle: sub, trailing: icon(c.style === v ? 'checkmark.circle.fill' : 'circle', 22, c.style === v ? 'var(--tint)' : 'var(--label3)'), onTap: () => { setCard({ style: v }); re(); } }))),
+    ui.section({ header: 'Preview', fold: false }, h('div.r5-prev.bd-holder' + R.cardClass(), { style: R.cardVars() }, sample('Harlow & Finch Law', '4 consoles', '#3A3A3C', '#0097A7'), sample('Purge · 22 boxes', 'Window 9–11', '#FFD60A', '#C28A00'), sample('County Records', 'PO required', '#5856D6', '#D81B60'))),
+    ui.section({ header: 'Background', fold: false, showFooter: true, footer: c.style === 'calm' ? 'A plain card. The route’s color is on the left edge and the stop number; a small label names the job type. Red is kept for problems.' : c.style === 'solid' ? 'The job-type color fills each card and the route’s color rims it.' : 'The job-type color becomes the card’s border, the stop number keeps the route’s color, and the text is the normal text color. Warning labels are unchanged.' },
+      [['calm', 'Standard', 'A plain card with the route’s color on the left edge'], ['solid', 'Job-type color', 'The card is filled with the color of its job type'], ['clear', 'Clear, border only', 'No fill on any job: a colored border on the board’s background'], ['faint', 'Faint color', 'A light tint of the color you choose below']].map(([v, t, sub]) => ui.row({ title: t, subtitle: sub, trailing: icon(c.style === v ? 'checkmark.circle.fill' : 'circle', 22, c.style === v ? 'var(--tint)' : 'var(--label3)'), onTap: () => { setCard({ style: v }); re(); } }))),
     c.style === 'faint' && ui.section({ header: 'Faint color', fold: false, showFooter: true, footer: 'The first choice tints each card with its own job-type color. The last opens the full color picker.' },
       h('div.r5-sw', h('button.type' + (c.tint === 'type' ? '.on' : ''), { 'aria-label': 'Each job’s own type color, faint', title: 'Job-type color', onclick: () => { setCard({ tint: 'type' }); re(); } }, c.tint === 'type' ? icon('checkmark', 18) : null),
         TINTS.map(([hex, name]) => h('button' + (String(c.tint).toLowerCase() === hex.toLowerCase() ? '.on' : ''), { style: { '--k': hex }, 'aria-label': name, title: name, onclick: () => { setCard({ tint: hex }); re(); } }, String(c.tint).toLowerCase() === hex.toLowerCase() ? icon('checkmark', 18) : null)),
         h('label', { title: 'Any color', 'aria-label': 'Choose any color' }, icon('plus', 18), h('input', { type: 'color', value: /^#/.test(c.tint) ? c.tint : '#8E8E93', onchange: e => { setCard({ tint: e.target.value }); re(); } })))),
     h('div', { style: 'padding:4px 4px 0' }, ui.note('This is your own choice and stays on this device. Other people keep theirs.'))); } });
-R.cardStyleRow = push => ui.row({ icon: 'columns', iconColor: 'var(--orange)', title: 'Job cards on Dispatch', subtitle: 'Filled, clear with a border only, or a faint color', detail: cardLabel(), chevron: true, onTap: () => push(R.cardStyleSpec()) });
+R.cardStyleRow = push => ui.row({ icon: 'columns', iconColor: 'var(--orange)', title: 'Job cards on Dispatch', subtitle: 'Standard, filled, clear with a border only, or a faint color', detail: cardLabel(), chevron: true, onTap: () => push(R.cardStyleSpec()) });
 WD.panel.addJump('Job card style', () => { WD.nav.switchTab('settings'); WD.nav.push(R.cardStyleSpec()); });
 
 /* ================= Who is on the phone ================= */
@@ -196,11 +204,11 @@ async function moveAll(person, list, page) { const others = owners().filter(u =>
   const to = await ui.actionSheet({ title: 'Hand ' + first(person.name) + '’s work to…', message: countText(list) + '. Use this when someone is out or leaves.', buttons: others.map(u => ({ label: u.name, value: u.id })) }); if (!to) return;
   if (await ui.run('Reassigning…', () => list.forEach(it => { it.set(to); }), { done: plural(list.length, 'item') + ' moved to ' + first(staff(to)) })) { WD.changed(); page.refresh(); } }
 const dueNode = it => it.due ? h('span.' + (lateItem(it) ? 'late' : 'due'), lateItem(it) ? plural(D.diff(today(), it.due), 'day') + ' late' : fmt.day(it.due, 'rel')) : h('span.due', 'No date');
-R.assignView = page => { const all = assignItems(), ppl = people(all), mine = (S.me || {}).id, seesAll = !WD.co || !WD.co.seesAll || WD.co.seesAll();
+R.assignView = page => { const DESK = WD.screens.crm && WD.screens.crm.wide ? WD.screens.crm.wide(page) : S.desktop, all = assignItems(), ppl = people(all), mine = (S.me || {}).id, seesAll = !WD.co || !WD.co.seesAll || WD.co.seesAll();
   const filt = all.filter(it => (AS.kind === 'all' || it.kind === AS.kind) && (!AS.overdueOnly || lateItem(it)));
-  const kindSeg = h('div', { style: S.desktop ? 'width:430px' : 'padding:0 0 8px' }, ui.segmented([{ value: 'all', label: 'All' }, { value: 'lead', label: 'Leads' }, { value: 'task', label: 'Follow-ups' }, { value: 'need', label: 'Requests' }], AS.kind, v => { AS.kind = v; page.refresh(); }));
+  const kindSeg = h('div', { style: DESK ? 'width:430px' : 'padding:0 0 8px' }, ui.segmented([{ value: 'all', label: 'All' }, { value: 'lead', label: 'Leads' }, { value: 'task', label: 'Follow-ups' }, { value: 'need', label: 'Requests' }], AS.kind, v => { AS.kind = v; page.refresh(); }));
   const note = !seesAll && h('div', { style: 'padding:0 4px 8px' }, ui.note('Follow-ups and customer requests are shown for everyone. Leads are limited to your territory.'));
-  if (S.desktop) { let dragged = null;
+  if (DESK) { let dragged = null;
     /* A column for each person. Drag a card to another column, or use the menu on the card, to hand it over. */
     return h('div.wide', h('div.c2-tool', { style: 'display:flex;align-items:center;gap:14px;padding:4px 16px 12px;flex-wrap:wrap' }, kindSeg,
         h('label', { style: 'display:flex;align-items:center;gap:6px;font-size:14px;cursor:pointer' }, h('input', { type: 'checkbox', checked: AS.overdueOnly, onchange: e => { AS.overdueOnly = e.target.checked; page.refresh(); } }), 'Overdue only'),

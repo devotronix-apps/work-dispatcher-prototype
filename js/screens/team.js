@@ -279,7 +279,13 @@ function personSpec(userId) {
   } };
 }
 
-WD.timeclock = { week, range, rangeDates, editPunch, hrs, timesheetSpec, timesheetsSpec, rulesSpec, teamMapSpec, ruleText, payPeriod, payText, reportSpec };
+/** The team for the Shift roster: everyone active except the signed-in person, clocked-in people first.
+    → [{u, in, since (minutes), where (text or null), route, w: this week's totals}] */
+function roster() {
+  return data.users.filter(u => u.status === 'active' && u.id !== (S.me && S.me.id)).map(u => { const punch = data.punches.find(p => p.userId === u.id && p.day === today && p.end == null) || null, now = punch ? nowFor(u, staysFor(u)) : null;
+    return { u, in: !!punch, since: punch ? punch.start : null, where: now ? now.text : null, route: data.routes.find(x => x.driverId === u.id) || null, w: week(u.id) }; }).sort((a, b) => (b.in - a.in) || a.u.name.localeCompare(b.u.name));
+}
+WD.timeclock = { roster, personSpec, week, range, rangeDates, editPunch, hrs, timesheetSpec, timesheetsSpec, rulesSpec, teamMapSpec, ruleText, payPeriod, payText, reportSpec };
 WD.panel.addJump('Team locations', () => { WD.nav.switchTab('shift'); WD.nav.push(teamMapSpec()); });
 WD.panel.addJump('Hours and overtime (HR)', () => { WD.nav.switchTab('shift'); WD.nav.push(timesheetsSpec()); });
 WD.panel.addJump('Time cards (HR)', () => { WD.nav.switchTab('shift'); WD.nav.push(timesheetsSpec()); WD.nav.push(reportSpec('cards')); });

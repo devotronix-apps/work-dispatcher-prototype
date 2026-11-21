@@ -7,8 +7,8 @@
 'use strict';
 const app = window.WD.app;
 
-/* Dialer: the keypad, the Inbox side of Calls and Texts, every agent. The typed number and the line to call from are left alone. */
-app.home('dialer', app.viewHome(['dialer', 'staff'], { skip: ['typed', 'from', 'to', 'win', 'heat', 'rAgent'] }));
+/* Inbox (id dialer): the call inbox, every agent. The typed number, the line to call from and the selected call or conversation are left alone. */
+app.home('dialer', app.viewHome(['dialer', 'staff'], { skip: ['typed', 'from', 'sel', 'to', 'win', 'heat', 'rAgent'] }));
 
 /* The Admin tab is the CRM: its side, view, filters and sort order, and the lead and deal desks behind it. */
 const crm = app.viewHome(['crm', 'needs', 'crmDesk']);

@@ -161,8 +161,8 @@ WD.panel.addAction('Truck runs 45 min behind (ETAs move)', () => { const r = q.v
   if (cur) cur.job.onSiteEst = E.onSite(cur.job) + 45; else rd.depart = Math.max(WD.nowMins(), rd.depart || 0) + 45; WD.changed(); ui.toast(q.routeName(r) + ' is 45 min behind', 'clock', 2200); });
 
 const css = document.createElement('style'); css.textContent = `
-.bd-eta { font-size: 11px; line-height: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: .95; }
-.bd-eta.out { display: inline-block; white-space: normal; max-width: 100%; margin-top: 2px; padding: 1px 5px; border-radius: 5px; background: #fff; color: #C4001A; font-weight: 700; opacity: 1; vertical-align: top; }
+.bd-eta { font-size: 12px; line-height: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: .95; }
+.bd-eta.out { display: inline-block; white-space: normal; max-width: 100%; margin-top: 2px; padding: 1px 5px; border-radius: 5px; background: color-mix(in srgb, var(--red) 14%, transparent); color: color-mix(in srgb, var(--red) 78%, var(--label)); font-weight: 700; opacity: 1; vertical-align: top; }
 .et-bad { color: var(--red); font-weight: 600; }
 .et-btns { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 16px 12px; background: var(--cell); }
 .et-ask { padding: 2px 4px 14px; } .et-ask b { display: block; font-size: 20px; letter-spacing: -.4px; } .et-ask span { display: block; margin-top: 4px; font-size: 15px; color: var(--label2); }

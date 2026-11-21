@@ -154,17 +154,22 @@ function officeRoot() {
     trailing: page => { const sub = get(seg()), t = typeof sub.trailing === 'function' ? sub.trailing(page) : sub.trailing; return t || []; },
     render: page => { AD.page = page; const sub = get(seg()); tidy(page); if (sub.onAppear && !sub.appeared) { sub.appeared = true; sub.onAppear(page); } return sub.render(page); } };
 }
-WD.screens.office = { root: officeRoot };
+WD.screens.office = { root: officeRoot, onLinked: sel => !!(WD.screens.crm && WD.screens.crm.onLinked && WD.screens.crm.onLinked(sel)) };
 WD.on('officeSeg', () => setTimeout(() => { if (AD.page && AD.page.el.isConnected) { AD.page.refresh(); AD.page.body.scrollTop = 0; } }, 0));
 
 /* ================= A driver starts on their own route ================= */
 /* The board opens on the driver's route alone (one day), and the map hides the other routes (map.js). Routes, the route menu and the map's
    chips still show the others whenever the driver wants them. */
 let wasDriver = false;
-function driverView() { const mine = S.me && S.me.role === 'driver' && data.routes.find(r => r.driverId === S.me.id);
-  if (mine) { S.board.mode = 'days'; S.board.routeId = mine.id; S.board.dayCount = 1; } else if (wasDriver) { S.board.mode = 'routes'; S.board.dayCount = 3; }
+/** The route this driver runs on a day: the day's assignment when there is one (rc-ops.js), else the route they usually drive. Nothing for other roles. */
+WD.app.driverRoute = day => { if (!S.me || S.me.role !== 'driver') return null; const on = WD.rc && WD.rc.driverOn;
+  return (on && data.routes.find(r => { const u = on(r.id, day || today()); return u && u.id === S.me.id; })) || data.routes.find(r => r.driverId === S.me.id) || null; };
+/** A driver's Dispatch tab starts on just their route for today. It is applied whenever the person, the role or the business changes, and it is the driver's Home view. */
+function driverView() { const mine = WD.app.driverRoute(today());
+  if (mine) Object.assign(S.board, { mode: 'days', routeId: mine.id, dayCount: 1, day: today(), view: S.board.view || 'board' }); else if (wasDriver) { S.board.mode = 'routes'; S.board.dayCount = S.desktop ? 7 : 3; }
   wasDriver = !!mine; WD.changed(); }
-WD.on('role', driverView);
+WD.on('role', driverView); WD.on('org', () => setTimeout(driverView, 0)); WD.on('desktop', () => { if (wasDriver) driverView(); });
+setTimeout(driverView, 0);
 
 /* ================= Shift tab: the route's note, and the truck's inventory ================= */
 if (WD.screens.shift && WD.screens.shift.root) { const root = WD.screens.shift.root;

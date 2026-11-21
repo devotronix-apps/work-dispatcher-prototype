@@ -420,7 +420,11 @@ const api2 = { billed, dimmed, needsAction, missed, billingLabel, titleDetails, 
   awaitingDestruction: () => billing().awaitingDestruction ? billing().awaitingDestruction().length : 0 };
 WD.workflow = WD.screens.workflow = api2;
 
-WD.screens.invoices = { root: invoicesSpec };
+/** From another workspace column: list the selected customer's invoices here (every route), by putting the name in the search. */
+function invLinked(sel) { const j = sel.jobId && q.job(sel.jobId), c = q.customer(sel.customerId || (j && j.customerId)); if (!c) return false; const st = WD.app.paneStack && WD.app.paneStack('invoices'); if (!st) return false;
+  while (st.pages.length > 1) { const p = st.pages.pop(); p.el.remove(); p.spec.onClose && p.spec.onClose(p); } const page = st.top(); page.el.classList.remove('behind');
+  IV.query = c.name; IV.scope = 'all'; IV.limit = 40; const box = page.el.querySelector('.search-box'), inp = box && box.querySelector('input'); if (inp) { inp.value = c.name; box.classList.add('filled'); } page.refresh(); return true; }
+WD.screens.invoices = { root: invoicesSpec, onLinked: invLinked };
 WD.panel.addJump('Invoices', () => WD.nav.switchTab('invoices'));
 WD.panel.addJump('Field workflow', () => { WD.nav.switchTab('settings'); WD.nav.push(workflowSpec()); });
 WD.panel.addJump('Master invoice', () => { WD.nav.switchTab(WD.can('crm.view') ? 'customers' : 'board'); WD.nav.push(masterSpec('c9')); });

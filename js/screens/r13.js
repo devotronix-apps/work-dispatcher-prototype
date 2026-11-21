@@ -85,7 +85,7 @@ function contractsRoot() {
     } };
 }
 WD.screens.contracts = { root: contractsRoot };
-{ const m = WD.app.menu.find(x => x.id === 'contracts'); if (m) m.badge = () => canAg() ? (data.agreements || []).filter(a => a.status === 'viewed').length : 0; }
+/* No badge: an agreement the customer has opened but not signed is worth a look, not something that has to be done today. It is listed at the top of Contracts. */
 /* The CRM side of the link: signing an agreement moves a quoted lead on to Scheduled, and leaves a line on its timeline. */
 if (EX.signAgreement) { const base = EX.signAgreement; EX.signAgreement = async (a, job) => { const ok = await base(a, job), c = q.customer(a.customerId);
   if (ok && c) { if (['lead', 'contacted', 'quoted'].includes(c.lifecycle)) c.lifecycle = 'scheduled'; if (K().addI) K().addI({ customerId: c.id, type: 'note', at: +WD.now(), by: me(), text: 'Service agreement ' + a.number + ' signed by ' + a.signer + '.' }); WD.changed(); } return ok; }; }

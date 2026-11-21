@@ -908,7 +908,12 @@ function showSeg(seg) {
   R.seg = seg; R.query = ''; R.results = null; R.loading = false; WD.nav.switchTab('customers');
   if (R.page) { const inp = R.page.navbar.querySelector('.nav-search input'), box = R.page.navbar.querySelector('.search-box'); if (inp) inp.value = ''; if (box) box.classList.remove('filled'); R.page.refresh(); }
 }
-WD.screens.customers = { root, openDetail, openNew, simulateCall, invoicePage, invoicesFor, invRow, custInvoices, taskRow, invLines: linesFor, crm: { PIPE, LC, CHANNELS, LOST, mk, addI, addTask, logCall, moveStage, setNext, markLost, contactedYet, nextLabel, staff, first, startCall, timeline, describe, owners, tasksView, newTask }, noteEmailOf };
+/** From another workspace column (a call or text in the Inbox, a stop on the board or the map): show that customer's record in this column. */
+function onLinked(sel) { const j = sel.jobId && q.job(sel.jobId), id = sel.customerId || (j && j.customerId); if (!id || !q.customer(id) || !WD.can('crm.view')) return false;
+  const st = WD.app.paneStack && WD.app.paneStack('customers'); if (!st) return false; const top = st.top(); if (top && top.spec && top.spec.linkedId === id) return true;
+  if (st.pages.length > 1 && top.spec.linkedId) { while (st.pages.length > 1) { const p = st.pages.pop(); p.el.remove(); p.spec.onClose && p.spec.onClose(p); } st.top().el.classList.remove('behind'); }
+  const spec = detailSpec(id); spec.linkedId = id; st.push(spec, false); return true; }
+WD.screens.customers = { root, openDetail, detailSpec, onLinked, openNew, simulateCall, invoicePage, invoicesFor, invRow, custInvoices, taskRow, invLines: linesFor, crm: { PIPE, LC, CHANNELS, LOST, mk, addI, addTask, logCall, moveStage, setNext, markLost, contactedYet, nextLabel, staff, first, startCall, timeline, describe, owners, tasksView, newTask }, noteEmailOf };
 WD.panel.addAction('Incoming call (known customer)', () => simulateCall('c1'));
 WD.panel.addAction('Incoming call (unknown number)', () => simulateCall(null));
 WD.panel.addJump('Customer record', () => { WD.nav.switchTab('customers'); openDetail('c1'); });

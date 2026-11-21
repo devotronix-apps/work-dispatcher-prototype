@@ -47,6 +47,19 @@ WD.css(`
 .sh-pend { color: var(--orange); }
 .sh-struck .row-title { text-decoration: line-through; color: var(--label2); }
 .sh-kind { margin: 12px 0 0; }
+/* The agreement sits right above Clock in, so nobody has to find it on another screen. */
+.sh-agree { margin-top: 18px; background: var(--cell); border-radius: 12px; padding: 12px 14px; font-size: 14px; line-height: 19px; letter-spacing: -.15px; }
+.sh-agree .t { display: flex; align-items: center; gap: 7px; font-size: 15px; font-weight: 600; margin-bottom: 4px; } .sh-agree .t .ic { color: var(--tint); }
+.sh-agree button.more { appearance: none; border: 0; background: none; padding: 0; min-height: 44px; color: var(--tint); font: inherit; font-weight: 500; cursor: pointer; }
+.sh-agree + .sh-cta { margin-top: 2px; } .sh-agree .btn { margin-top: 2px; }
+.sh-report { margin-top: 12px; }
+/* Team roster (owners, admins, dispatch, office) */
+.sh-ros .row-sub b { font-weight: 600; color: var(--label); }
+.sh-in { position: relative; display: inline-flex; } .sh-in::after { content: ""; position: absolute; right: -1px; bottom: -1px; width: 11px; height: 11px; border-radius: 50%; background: var(--c, var(--gray)); border: 2px solid var(--cell); }
+.sh-hrs { text-align: right; flex: none; font-size: 15px; font-variant-numeric: tabular-nums; letter-spacing: -.2px; } .sh-hrs small { display: block; font-size: 12px; font-weight: 600; color: var(--orange); letter-spacing: 0; }
+/* Wide column: two real columns in place of the phone layout */
+.sh-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 4px; align-items: start; max-width: 1180px; margin: 0 auto; }
+.sh-split.lead { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); }
 `);
 
 /* ---------- Helpers ---------- */
@@ -139,16 +152,20 @@ function shiftDetail(s) {
 }
 
 /* ---------- Consent, clock in, clock out ---------- */
-function openNotice() {
-  ui.sheet({ title: 'Location tracking', leading: [{ label: 'Not now', onTap: p => p.dismiss() }], render: p => ui.list(
+const agree = () => { S.tracking = { consent: true, consentAt: +WD.now() }; };
+function openNotice(then) {
+  const agreed = S.tracking && S.tracking.consent;
+  ui.sheet({ title: 'Location tracking', leading: [{ label: agreed ? 'Done' : 'Not now', onTap: p => p.dismiss() }], render: p => ui.list(
     h('div.sh-card.sh-notice',
       h('p', h('b', 'When. '), 'RouteClerk records this iPhone’s location only while you’re clocked in to a shift. It stops when you clock out, or automatically ' + cutoff() + ' hours after clock-in.'),
       h('p', h('b', 'What. '), 'Position, speed and heading about every 30 seconds while moving, a check-in every 5 minutes while parked, stop arrival and departure times, and phone battery level.'),
       h('p', h('b', 'Who sees it. '), 'Owners, admins, dispatchers and office staff. They see where you are and the places you stayed longer than ' + data.timeRules.stayMinutes + ' minutes. It is used for routing, customer arrival windows, timesheets and service records.'),
       h('p', h('b', 'How long. '), 'Raw points are kept for 24 months and then thinned. Stop visits stay with the job history.'),
       h('p', { style: { marginBottom: 0 } }, 'You can review this notice any time in Settings.')),
-    h('div.sh-cta', ui.button('I understand and agree', { onTap: () => { S.tracking = { consent: true, consentAt: +WD.now() }; WD.changed(); p.dismiss(); ui.toast('Notice accepted', 'checkmark'); } }))) });
+    !agreed && h('div.sh-cta', ui.button(then ? 'Agree and clock in' : 'I understand and agree', { icon: then ? 'play.fill' : null, onTap: () => { agree(); WD.changed(); p.dismiss(); if (then) then(); else ui.toast('Notice accepted', 'checkmark'); } }))) });
 }
+/** Report a problem with the truck: straight to Maintenance, from the Shift screen (rc-ops.js). */
+const reportBtn = vehicleId => WD.rc && WD.rc.reportProblem ? h('div.sh-report', ui.button('Report a problem', { kind: 'gray', icon: 'exclamationmark.triangle', onTap: () => WD.rc.reportProblem(q.vehicle(vehicleId)) })) : null;
 async function askLocation() {
   if (locationAuth) return locationAuth;
   const v = await ui.alert({ title: 'Allow “RouteClerk” to use your location?', message: 'Your location is shared with dispatch only while you’re clocked in, so they can see your truck and record stop arrivals.',
@@ -221,10 +238,10 @@ function openCamera(job) {
 /* ---------- Page ---------- */
 function offShift(m) {
   const routes = q.routes(), r = q.route(m.routeId) || defaultRoute(), consent = S.tracking && S.tracking.consent, general = m.kind === 'general', re = () => inst.page && inst.page.refresh();
-  if (!r && !general) return ui.empty({ icon: 'truck', title: 'No routes', text: 'Ask the office to add a route.' });
+  if (!r && !general) return { main: [ui.empty({ icon: 'truck', title: 'No routes', text: 'Ask the office to add a route.' })], side: [] };
   const veh = m.vehicleId || (r && r.vehicleId), v = q.vehicle(veh), places = data.places.map(p => ({ value: p.id, label: p.name }));
-  return ui.list(
-    h('div.sh-card.sh-intro', icon('location', 30), h('div', h('div.headline', general ? 'Clock in for your shift' : 'Clock in to start your route'), h('div.footnote', { style: { marginTop: '3px' } }, 'Your location is shared with the office only while you’re on a shift. Tracking stops when you clock out.'))),
+  const go = () => clockIn(r && r.id, veh, m);
+  return { main: [
     h('div.sh-kind', ui.segmented([{ value: 'route', label: 'Driving a route' }, { value: 'general', label: 'Other work' }], general ? 'general' : 'route', k => { m.kind = k; re(); })),
     general ? ui.section({ header: 'Work', footer: 'For office, shop, helpers and anyone who doesn’t drive a route. Hours count toward overtime the same way.' },
       ui.pickerRow({ title: 'Working on', icon: 'briefcase', iconColor: 'var(--brown)', value: m.work || 'Shop', options: ['Shop', 'Office', 'Helper on a truck', 'Deliveries', 'Other'], onChange: x => { m.work = x; re(); } }))
@@ -233,12 +250,16 @@ function offShift(m) {
       ui.pickerRow({ title: 'Vehicle', icon: 'truck', iconColor: 'var(--gray)', value: veh, options: data.vehicles.filter(x => x.active !== false || x.id === veh).map(x => ({ value: x.id, label: x.name + (x.active === false ? ' (inactive)' : '') })), onChange: x => { m.vehicleId = x; m.startId = m.endId = null; re(); } }),
       v && ui.pickerRow({ title: 'Starting from', icon: 'play.fill', iconColor: 'var(--green)', value: m.startId || q.vehicleEnds(v.id, D.today()).start.id, options: places, onChange: x => { m.startId = x; re(); } }),
       v && ui.pickerRow({ title: 'Ending at', icon: 'flag', iconColor: 'var(--red)', value: m.endId || q.vehicleEnds(v.id, D.today()).end.id, options: places, onChange: x => { m.endId = x; re(); } })),
-    consent ? ui.section({ footer: 'You agreed to the location tracking notice on ' + fmt.day(D.key(new Date(S.tracking.consentAt || +WD.now())), 'md') + '.' }, ui.row({ title: 'Location tracking notice', icon: 'checkmark.circle.fill', iconPlain: true, iconColor: 'var(--green)', chevron: true, onTap: openNotice }))
-      : ui.section({ footer: 'You need to agree before your first shift.' }, ui.row({ title: 'Location tracking notice', subtitle: 'Review and agree', icon: 'hand.raised', iconColor: 'var(--orange)', chevron: true, onTap: openNotice })),
-    h('div.sh-cta', ui.button('Clock in', { icon: 'play.fill', disabled: !consent, onTap: () => clockIn(r && r.id, veh, m) })),
+    /* First shift: the agreement is here, directly above the one button that accepts it and clocks in. Once agreed (and the phone allows location) the notice is gone; it stays readable in Settings. */
+    consent ? h('div.sh-cta', ui.button('Clock in', { icon: 'play.fill', onTap: go }))
+      : h('div.sh-agree', h('div.t', icon('location', 18), 'Location while you’re on shift'),
+          h('div', 'RouteClerk shares this iPhone’s location with the office only while you’re clocked in. It stops when you clock out, or ' + cutoff() + ' hours after clock-in.'),
+          h('button.more', { type: 'button', onclick: () => openNotice(go) }, 'Read the full notice'),
+          ui.button('Agree and clock in', { icon: 'play.fill', onTap: () => { agree(); WD.changed(); go(); } })),
     locationAuth === 'denied' && h('div', { style: { marginTop: '10px' } }, ui.note('Location is off for RouteClerk. You can still clock in and report stops with the buttons; geofence arrivals and the live map won’t work.')),
-    weekSection(), WD.x.timeOffSection(), WD.co && WD.co.qrSection(), teamSection(),
-    !general && ui.section('Recent shifts', history().map(s => ui.row({ title: fmt.day(s.day, 'rel'), subtitle: q.routeName(s.routeId) + ' · ' + s.completed + ' stops · ' + s.miles.toFixed(1) + ' mi', detail: hm(s.end - s.start), chevron: true, onTap: () => nav.push(shiftDetail(s)) }))));
+    !general && reportBtn(veh)],
+    side: [weekSection(), WD.x.timeOffSection(), WD.co && WD.co.qrSection(),
+      !general && ui.section('Recent shifts', history().map(s => ui.row({ title: fmt.day(s.day, 'rel'), subtitle: q.routeName(s.routeId) + ' · ' + s.completed + ' stops · ' + s.miles.toFixed(1) + ' mi', detail: hm(s.end - s.start), chevron: true, onTap: () => nav.push(shiftDetail(s)) })))] };
 }
 function nextCard(r) {
   const stop = q.stops(r.id, D.today()).find(s => !DONE[s.job.status]);
@@ -261,10 +282,10 @@ function nextCard(r) {
 }
 function onShift() {
   const sh = S.shift, r = routeOf(), v = liveVals(), denied = sh.location === 'denied', veh = q.vehicle(sh.vehicleId);
-  if (!r) return ui.empty({ icon: 'truck', title: 'Route not found' });
+  if (!r) return { main: [ui.empty({ icon: 'truck', title: 'Route not found' })], side: [] };
   const span = k => h('span', { 'data-sh': k }, v[k]), numbers = new Map(q.stops(r.id, D.today()).map(s => [s.job.id, s.number])), done = lastCompleted && q.job(lastCompleted) && !wf().billed(q.job(lastCompleted)) ? q.job(lastCompleted) : null;
   const unbilled = todayJobs(r.id).filter(j => j.status === 'completed' && !wf().billed(j) && j.type !== 'meet' && j !== done);
-  return ui.list(
+  return { main: [
     h('div.sh-card.sh-head', { style: { '--c': q.routeColor(r) } },
       h('div.hstack', h('span.sh-kicker', 'On shift since ' + fmt.clock(new Date(sh.startedAt))), h('span.spacer'),
         sh.onBreak ? h('span.sh-live.brk', h('i'), 'On break') : denied ? h('span.sh-live.off', h('i'), 'Location off') : h('span.sh-live', h('i'), 'Tracking active')),
@@ -278,14 +299,14 @@ function onShift() {
     (rows => rows.length ? ui.section(null, rows) : null)([unbilled.length > 0 && ui.row({ icon: 'exclamationmark.triangle', iconColor: 'var(--orange)', title: unbilled.length + (unbilled.length === 1 ? ' completed stop isn’t billed' : ' completed stops aren’t billed'), subtitle: 'Create the invoice, mark paid–no invoice, or skip', chevron: true, onTap: () => wf().missedSheet(unbilled) }), ops2().daySynopsis && ops2().daySynopsis(r)].flat(Infinity).filter(Boolean)),
     /* Stops another driver took off this route, and this driver's own requests to help another route. */
     ops2().shiftNotices && ops2().shiftNotices(r),
-    nextCard(r),
+    nextCard(r), reportBtn(sh.vehicleId),
     /* Out of mapped stops: the jobs that are left (no address, meet the truck), then the offer to help another route. */
     !q.stops(r.id, D.today()).some(s => !DONE[s.job.status]) && ops2().shiftExtras && ops2().shiftExtras(r),
     ui.section('Today · ' + q.routeName(r), q.jobsFor(r.id, D.today()).map(j => { const sx = WD.jobStatuses[j.status], svc = serviceText(j);
       return ui.row({ class: WD.struck[j.status] ? 'sh-struck' : null, leading: numFor(j, numbers.get(j.id), true), title: wf().titleNode(j), subtitle: h('span', svc && h('div.sh-svc2', svc), (j.allDay ? 'Note for the day' : 'Stop ' + q.position(j).n) + (j.status === 'completed' && !j.allDay && j.type !== 'meet' ? (wf().billed(j) ? ' · ' + (j.invoice ? j.invoice.number : wf().billingLabel(j)) : ' · not billed') : '') + (WD.struck[j.status] ? ' · ' + sx.title + (j.rescheduledTo ? ' to ' + fmt.day(j.rescheduledTo, 'md') : '') : '') + (!j.located && j.address ? ' · address not found' : '') + (j.pending ? ' · waiting to sync' : '')),
         trailing: h('span.hstack', { style: { gap: '6px' } }, j.pending && icon('sync', 16, 'var(--orange)'), j.allDay ? null : icon(sx.icon, 18, sx.color)), onTap: () => openDetails(j.id) }); }),
-      ops2().takenRows && ops2().takenRows(r.id)),
-    ui.section({ header: 'Tracking', footer: denied ? 'Location isn’t allowed, so nothing is recorded. Use the status buttons to report stops.' : 'Points are thinned to one every 30 seconds and upload in small batches. Without a connection they wait on this iPhone.' },
+      ops2().takenRows && ops2().takenRows(r.id))],
+    side: [ui.section({ header: 'Tracking', footer: denied ? 'Location isn’t allowed, so nothing is recorded. Use the status buttons to report stops.' : 'Points are thinned to one every 30 seconds and upload in small batches. Without a connection they wait on this iPhone.' },
       ui.row({ title: 'Last location', detail: span('lastFix'), icon: 'location.fill', iconColor: 'var(--blue)' }), ui.row({ title: 'Accuracy', detail: span('accuracy'), icon: 'scope', iconColor: 'var(--teal)' }),
       ui.row({ title: 'Points sent today', detail: span('sent'), icon: 'arrow.up', iconColor: 'var(--green)' }),
       uploading ? ui.row({ title: 'Uploading ' + uploading + ' points…', icon: 'cloud', iconColor: 'var(--indigo)', trailing: ui.spinner(18) })
@@ -295,14 +316,26 @@ function onShift() {
     ui.section(null, ui.toggleRow({ title: 'Take a break', subtitle: 'Pauses your shift time', icon: 'sh.cup', iconColor: 'var(--orange)', value: sh.onBreak, onChange: on => {
       const now = +WD.now(); if (on) sh.breakStartedAt = now; else { sh.breakMs += now - sh.breakStartedAt; sh.breakStartedAt = null; } sh.onBreak = on; WD.changed(); } })),
     canSeeInv() && ui.section(null, ui.row({ icon: 'doc.text', iconColor: 'var(--indigo)', title: 'Invoices', subtitle: 'Newest first · search by invoice number', chevron: true, onTap: () => nav.push(wf().invoicesSpec()) })),
-    weekSection(), WD.x.timeOffSection(), WD.co && WD.co.qrSection(), teamSection(),
-    h('div.sh-cta', ui.button('Clock out', { kind: 'destructive', icon: 'stop.fill', onTap: clockOut })),
-    h('div', { style: { marginTop: '10px' } }, ui.note('Tracking stops automatically ' + cutoff() + ' hours after clock-in (Settings → Field workflow).')));
+    weekSection(), WD.x.timeOffSection(), WD.co && WD.co.qrSection()],
+    tail: [h('div.sh-cta', ui.button('Clock out', { kind: 'destructive', icon: 'stop.fill', onTap: clockOut })),
+    h('div', { style: { marginTop: '10px' } }, ui.note('Tracking stops automatically ' + cutoff() + ' hours after clock-in (Settings → Field workflow).'))] };
 }
 /** Everyone who clocks in sees their hours this week; owners, dispatch and office also get the team rows. */
 function weekSection() {
   const tc = WD.timeclock; if (!tc || !S.me) return null; const w = tc.week(S.me.id);
   return ui.section({ header: 'This week', footer: 'Overtime on hours ' + tc.ruleText() + '.' }, ui.row({ icon: 'clock', iconColor: 'var(--orange)', title: 'My timesheet', subtitle: tc.hrs(w.total) + ' worked' + (w.ot ? ' · ' + tc.hrs(w.ot) + ' overtime' : ''), chevron: true, onTap: () => nav.push(tc.timesheetSpec(S.me.id)) }));
+}
+/** The team first, for people who run it: who is clocked in, where they are, and hours and overtime this week. */
+function rosterSection() {
+  const tc = WD.timeclock, map = WD.can('team.locations') || WD.can('tracking.view_live'), hr = WD.can('hr.manage'); if (!tc || !tc.roster || (!map && !hr)) return null;
+  const list = tc.roster(), on = list.filter(x => x.in).length;
+  const sec = ui.section({ header: 'Team · ' + on + ' of ' + list.length + ' clocked in', fold: false },
+    list.map(x => { const what = x.route ? q.routeName(x.route) : WD.roles[x.u.role].title, tap = x.in && map && tc.personSpec ? () => nav.push(tc.personSpec(x.u.id)) : hr ? () => nav.push(tc.timesheetSpec(x.u.id)) : null;
+      return ui.row({ leading: h('span.sh-in', { style: { '--c': x.in ? 'var(--green)' : 'var(--gray)' }, title: x.in ? 'Clocked in' : 'Not clocked in' }, ui.avatar(x.u.name, { size: 36 })), title: x.u.name,
+        subtitle: h('span', x.route && ui.dot(q.routeColor(x.route)), x.route && ' ', what + ' · ', x.in ? h('b', 'In since ' + fmt.time(x.since)) : 'Not clocked in', x.in && map && x.where ? ' · ' + x.where : ''),
+        trailing: hr ? h('span.sh-hrs', tc.hrs(x.w.total), x.w.ot ? h('small', tc.hrs(x.w.ot) + ' overtime') : null) : null, chevron: !!tap, onTap: tap }); }),
+    !list.length && ui.row({ title: 'Nobody else on the team yet' }));
+  sec.classList.add('sh-ros'); return sec;
 }
 function teamSection() {
   const tc = WD.timeclock, map = WD.can('team.locations'), sheets = WD.can('hr.manage') || WD.can('users.manage') || WD.can('billing.manage'); if (!tc || (!map && !sheets)) return null;
@@ -312,16 +345,16 @@ function teamSection() {
 }
 function generalShift() {
   const sh = S.shift, v = liveVals(), denied = sh.location === 'denied';
-  return ui.list(
+  return { main: [
     h('div.sh-card.sh-head', { style: { '--c': 'var(--brown)' } },
       h('div.hstack', h('span.sh-kicker', 'On shift since ' + fmt.clock(new Date(sh.startedAt))), h('span.spacer'), sh.onBreak ? h('span.sh-live.brk', h('i'), 'On break') : denied ? h('span.sh-live.off', h('i'), 'Location off') : h('span.sh-live', h('i'), 'Location shared')),
       h('div.sh-timer' + (sh.onBreak ? '.paused' : ''), { 'data-sh': 'timer' }, v.timer), h('div.subhead', icon('briefcase', 15), ' ', sh.work || 'Shop')),
     ui.section(null, ui.toggleRow({ title: 'Take a break', subtitle: 'Pauses your shift time', icon: 'sh.cup', iconColor: 'var(--orange)', value: sh.onBreak, onChange: on => {
-      const now = +WD.now(); if (on) sh.breakStartedAt = now; else { sh.breakMs += now - sh.breakStartedAt; sh.breakStartedAt = null; } sh.onBreak = on; WD.changed(); } })),
-    weekSection(), WD.x.timeOffSection(), WD.co && WD.co.qrSection(), teamSection(),
-    h('div.sh-cta', ui.button('Clock out', { kind: 'destructive', icon: 'stop.fill', onTap: async () => {
+      const now = +WD.now(); if (on) sh.breakStartedAt = now; else { sh.breakMs += now - sh.breakStartedAt; sh.breakStartedAt = null; } sh.onBreak = on; WD.changed(); } }))],
+    side: [weekSection(), WD.x.timeOffSection(), WD.co && WD.co.qrSection()],
+    tail: [h('div.sh-cta', ui.button('Clock out', { kind: 'destructive', icon: 'stop.fill', onTap: async () => {
       if (!await ui.actionSheet({ title: 'Clock out?', message: 'Location sharing stops when you clock out.', buttons: [{ label: 'Clock out', value: true, role: 'destructive' }] })) return;
-      await ui.run('Clocking out…', () => { S.shift = null; }, { offlineOK: true, done: 'Clocked out' }); } })));
+      await ui.run('Clocking out…', () => { S.shift = null; }, { offlineOK: true, done: 'Clocked out' }); } }))] };
 }
 function root() {
   const r = defaultRoute(), m = inst = { routeId: r && r.id, vehicleId: null, page: null, kind: S.me && S.me.role !== 'driver' ? 'general' : 'route' };
@@ -329,7 +362,12 @@ function root() {
     const p = m.page; if (!p || !p.el.isConnected || nav.activeTab() !== 'shift' || !S.shift) return;
     const v = liveVals(); p.body.querySelectorAll('[data-sh]').forEach(e => { const val = v[e.dataset.sh]; if (val != null && e.textContent !== val) e.textContent = val; });
   };
-  return { title: 'Shift', large: true, render: page => { m.page = page; return S.shift ? (S.shift.kind === 'general' ? generalShift() : onShift()) : offShift(m); } };
+  return { title: 'Shift', large: true, render: page => { m.page = page;
+    const P = S.shift ? (S.shift.kind === 'general' ? generalShift() : onShift()) : offShift(m), ros = rosterSection(), team = [ros, teamSection()], tail = P.tail || [];
+    const wide = (WD.app.paneW ? WD.app.paneW(page.el) : (S.desktop ? 1068 : 393)) >= 700, myHead = ros ? h('div.section', h('div.section-header.plain', S.shift ? 'My shift' : 'My clock-in')) : null;
+    /* People who run the team see the roster first and their own clock-in second; everyone else sees their shift as before, with the team rows last. */
+    if (!wide) return ros ? ui.list(team, myHead, P.main, P.side, tail) : ui.list(P.main, P.side, team, tail);
+    return ros ? h('div.wide.sh-split.lead', ui.list(team, P.side), ui.list(myHead, P.main, tail)) : h('div.wide.sh-split', ui.list(P.main, tail), ui.list(P.side, team)); } };
 }
 WD.screens.shift = { root };
 

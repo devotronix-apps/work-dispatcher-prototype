@@ -34,8 +34,10 @@ WD.css(`
 /* ---------- Shared helpers ---------- */
 const PRICE = 29, ADMIN = 'Ask an admin';
 /* Google Calendar's colors first (they mirror cleanly), then more choices; any color can also be picked with Custom. */
-const PALETTE = ['#D50000', '#E67C73', '#F4511E', '#F6BF26', '#33B679', '#0B8043', '#039BE5', '#3F51B5', '#7986CB', '#8E24AA', '#616161',
-  '#AD1457', '#F09300', '#C0CA33', '#7CB342', '#009688', '#4285F4', '#B39DDB', '#795548', '#A79B8E', '#E4C441', '#00ACC1', '#5E35B1', '#D81B60', '#EF6C00', '#827717', '#1A237E', '#263238'];
+/* The first row is the recommended route colors: none of them reads as red (problem), green (done) or the button blue. The rest stay available. */
+const ROUTE_SAFE = ['#8E24AA', '#0097A7', '#C28A00', '#D81B60', '#546E7A', '#5E35B1', '#795548', '#AD1457'];
+const PALETTE = [...ROUTE_SAFE, '#D50000', '#E67C73', '#F4511E', '#F6BF26', '#33B679', '#0B8043', '#039BE5', '#3F51B5', '#7986CB', '#616161',
+  '#F09300', '#C0CA33', '#7CB342', '#009688', '#4285F4', '#B39DDB', '#A79B8E', '#E4C441', '#00ACC1', '#EF6C00', '#827717', '#1A237E', '#263238'];
 const ZONES = [['America/New_York', 'Eastern'], ['America/Chicago', 'Central'], ['America/Denver', 'Mountain'], ['America/Phoenix', 'Arizona'], ['America/Los_Angeles', 'Pacific']].map(([value, label]) => ({ value, label }));
 const ROLE_COLOR = { owner: 'var(--purple)', admin: 'var(--indigo)', dispatcher: 'var(--blue)', office: 'var(--teal)', driver: 'var(--orange)', staff: 'var(--brown)' };
 const ROLE_INFO = { owner: 'Everything, including billing and the company itself.', admin: 'Everything except transferring ownership.', dispatcher: 'Edits jobs, sees live trucks, customers and reports.', office: 'Edits jobs and customers, handles invoices and payments.', driver: 'Sees their route, runs shifts, updates stop status and invoices on site.', staff: 'Clocks in and out for shop, office or helper work. No route.' };
@@ -193,11 +195,11 @@ function routeSpec(r) {
     ui.section('Google Calendar mirror', ui.row({ title: 'Calendar', detail: r.googleCalendar || 'None' }))); } };
 }
 function addRouteSheet() {
-  let name = '', color = PALETTE[9], zone = 'America/Chicago', save;
+  let name = '', color = ROUTE_SAFE.find(c => !data.routes.some(r => q.routeColor(r).toLowerCase() === c.toLowerCase())) || ROUTE_SAFE[0], zone = 'America/Chicago', save;
   const sheet = ui.sheet({ title: 'New route', leading: { label: 'Cancel', onTap: p => p.dismiss() }, trailing: () => (save = navBtn('Add', submit, !!name.trim())),
     render: page => ui.list(
       ui.section({ footer: 'A route is a business route, like “East Route”, not a person. Assign drivers and vehicles after adding it.' }, ui.inputRow({ label: 'Name', placeholder: 'East Route', caps: 'words', value: name, autofocus: true, onInput: v => { name = v; save.disabled = !v.trim(); } })),
-      ui.section('Color', swatches(color, c => { color = c; page.refresh(); })),
+      ui.section({ header: 'Color', footer: 'The first eight colors are recommended for routes: none looks like red (a problem), green (done) or a blue button.', showFooter: true }, swatches(color, c => { color = c; page.refresh(); })),
       ui.section(ui.pickerRow({ title: 'Time zone', value: zone, options: ZONES, onChange: v => { zone = v; page.refresh(); } }))) });
   async function submit() {
     const ok = await ui.run('Adding route…', () => { data.routes.push({ id: uid('r'), name: name.trim(), color, nickname: '', colorOverride: null, visible: true, order: Math.max(-1, ...data.routes.map(r => r.order)) + 1, timeZone: zone, driverId: null, vehicleId: null, googleCalendar: null, writable: true }); }, { done: 'Route added' });

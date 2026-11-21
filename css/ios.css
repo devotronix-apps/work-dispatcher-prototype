@@ -46,7 +46,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 /* ---------- Screen and system chrome ---------- */
 .screen {
   --tint: var(--blue); --seg-edge: rgba(60,60,67,.26);
-  --bg: #F2F2F7; --cell: #FFFFFF; --label: #000; --label2: rgba(60,60,67,.62); --label3: rgba(60,60,67,.3);
+  --bg: #F2F2F7; --cell: #FFFFFF; --label: #000; --label2: rgba(60,60,67,.84); --label3: rgba(60,60,67,.3);
   --sep: rgba(60,60,67,.22); --fill: rgba(120,120,128,.2); --fill2: rgba(120,120,128,.16); --fill3: rgba(118,118,128,.12);
   --bar: rgba(249,249,249,.86); --material: rgba(250,250,250,.82); --overlay: rgba(0,0,0,.3); --elevated: #fff;
   --blue: #007AFF; --green: #34C759; --red: #FF3B30; --orange: #FF9500; --yellow: #FFCC00; --teal: #30B0C7;
@@ -58,7 +58,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .screen[data-theme="dark"] {
   --seg-edge: rgba(235,235,245,.26);
-  --bg: #000; --cell: #1C1C1E; --label: #fff; --label2: rgba(235,235,245,.62); --label3: rgba(235,235,245,.3);
+  --bg: #000; --cell: #1C1C1E; --label: #fff; --label2: rgba(235,235,245,.8); --label3: rgba(235,235,245,.3);
   --sep: rgba(84,84,88,.6); --fill: rgba(120,120,128,.36); --fill2: rgba(120,120,128,.32); --fill3: rgba(118,118,128,.24);
   --bar: rgba(22,22,24,.86); --material: rgba(40,40,42,.82); --overlay: rgba(0,0,0,.5); --elevated: #2C2C2E;
   --blue: #0A84FF; --green: #30D158; --red: #FF453A; --orange: #FF9F0A; --yellow: #FFD60A; --teal: #40C8E0;
@@ -96,7 +96,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .tabpanes > .navstack { display: none; }
 .tabpanes > .navstack.active { display: block; }
 .tabbar { position: absolute; left: 0; right: 0; bottom: 0; height: 83px; padding: 6px 4px 34px; display: flex; background: var(--bar); backdrop-filter: saturate(180%) blur(24px); -webkit-backdrop-filter: saturate(180%) blur(24px); border-top: .5px solid var(--sep); z-index: 20; }
-.tab { flex: 1; border: 0; background: none; padding: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; color: var(--gray); font-size: 12px; font-weight: 500; letter-spacing: 0; cursor: pointer; position: relative; min-height: 44px; }
+.tab { flex: 1; border: 0; background: none; padding: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; color: var(--label2); font-size: 12px; font-weight: 500; letter-spacing: 0; cursor: pointer; position: relative; min-height: 44px; }
 .tab.active { color: var(--tint); }
 .tab .tab-badge { position: absolute; top: -2px; left: 50%; margin-left: 6px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: #D70015; color: #fff; font-size: 12px; line-height: 18px; font-weight: 600; }
 
@@ -433,3 +433,29 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .phone.desktop .tabpanes.multi > .navstack > .pane-bar { display: flex; position: absolute; left: 0; right: 0; top: -30px; height: 30px; box-sizing: border-box; align-items: center; padding: 0 4px 0 12px; font-size: 13px; font-weight: 600; background: var(--fill3); border-bottom: .5px solid var(--sep); color: var(--label2); z-index: 3; }
 .phone.desktop .tabpanes.multi > .navstack.focus > .pane-bar { background: color-mix(in srgb, var(--tint) 18%, var(--cell)); color: var(--label); box-shadow: inset 0 2px 0 var(--tint); }
 .pane-bar span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .pane-bar button { border: 0; background: none; color: inherit; width: 28px; height: 26px; border-radius: 6px; cursor: pointer; display: grid; place-items: center; } .pane-bar button:hover { background: var(--fill2); }
+
+/* ---------- UI review: grouped, wider sidebar with no sideways scroll; workspace columns that resize, fold to a strip and go full width ---------- */
+.side-head, .pane-grip, .pane-thin { display: none; }
+.phone.desktop { --side: 236px; }
+.phone.desktop .tabpanes { left: var(--side); }
+.phone.desktop .tabbar { width: var(--side); overflow-x: hidden; gap: 1px; padding: 10px 10px; }
+.phone.desktop .side-head { display: block; flex: none; font-size: 12px; line-height: 15px; font-weight: 600; text-transform: uppercase; letter-spacing: .4px; color: var(--label2); padding: 10px 12px 3px; }
+.phone.desktop .side-org { padding-bottom: 6px; flex: none; }
+.phone.desktop .tab { color: var(--label); height: 34px; min-height: 34px; min-width: 0; }
+.phone.desktop .tab > span:not(.tab-badge):not(.ic) { flex: 1; min-width: 0; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.phone.desktop .tab.active { color: var(--tint); font-weight: 600; }
+.phone.desktop .tab .tab-badge { margin-left: 0; flex: none; }
+.phone.desktop .tab .tab-split { display: none; margin-left: 0; opacity: 1; }
+.phone.desktop .tab:hover .tab-split, .phone.desktop .tab:focus-visible .tab-split { display: grid; }
+.phone.desktop .tab .tab-badge + .tab-split, .phone.desktop .tab .tab-split + .tab-badge { margin-left: 0; }
+.phone.desktop .side-work { margin-top: auto; }
+.phone.desktop .tabpanes.multi > .navstack.active { flex: var(--w, 1) 1 0; }
+.phone.desktop .tabpanes.multi > .navstack.active.thin { flex: 0 0 34px; }
+.phone.desktop .tabpanes.multi > .navstack.thin > .page, .phone.desktop .tabpanes.multi > .navstack.thin > .pane-bar, .phone.desktop .tabpanes.multi > .navstack.thin > .pane-grip { display: none; }
+.phone.desktop .tabpanes.multi > .navstack.thin > .pane-thin { display: flex; position: absolute; left: 0; right: 0; top: -30px; bottom: 0; flex-direction: column; align-items: center; gap: 10px; padding: 9px 0 0; border: 0; background: var(--fill3); color: var(--label); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; z-index: 7; }
+.phone.desktop .pane-thin:hover { background: var(--fill2); color: var(--tint); } .pane-thin .t { writing-mode: vertical-rl; white-space: nowrap; letter-spacing: 0; }
+.phone.desktop .tabpanes.multi.maxed > .navstack.active:not(.max) { display: none; }
+.phone.desktop .tabpanes.multi > .navstack.active > .pane-grip { display: block; position: absolute; left: 0; top: -30px; bottom: 0; width: 7px; cursor: col-resize; z-index: 8; touch-action: none; }
+.phone.desktop .tabpanes.multi > .navstack.first > .pane-grip, .phone.desktop .tabpanes.multi.maxed .pane-grip { display: none; }
+.phone.desktop .pane-grip:hover, .phone.desktop .pane-grip.on { background: color-mix(in srgb, var(--tint) 45%, transparent); }
+.pane-bar button + button { margin-left: 1px; }

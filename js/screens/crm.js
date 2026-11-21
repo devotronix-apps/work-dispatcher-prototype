@@ -23,7 +23,10 @@ WD.css(`
 .cr-seg .segmented button { font-size: 12.5px; padding-left: 2px; padding-right: 2px; white-space: nowrap; }
 .cr-try { display: flex; gap: 6px; flex-wrap: wrap; } .cr-try span { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; color: var(--label3); } .cr-try span.on { color: var(--green); font-weight: 600; }
 .cr-bar { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 13px; color: var(--label2); padding: 10px 16px 0; } .cr-bar .cu-link { font-size: 13px; }
-.cr-side { padding-top: 6px; }
+.cr-tabs { display: flex; gap: 6px; overflow-x: auto; padding: 4px 16px 6px; scrollbar-width: none; -webkit-overflow-scrolling: touch; position: sticky; top: 0; z-index: 3; background: var(--bg); } .cr-tabs::-webkit-scrollbar { display: none; }
+.cr-tabs button { flex: none; display: inline-flex; align-items: center; border: 0; border-radius: 10px; min-height: 44px; padding: 0 13px; background: none; color: var(--label2); font: inherit; font-size: 15px; font-weight: 600; letter-spacing: -.2px; cursor: pointer; white-space: nowrap; }
+.cr-tabs button.on { background: var(--cell); color: var(--label); box-shadow: inset 0 0 0 1px var(--seg-edge); } .cr-tabs + .list > .section:first-child, .cr-tabs + .list > :first-child { margin-top: 2px; }
+.cr-key1 { display: flex; align-items: center; gap: 7px; width: 100%; min-height: 44px; margin-top: 8px; padding: 0 12px; border: 0; border-radius: 12px; background: var(--cell); color: var(--label); font: inherit; font-size: 14px; letter-spacing: -.1px; text-align: left; cursor: pointer; } .cr-key1 > .ic:first-child { color: var(--orange); } .cr-key1 { margin-top: 6px; } .cr-key1 span:not(.ic) { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; } .cr-key1 > .ic:last-child { color: var(--label3); }
 .cr-st { margin: 14px 0 0; border: 3px solid var(--c); border-radius: 16px; overflow: hidden; background: var(--cell); }
 .cr-st-h { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 2px 12px; background: color-mix(in srgb, var(--c) 22%, var(--cell)); }
 .cr-st-h b { font-size: 16px; font-weight: 700; letter-spacing: -.3px; white-space: nowrap; }
@@ -261,7 +264,9 @@ function leadSpec(id) {
         ui.section(null, WD.can('crm.view') && ui.row({ title: 'Open the full record', subtitle: 'Contacts, calls, texts, email, documents', chevron: true, onTap: () => WD.screens.customers.openDetail(id) })))];
   } };
 }
-const openLead = id => WD.nav.push(leadSpec(id));
+/** Tell the other columns of the desktop workspace which customer is open here (core.js `linkSelect`). */
+const link = id => { WD.app.linkSelect && WD.app.linkSelect({ from: 'office', customerId: id }); };
+const openLead = id => { link(id); WD.nav.push(leadSpec(id)); };
 
 /* ================= Quotes and bids ================= */
 const QS = { draft: ['Draft', 'var(--gray)'], sent: ['Sent · waiting', 'var(--blue)'], accepted: ['Accepted', 'var(--green)'], declined: ['Declined', 'var(--red)'] };
@@ -388,56 +393,77 @@ function pipelineView(page) {
   const hidden = PRIS.filter(k => !R.pri[k] && counts.pri[k]).map(k => PRI[k][0].toLowerCase() + ' priority').concat(STAGES.filter(([k]) => !R.stages[k] && counts.stage[k]).map(([, label]) => label));
   const shown = STAGES.reduce((n, [k]) => n + (R.stages[k] ? g[k].length : 0), 0);
   return ui.list(
-    WD.crm2 && WD.crm2.leadsTop ? WD.crm2.leadsTop(page) : null, callRow(page),
+    WD.crm2 && WD.crm2.leadsTop ? WD.crm2.leadsTop(page) : null,
     !CO.seesAll() && h('div', { style: 'padding:4px 4px 0' }, ui.note('You see leads assigned to you' + (t.values.length ? ', plus every lead in ' + CO.territoryText(S.me) : '') + '. An admin sets this in Settings → CRM and leads.')),
-    ui.section(null, h('div.co-tiles', tile('fresh', String(g.fresh.length), 'New', g.fresh.length ? 'var(--blue)' : null), tile('due', String(g.due.length), 'Due', g.due.length ? 'var(--orange)' : null), tile('quoted', money(quoted), 'Quoted'), tile('scheduled', String(g.scheduled.length), 'Won'))),
-    h('div.cr-jump', { role: 'navigation', 'aria-label': 'Jump to a stage' },
-      important.length > 0 && h('button.hi', { onclick: () => showAndJump(page, 'important') }, icon('flag', 13), 'High priority', h('i', String(important.length))),
-      STAGES.map(([k, label]) => (g[k].length > 0 || !R.stages[k]) && h('button' + (R.stages[k] ? '' : '.off'), { 'aria-label': (R.stages[k] ? 'Jump to ' : 'Show ') + label, onclick: () => showAndJump(page, k) }, !R.stages[k] && icon('eye.slash', 13), label, h('i', String(g[k].length))))),
+    ui.section(null, h('div.co-tiles', tile('fresh', String(g.fresh.length), 'New', g.fresh.length ? 'var(--blue)' : null), tile('due', String(g.due.length), 'Due', g.due.length ? 'var(--orange)' : null), tile('quoted', money(quoted), 'Quoted'), tile('scheduled', String(g.scheduled.length), 'Won'))),   // the tiles jump to their stage; the separate row of jump links is gone (a hidden stage comes back from the Hidden line or the filter menu)
+
     (R.openFilter = () => filterSheet(page, counts), null),   // Sort and Show-and-hide are in the bar’s filter menu
     hidden.length > 0 && h('div.cr-bar', h('span', 'Hidden: ' + hidden.join(', ')), h('button.cu-link', { style: 'flex:none', onclick: () => { PRIS.forEach(k => { R.pri[k] = true; }); STAGES.forEach(([k]) => { R.stages[k] = true; }); page.refresh(); } }, 'Show all')),
     R.source !== 'all' && h('div.cu-filter', 'Showing leads from ' + (SRC[R.source] || {}).title.toLowerCase(), h('button.cu-link', { onclick: () => { R.source = 'all'; page.refresh(); } }, 'Show all')),
+    important.length > 0 && block('important', 'var(--red)', 'High priority', important, R.important, v => { R.important = v; }, 'Open leads marked high priority. Each one is also listed under its stage below.', { stage: true }),
+    STAGES.map(sec),
     staleList.length > 0 && ui.section({ header: 'Ready to archive · ' + staleList.length, fold: true, folded: true, foldKey: 'Ready to archive', footer: 'Low-priority leads that were called, texted and emailed once with no answer. Archiving clears them from the inbox; nothing is deleted.' },
       staleList.map(c => ui.row({ title: c.name, subtitle: [h('span.cr-sit', situation(c)), tryLine(c)].map(x => h('div', x)), trailing: ui.button('Archive', { kind: 'gray', small: true, block: false, onTap: e => { e.stopPropagation(); archive([c], 'called, texted and emailed with no answer'); ui.toast(c.name + ' archived', 'tray'); } }), onTap: () => openLead(c.id) })),
       staleList.length > 1 && ui.row({ icon: 'tray', iconPlain: true, title: 'Archive all ' + staleList.length, tint: true, onTap: () => { const n = staleList.length; archive(staleList, 'called, texted and emailed with no answer'); ui.toast(plural(n, 'lead') + ' archived', 'tray'); } })),
-    important.length > 0 && block('important', 'var(--red)', 'High priority', important, R.important, v => { R.important = v; }, 'Open leads marked high priority. Each one is also listed under its stage below.', { stage: true }),
-    STAGES.map(sec),
+    callRow(page),   // the call log and Ready to archive come after the leads, so the first lead is near the top
     !shown && ui.empty({ icon: 'funnel', title: list.length || hidden.length ? 'Everything here is hidden' : 'No leads', text: list.length || hidden.length ? 'Tap Show all to bring the hidden priorities and stages back.' : CO.seesAll() ? 'New leads appear here as they come in.' : 'No leads in your territory right now.' }),
     srcRows.length > 0 && R.source === 'all' && ui.section({ header: 'Leads by source', footer: 'Tap a source to see only its leads.' }, srcRows),
     ui.section({ footer: 'Any lead can be archived from its page to clean up the inbox, and brought back later.' }, ui.row({ icon: 'tray', iconColor: 'var(--gray)', title: 'Archived leads', detail: String(arch.length), chevron: true, onTap: () => page.push(archivedSpec()) })));
 }
-/** What needs attention: new leads nobody has answered, follow-ups due, and open feedback. The tab badge is `total`, and the line at the
-    top of the CRM screen shows that same total with its parts, so the badge always matches a number on the screen. */
-const attention = () => { const p = pipe(), fresh = p.filter(c => stageOf(c) === 'fresh').length, due = p.filter(c => stageOf(c) === 'due').length, fb = F.feedback ? CO.feedbackOpen() : 0; return { fresh, due, fb, total: fresh + due + fb }; };
-function attentionLine(page) {
-  const a = attention(); if (!a.total) return null;
-  const go = (text, fn) => h('button', { onclick: fn }, text), stage = k => () => { R.seg = 'pipeline'; page.refresh(); setTimeout(() => showAndJump(page, k), 30); };
-  return h('div.cr-need', { role: 'status', 'aria-label': a.total + (a.total === 1 ? ' needs' : ' need') + ' attention. This is the number on the CRM tab.' }, h('span.cr-need-n', String(a.total)), h('b', a.total === 1 ? 'needs attention' : 'need attention'),
-    a.fresh > 0 && go(a.fresh + ' new', stage('fresh')), a.due > 0 && go(a.due + ' due', stage('due')), a.fb > 0 && go(a.fb + ' feedback', () => { R.seg = 'feedback'; page.refresh(); }));
-}
+/** What someone has to act on today: new leads nobody has answered, follow-ups due or overdue, customer requests due or overdue, and open
+    feedback. The tab badge is `total`, and each part is the red count on its own tab of the strip, so the badge always matches the screen. */
+const attention = () => { const p = pipe(), fresh = p.filter(c => stageOf(c) === 'fresh').length, due = p.filter(c => stageOf(c) === 'due').length, fb = F.feedback ? CO.feedbackOpen() : 0, open = data.tasks.filter(t => !t.done && t.due <= today), tasks = open.length,
+  counted = new Set(p.filter(c => ['fresh', 'due'].includes(stageOf(c))).map(c => c.id)), extra = open.filter(t => !counted.has(t.customerId)).length,   // a follow-up on a lead already counted as new or due is not counted twice
+  needs = WD.crm2 && WD.crm2.dueCount ? WD.crm2.dueCount() : 0; return { fresh, due, fb, tasks, needs, total: fresh + due + fb + needs + extra }; };
+/** Wide (a full desktop page or a wide workspace column) or narrow (the phone, or a narrow column): the dashboards need about 700 points. */
+const wide = page => { if (!S.desktop) return false; const w = WD.app.paneW ? WD.app.paneW(page && page.el) : 1068; return !(w > 0) || w >= 700; };
+/** The one row of tabs: every part of the CRM in a strip that scrolls sideways, so nothing is cut off on the phone. `R.side` and `R.seg` still hold the choice. */
+const tabNow = () => R.side === 'needs' && WD.crm2 && WD.crm2.needsView ? 'needs' : R.side === 'assign' && WD.r15 && WD.r15.assignView ? 'assign' : R.seg;
+const setTab = v => { if (v === 'needs' || v === 'assign') R.side = v; else { R.side = 'leads'; R.seg = v; } };
+function tabStrip(page, tabs) { const now = tabNow();
+  const el = h('div.cr-tabs.wide', { role: 'tablist', 'aria-label': 'Parts of the CRM' }, tabs.map(t => h('button' + (t.value === now ? '.on' : ''), { role: 'tab', 'aria-selected': String(t.value === now), 'aria-label': t.label + (t.badge ? ', ' + t.badge + ' to act on today' : ''), onclick: () => { setTab(t.value); page.refresh(); page.body.scrollTop = 0; } }, t.label, t.badge > 0 && h('span.seg-badge', String(t.badge)))));
+  requestAnimationFrame(() => { const on = el.querySelector('.on'); if (on && on.offsetLeft + on.offsetWidth > el.scrollLeft + el.clientWidth) el.scrollLeft = on.offsetLeft - 16; });
+  return el; }
+/** Search first: leads and customers by name, contact, phone, email or address. A result opens the lead or the customer record. */
+let Q = '';
+const openFound = c => { if (inPipe(c)) openLead(c.id); else if (WD.screens.customers && WD.screens.customers.openDetail) { link(c.id); WD.screens.customers.openDetail(c.id); } };
+function searchView() { const res = q.searchCustomers(Q, 30);
+  return ui.list(res.length ? ui.section({ header: res.length + (res.length === 1 ? ' match' : ' matches') + ' in leads and customers', fold: false }, res.map(r => { const c = r.customer, lead = inPipe(c);
+    return ui.row({ leading: ui.avatar(c.name, { size: 34 }), title: c.name, subtitle: r.match, badge: lead ? ui.badge(c.archived ? 'Archived lead' : 'Lead', SC[stageOf(c)] || 'var(--gray)') : ui.badge('Customer', 'var(--gray)'), chevron: true, onTap: () => openFound(c) }); }))
+    : ui.empty({ icon: 'magnifyingglass', title: Q.trim().length < 2 ? 'Keep typing' : 'Nobody matches', text: Q.trim().length < 2 ? 'Two letters or three digits are enough.' : 'Try a name, a contact, a phone number or an address.' })); }
 function root() {
   const C2 = () => WD.crm2 || {}, needs = () => R.side === 'needs' && !!C2().needsView, R15 = () => WD.r15 || {}, assign = () => R.side === 'assign' && !!R15().assignView;
-  return { title: 'CRM', large: true, trailing: page => assign() ? [canEdit() && { icon: 'plus', label: 'New follow-up', onTap: () => K.newTask() }].filter(Boolean) : needs() ? [canEdit() && { icon: 'plus', label: 'New customer request', onTap: () => C2().newInquiry() }].filter(Boolean)
+  return { title: 'CRM', large: true, search: { placeholder: 'Search customers and leads', onInput(v, page) { Q = v; page.refresh(); if (!v) page.body.scrollTop = 0; } },
+    trailing: page => assign() ? [canEdit() && { icon: 'plus', label: 'New follow-up', onTap: () => K.newTask() }].filter(Boolean) : needs() ? [canEdit() && { icon: 'plus', label: 'New customer request', onTap: () => C2().newInquiry() }].filter(Boolean)
     : [R.seg === 'pipeline' && { icon: 'line.3.horizontal.decrease', label: 'Sort and filter', onTap: (p, el) => ui.menu(el, [{ header: 'Sort by' }, ...SORTS.map(([v, label]) => ({ label, checked: R.sort === v, onTap: () => { R.sort = v; page.refresh(); } })), 'divider', { label: 'Show and hide…', icon: 'eye.slash', onTap: () => R.openFilter && R.openFilter() }], { compact: true }) },
       canEdit() && (R.seg === 'tasks' ? { icon: 'plus', label: 'New follow-up', onTap: () => K.newTask() } : { icon: 'plus', label: 'New lead', onTap: () => newLead() })].filter(Boolean),
-    render: page => { const due = data.tasks.filter(t => !t.done && t.due <= today).length, segs = [{ value: 'pipeline', label: 'Pipeline' }, { value: 'tasks', label: 'Tasks', badge: due }, F.quotes && { value: 'quotes', label: 'Quotes' }, F.referrals && { value: 'referrals', label: 'Referrals' }, F.feedback && { value: 'feedback', label: 'Feedback', badge: CO.feedbackOpen() }].filter(Boolean);
-      if (!segs.some(s => s.value === R.seg)) R.seg = 'pipeline';
-      /* Two sides: Leads (the pipeline and its segments) and Customer needs (requests from existing customers, r14-crm.js). */
-      const open = C2().openCount ? C2().openCount() : 0, side = C2().needsView ? h('div.cu-seg.cr-side', ui.segmented([{ value: 'leads', label: 'Leads', badge: pipe().length }, { value: 'needs', label: S.desktop ? 'Customer needs' : 'Needs', badge: open }, R15().assignView && { value: 'assign', label: 'Assignments' }].filter(Boolean), assign() ? 'assign' : needs() ? 'needs' : 'leads', v => { R.side = v; page.refresh(); page.body.scrollTop = 0; })) : null;
-      /* 5.1: Assignments — what every person has on their plate (r15.js). */
-      if (assign()) return [side, R15().assignView(page)];
-      if (needs()) return [side, C2().needsView(page)];
-      const desk = S.desktop && R.seg === 'pipeline' && C2().desktop;
-      return [side, attentionLine(page), segs.length > 1 && h('div.cu-seg.cr-seg', ui.segmented(segs, R.seg, v => { R.seg = v; page.refresh(); })), R.seg === 'tasks' ? K.tasksView() : R.seg === 'quotes' ? quotesView() : R.seg === 'referrals' ? referralsView(page) : R.seg === 'feedback' ? CO.feedbackView(page) : desk ? (R.openFilter = null, C2().desktop(page)) : pipelineView(page)]; } };
+    render: page => { if (Q.trim()) return searchView();
+      /* One strip: Leads (the pipeline), Tasks, Customer needs (requests from existing customers, r14-crm.js), Assignments (r15.js), then the rest. A red count is only what has to be done today. */
+      const a = attention(), w = wide(page), tabs = [{ value: 'pipeline', label: 'Leads', badge: a.fresh + a.due }, { value: 'tasks', label: 'Tasks', badge: a.tasks }, C2().needsView && { value: 'needs', label: w ? 'Customer needs' : 'Needs', badge: a.needs }, F.quotes && { value: 'quotes', label: 'Quotes' }, R15().assignView && { value: 'assign', label: 'Assignments' }, F.referrals && { value: 'referrals', label: 'Referrals' }, F.feedback && { value: 'feedback', label: 'Feedback', badge: a.fb }].filter(Boolean);
+      if (!tabs.some(s => s.value === R.seg)) R.seg = 'pipeline';
+      const strip = tabStrip(page, tabs);
+      if (assign()) return [strip, R15().assignView(page)];
+      if (needs()) return [strip, C2().needsView(page)];
+      const desk = w && R.seg === 'pipeline' && C2().desktop;
+      return [strip, R.seg === 'tasks' ? K.tasksView() : R.seg === 'quotes' ? quotesView() : R.seg === 'referrals' ? referralsView(page) : R.seg === 'feedback' ? CO.feedbackView(page) : desk ? (R.openFilter = null, C2().desktop(page)) : pipelineView(page)]; } };
 }
+/** Desktop workspace: another column chose a customer, so this one shows that lead or customer. */
+const onLinked = sel => { if (!sel || !sel.customerId || !WD.can('leads.view')) return false; const c = q.customer(sel.customerId); if (!c) return false;
+  const st = WD.app.paneStack ? WD.app.paneStack('office') || WD.app.paneStack('crm') : null; if (!st) return false;
+  const top = st.top && st.top(); if (top && top.spec && top.spec.linkedId === c.id) return true;
+  if (st.popToRoot && st.pages && st.pages.length > 1) st.popToRoot();
+  const spec = inPipe(c) ? leadSpec(c.id) : WD.screens.customers && WD.screens.customers.detailSpec ? WD.screens.customers.detailSpec(c.id) : null; if (!spec) return false;
+  spec.linkedId = c.id; st.push(spec); return true; };
 
 /* ================= Registration ================= */
-WD.screens.crm = { root, openLead, newLead, leadSpec,
+WD.screens.crm = { root, openLead, newLead, leadSpec, onLinked, wide,
   /* Internals r14-crm.js builds on (key accounts, the AI review, the desktop dashboard and spreadsheet). */
   x: { R, STAGES, SC, archivedSpec, SORTS, PRI, PRIS, SRC, TRY, pipe, archived, stageOf, priOf, priBadge, situation, autoSituation, lastContact, contactText, contactLine, lastTouch, quiet, isDue, ago, sourceOf, srcLabel, qTotal: qt => qTotal(qt), leadQuote, quoteValue, valText, addQuote, quoteSpec: qt => quoteSpec(qt), quoteRow: (qt, n) => quoteRow(qt, n), sendFollowUp, archive, unarchive, suggest, tried, triedAll, stale, leadCard, rowMenu, setVip, setPri, callRow, sorters, newLead, canEdit } };
 const tab = WD.app.tabs.find(t => t.id === 'crm');
 /* The badge used to add every due lead (including ones already counted as new), so it read 11 beside "5 new, 3 due". Now each lead counts once, by its stage. */
-if (tab) tab.badge = () => WD.can('leads.view') ? attention().total : 0;
+/* The tab's red count is kept to the leads that need someone today: new ones nobody has answered and follow-ups that are due. Tasks, customer
+   requests and feedback show their own counts on the strip inside the CRM, so the tab bar does not carry three large numbers at once. */
+if (tab) tab.badge = () => { if (!WD.can('leads.view')) return 0; const a = attention(); return a.fresh + a.due; };
 const show = seg => { R.seg = seg; WD.nav.switchTab('crm'); };
 WD.panel.addJump('CRM pipeline', () => show('pipeline'));
 WD.panel.addJump('Quotes and bids', () => show('quotes'));

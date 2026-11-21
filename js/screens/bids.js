@@ -139,7 +139,7 @@ const fitDot = (sc, big) => h('div.bp-fit' + (big ? '.big' : ''), { style: { '--
 const daysLeft = day => { const n = D.diff(day, today()); return n < 0 ? 'closed ' + fmt.day(day, 'md') : n === 0 ? 'due today' : 'due in ' + plural(n, 'day'); };
 const oppOf = id => store().opps.find(o => o.id === id), bidFor = o => store().tracked.find(b => b.oppId === o.id);
 const UI2 = { seg: 'opps', filter: 'all' };
-BID.badge = () => { try { if (!BID.on()) return 0; return store().tracked.filter(b => ['preparing', 'watching'].includes(b.status) && D.diff(b.due, today()) >= 0 && D.diff(b.due, today()) <= 7).length; } catch (e) { return 0; } };
+BID.badge = () => { try { if (!BID.on()) return 0; return store().tracked.filter(b => ['preparing', 'watching'].includes(b.status) && D.diff(b.due, today()) >= 0 && D.diff(b.due, today()) <= 1).length; } catch (e) { return 0; } };
 
 function track(o, status) { const Z = store(); let b = bidFor(o); if (!b) { b = { id: 'b' + Date.now().toString(36), oppId: o.id, title: o.title, agency: o.agency, notice: o.notice, status, due: o.due, value: o.value, ourPrice: null, docs: {}, notes: [], at: now() }; (o.docs || []).forEach(k => { const have = H().documents().some(d => d.id === k) || (k === 'cert' && Z.profile.certs.length) || k === 'reps'; b.docs[k] = have ? 'ready' : 'missing'; }); Z.tracked.unshift(b); } else b.status = status; WD.changed(); return b; }
 

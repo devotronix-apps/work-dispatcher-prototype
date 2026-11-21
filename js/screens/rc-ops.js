@@ -34,11 +34,21 @@ button.mt-tile { cursor: pointer; } button.mt-tile:active, .mt-card:active { opa
 .mt-cards { display: grid; gap: 10px; }
 .mt-card { background: var(--cell); border-radius: 14px; padding: 14px; cursor: pointer; min-width: 0; }
 .mt-card .top { display: flex; align-items: center; gap: 10px; min-height: 44px; } .mt-card .tk { width: 38px; height: 38px; border-radius: 10px; background: var(--fill3); color: var(--label2); display: grid; place-items: center; flex: none; }
-.mt-card .who { flex: 1; min-width: 0; } .mt-card .nm { font-size: 17px; line-height: 22px; font-weight: 600; letter-spacing: -.3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mt-card .twho { flex: 1; min-width: 0; } .mt-card .nm { font-size: 17px; line-height: 22px; font-weight: 600; letter-spacing: -.3px; overflow-wrap: anywhere; }
+.mt-card { border-left: 4px solid var(--c, transparent); } .mt-card .top .badge { flex: none; } .mt-card.sel { box-shadow: 0 0 0 2px var(--tint); }
+.mt-card .tk { background: color-mix(in srgb, var(--c, var(--gray)) 14%, transparent); color: var(--c, var(--label2)); }
+/* Wide column: the truck list on the left, the chosen truck on the right. */
+.mt-split { display: grid; grid-template-columns: minmax(340px, 400px) minmax(0, 1fr); gap: 0 8px; align-items: start; }
+.mt-split > .mt-side { position: sticky; top: 0; overflow-y: auto; scrollbar-width: thin; border-left: .5px solid var(--sep); }
+.mt-dhead { display: flex; align-items: center; gap: 10px; padding: 12px 16px 0; } .mt-dhead .title2 { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+/* Report a problem (drivers) */
+.mt-prob { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 16px 12px; background: var(--cell); }
+.mt-prob button { appearance: none; border: 0; min-height: 44px; padding: 0 14px; border-radius: 22px; background: var(--fill3); color: var(--label); font: inherit; font-size: 15px; letter-spacing: -.2px; cursor: pointer; }
+.mt-prob button.on { background: var(--red); color: #fff; font-weight: 600; }
 .mt-card .sub, .mt-card .meta { font-size: 13px; line-height: 18px; color: var(--label2); letter-spacing: -.08px; } .mt-card .meta { margin-top: 8px; }
 .mt-card .urg { display: flex; gap: 7px; align-items: flex-start; margin-top: 8px; font-size: 14px; line-height: 19px; letter-spacing: -.15px; } .mt-card .urg svg { flex: none; margin-top: 2px; }
 .mt-bar { height: 4px; border-radius: 2px; background: var(--fill2); overflow: hidden; margin-top: 12px; } .mt-bar i { display: block; height: 100%; border-radius: 2px; background: var(--c, var(--green)); }
-.mt-next { display: flex; justify-content: space-between; gap: 10px; margin-top: 6px; font-size: 13px; line-height: 17px; color: var(--label2); } .mt-next span:first-child { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .mt-next span:last-child { flex: none; color: var(--c, var(--label2)); font-weight: 500; }
+.mt-next { display: flex; justify-content: space-between; gap: 10px; margin-top: 6px; font-size: 13px; line-height: 17px; color: var(--label2); } .mt-next span:first-child { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .mt-next span:last-child { flex: none; color: var(--c2, var(--label2)); font-weight: 500; }
 .mt-dim { display: flex; align-items: center; gap: 6px; flex: none; font-size: 15px; color: var(--label2); } .mt-dim input { width: 72px; min-height: 44px; font-size: 16px; }
 `);
 
@@ -80,7 +90,7 @@ const nextSvc = vid => svcOf(vid).map(x => ({ ...x, frac: svcFrac(x.s) })).sort(
 const truckDocs = vid => F.docs.filter(d => d.owner === vid && !(d.carb && WD.r11 && !WD.r11.cfg.compliance.carb)).map(d => ({ d, n: D.diff(d.expires, today()) }));
 /** Everything about one truck that wants attention, most urgent first: [{sev: 3 (red) | 2 (orange), kind: 'flag' | 'due' | 'code', icon, text}]. */
 const truckItems = v => { const t = tel(v.id), out = [];
-  openReports(v.id).forEach(x => out.push({ sev: 3, kind: 'flag', icon: 'flag', text: 'Pre-trip: ' + (x.defects.length ? x.defects.join(', ').toLowerCase() : 'driver’s comment') }));
+  openReports(v.id).forEach(x => out.push({ sev: 3, kind: 'flag', icon: 'flag', text: (x.problem ? 'Reported: ' : 'Pre-trip: ') + (x.defects.length ? x.defects.join(', ').toLowerCase() : 'driver’s comment') }));
   if (lowVolt(v)) out.push({ sev: 3, kind: 'flag', icon: 'battery', text: 'Battery ' + t.volts.toFixed(1) + ' V, below your ' + MT.voltMin.toFixed(1) + ' V limit' });
   svcOf(v.id).forEach(({ s, st }) => { if (st.over || st.warn) out.push({ sev: st.over ? 3 : 2, kind: 'due', icon: 'wrench', text: s.name + ' · ' + st.text }); });
   truckDocs(v.id).forEach(({ d, n }) => { if (n <= ND()) out.push({ sev: n < 0 ? 3 : 2, kind: 'due', icon: 'doc.text', text: d.name + (n < 0 ? ' expired ' + plural(-n, 'day') + ' ago' : n === 0 ? ' expires today' : ' expires in ' + plural(n, 'day')) }); });
@@ -89,6 +99,13 @@ const truckItems = v => { const t = tel(v.id), out = [];
 /** The pill on a truck's card: In the shop, Flagged (an open pre-trip report or a low battery), Overdue, Due soon, or OK. */
 const truckStatus = v => { const top = truckItems(v)[0];
   return v.shop ? { id: 'shop', label: 'In the shop', color: 'var(--gray)' } : !top ? { id: 'ok', label: 'OK', color: 'var(--green)' } : top.sev === 3 ? { id: top.kind === 'flag' ? 'flag' : 'over', label: top.kind === 'flag' ? 'Flagged' : 'Overdue', color: 'var(--red)' } : { id: 'soon', label: top.kind === 'code' ? 'Check engine' : 'Due soon', color: 'var(--orange)' }; };
+
+/** Trucks with problems first: Overdue, Flagged, Due soon (or an engine code), In the shop, OK. */
+const RANK = { over: 0, flag: 1, soon: 2, shop: 3, ok: 4 }, byUrgency = list => list.map((v, i) => ({ v, i, r: RANK[truckStatus(v).id] })).sort((a, b) => a.r - b.r || a.i - b.i).map(x => x.v);
+/** The route a truck runs today, for the other columns of the desktop workspace. */
+const routeToday = v => q.routes().find(r => ((RC.vehicleOn ? RC.vehicleOn(r.id, today()) : q.vehicle(r.vehicleId)) || {}).id === v.id) || null;
+const linkTruck = v => { const r = routeToday(v); if (WD.app.linkSelect) WD.app.linkSelect({ from: 'maintenance', vehicleId: v.id, routeId: r ? r.id : null, day: today() }); };
+const MUI = { sel: null };   // the truck showing on the right of the wide layout
 
 /* ---------- Truck size (for truck-legal routing) and the fuel price ---------- */
 const feetIn = n => Math.floor(n / 12) + '′' + (n % 12 ? (n % 12) + '″' : ''), meters = (n, dp) => n.toFixed(dp) + ' m';
@@ -179,7 +196,7 @@ RC.maintCheck = () => {
   if (!S.signedIn || !canMaint()) return; if (document.querySelector('.x-tour') || document.querySelector('#overlays .alert')) return setTimeout(RC.maintCheck, 1500);
   const id = S.me.id, fresh = openReports().filter(x => !x.report.seenAll && !(x.report.seen || {})[id] && x.byId !== id);
   if (fresh.length) { fresh.forEach(x => { x.report.seen = x.report.seen || {}; x.report.seen[id] = true; }); const x = fresh[0], v = q.vehicle(x.vehicleId) || { name: 'Truck' };
-    ui.alert({ title: fresh.length > 1 ? fresh.length + ' pre-trip reports need a look' : v.name + ' · pre-trip report', message: h('div', h('div', x.by + ' · ' + fmt.rel(new Date(x.at))), x.defects.length ? h('div', { style: 'margin-top:6px;font-weight:600' }, 'Defects: ' + x.defects.join(', ')) : null, x.note && h('div', { style: 'margin-top:4px' }, '“' + x.note + '”'), fresh.length > 1 && h('div', { style: 'margin-top:6px' }, 'and ' + (fresh.length - 1) + ' more in Maintenance')),
+    ui.alert({ title: fresh.length > 1 ? fresh.length + ' truck reports need a look' : v.name + (x.problem ? ' · problem reported' : ' · pre-trip report'), message: h('div', h('div', x.by + ' · ' + fmt.rel(new Date(x.at))), x.defects.length ? h('div', { style: 'margin-top:6px;font-weight:600' }, 'Defects: ' + x.defects.join(', ')) : null, x.note && h('div', { style: 'margin-top:4px' }, '“' + x.note + '”'), fresh.length > 1 && h('div', { style: 'margin-top:6px' }, 'and ' + (fresh.length - 1) + ' more in Maintenance')),
       buttons: [{ label: 'Later', value: null }, { label: 'View', value: true, bold: true }] }).then(go => { if (go) { WD.nav.switchTab('maintenance'); WD.nav.push(truckSpec(v)); } });
   }
   data.vehicles.filter(lowVolt).forEach(v => { const t = tel(v.id); if (t.warned[id] === t.volts) return; t.warned[id] = t.volts;
@@ -259,14 +276,14 @@ const insRow = (x, push, withTruck) => { const v = q.vehicle(x.vehicleId) || { n
   return ui.row({ icon: flagged ? 'flag' : x.defects.length || x.note ? 'checkmark.circle' : 'checkmark.circle.fill', iconColor: flagged ? 'var(--red)' : x.defects.length || x.note ? 'var(--gray)' : 'var(--green)', title: (withTruck ? v.name + ' · ' : '') + fmt.day(D.key(new Date(x.at)), 'short'),
     subtitle: x.by + ' · ' + nfmt(x.odo) + ' mi · ' + (x.defects.length ? plural(x.defects.length, 'defect') + ': ' + x.defects.join(', ') : x.note ? 'Comment, no defects' : 'No defects'), badge: flagged ? ui.badge('Open', 'var(--red)') : x.report ? ui.badge('Closed', 'var(--gray)') : null, chevron: true, onTap: () => push(inspectionSpec(x)) }); };
 function inspectionSpec(x) { const v = q.vehicle(x.vehicleId) || { name: 'Truck' };
-  return { title: 'Inspection', render: page => { const sig = sigOf(x), items = x.items || Object.fromEntries(F.checklist.map(k => [k, x.defects.includes(k) ? 'bad' : 'ok']));
+  return { title: x.problem ? 'Problem report' : 'Inspection', render: page => { const sig = sigOf(x), items = x.items || Object.fromEntries(F.checklist.map(k => [k, x.defects.includes(k) ? 'bad' : 'ok']));
     return ui.list(
       ui.section({ header: v.name + (v.plate ? ' · ' + v.plate : ''), fold: false }, ui.row({ title: 'Date and time', detail: stamp(x.at) }), ui.row({ title: 'Driver', detail: x.by }), ui.row({ title: 'Mileage', detail: nfmt(x.odo) + ' mi', subtitle: x.odoFrom === 'gps' ? 'From the GPS unit' : null })),
       x.report && ui.section({ header: 'Sent to Maintenance', fold: false, footer: x.report.open ? null : 'Closed by ' + (x.report.closedBy || '') + (x.report.closedAt ? ' · ' + stamp(x.report.closedAt) : '') },
         x.defects.length > 0 && ui.row({ icon: 'exclamationmark.triangle', iconColor: 'var(--red)', title: plural(x.defects.length, 'defect'), subtitle: x.defects.join(', ') }), x.note && ui.row({ icon: 'note', iconColor: 'var(--orange)', title: 'Driver’s comments', subtitle: x.note }),
         x.report.open && canMaint() && ui.row({ title: 'Close this report…', tint: true, onTap: () => resolve(x, v, () => page.refresh()) })),
-      ui.section({ header: 'Items checked', fold: false }, Object.keys(items).map(k => ui.row({ title: k, trailing: ui.badge(items[k] === 'bad' ? 'Defect' : 'OK', items[k] === 'bad' ? 'var(--red)' : 'var(--green)') }))),
-      ui.section({ header: 'Signature', fold: false }, h('div.rc-signed', h('div.ink', sig ? sigView(sig) : h('span.secondary', 'Signed on paper')), h('div.cap', x.by + ' · ' + stamp(x.signedAt || x.at)))));
+      !x.problem && ui.section({ header: 'Items checked', fold: false }, Object.keys(items).map(k => ui.row({ title: k, trailing: ui.badge(items[k] === 'bad' ? 'Defect' : 'OK', items[k] === 'bad' ? 'var(--red)' : 'var(--green)') }))),
+      !x.problem && ui.section({ header: 'Signature', fold: false }, h('div.rc-signed', h('div.ink', sig ? sigView(sig) : h('span.secondary', 'Signed on paper')), h('div.cap', x.by + ' · ' + stamp(x.signedAt || x.at)))));
   } }; }
 const historySpec = vid => ({ title: vid ? 'Inspections' : 'Inspection history', render: page => { const list = (vid ? insOf(vid) : F.inspections.slice().sort((a, b) => b.at - a.at));
   return ui.list(list.length ? ui.section({ header: plural(list.length, 'inspection') + ' · newest first', fold: false }, list.map(x => insRow(x, s => page.push(s), !vid))) : ui.empty({ icon: 'checklist', title: 'No inspections yet', text: 'Drivers do the pre-trip inspection when they clock in.' })); } });
@@ -329,7 +346,7 @@ function codeHelp(code) {
 /** Everything that wants attention across the fleet, as rows: open pre-trip reports, low batteries, service due and active engine codes. */
 const attnRows = push => { const trucks = data.vehicles.filter(v => v.active !== false);
   return [].concat(
-    openReports().map(x => { const v = q.vehicle(x.vehicleId) || { name: 'Truck' }; return ui.row({ icon: 'flag', iconColor: 'var(--red)', title: v.name + ' · ' + (x.defects.length ? x.defects.join(', ') : 'driver’s comment'), subtitle: 'Pre-trip · ' + x.by + ' · ' + fmt.rel(new Date(x.at)) + (x.note ? ' · “' + x.note + '”' : ''), chevron: true, onTap: () => push(truckSpec(v)) }); }),
+    openReports().map(x => { const v = q.vehicle(x.vehicleId) || { name: 'Truck' }; return ui.row({ icon: 'flag', iconColor: 'var(--red)', title: v.name + ' · ' + (x.defects.length ? x.defects.join(', ') : 'driver’s comment'), subtitle: (x.problem ? 'Reported · ' : 'Pre-trip · ') + x.by + ' · ' + fmt.rel(new Date(x.at)) + (x.note ? ' · “' + x.note + '”' : ''), chevron: true, onTap: () => push(truckSpec(v)) }); }),
     trucks.filter(lowVolt).map(v => ui.row({ icon: 'battery', iconColor: 'var(--red)', title: v.name + ' · battery ' + tel(v.id).volts.toFixed(1) + ' V', subtitle: 'Below your ' + MT.voltMin.toFixed(1) + ' V limit', chevron: true, onTap: () => push(truckSpec(v)) })),
     dueList().map(x => ui.row({ icon: 'wrench', iconColor: x.st.over ? 'var(--red)' : 'var(--orange)', title: x.v.name + ' · ' + x.s.name, subtitle: x.st.text, chevron: true, onTap: () => push(truckSpec(x.v)) })),
     trucks.flatMap(v => (tel(v.id) ? tel(v.id).codes : []).filter(c => c.active).map(c => ui.row({ icon: 'exclamationmark.triangle', iconColor: 'var(--orange)', title: v.name + ' · engine code ' + c.code, subtitle: CODES[c.code] || 'Manufacturer code', chevron: true, onTap: () => push(truckSpec(v)) })))); };
@@ -366,22 +383,26 @@ function maintRoot() {
     const trucks = data.vehicles.filter(v => v.active !== false), shop = trucks.filter(v => v.shop), reports = openReports(), low = trucks.filter(lowVolt), due = dueList(), codes = trucks.reduce((n, v) => n + (tel(v.id) ? tel(v.id).codes.filter(c => c.active).length : 0), 0), attn = reports.length + low.length + due.length + codes;
     const next = trucks.map(v => ({ v, n: nextSvc(v.id) })).filter(x => x.n).sort((a, b) => b.n.frac - a.n.frac)[0], tone = st => st.over ? 'var(--red)' : st.warn ? 'var(--orange)' : null;
     const tile = (k, v, s, o = {}) => h(o.onTap ? 'button.mt-tile' : 'div.mt-tile', { onclick: o.onTap || null, style: o.color ? { '--c': o.color } : null }, h('span.k', k), h('span.v' + (o.txt ? '.txt' : ''), v), h('span.s', s));
+    const wide = (WD.app.paneW ? WD.app.paneW(page.el) : (S.desktop ? 1068 : 393)) >= 700, order = byUrgency(trucks);
+    if (wide && !order.some(v => v.id === MUI.sel)) MUI.sel = order[0] ? order[0].id : null;
+    const pick = v => { linkTruck(v); if (wide) { MUI.sel = v.id; re(); } else push(truckSpec(v)); };
+    /* One color per truck: the worst thing wrong with it. The edge, the icon, the pill and the bar all use it. */
     const card = v => { const t = tel(v.id), st = truckStatus(v), items = truckItems(v), top = items[0], n = nextSvc(v.id), P = WD.truckProfile(v.id), c = n && tone(n.st);
-      return h('div.mt-card', { role: 'button', tabindex: 0, 'aria-label': v.name + ', ' + st.label, onclick: () => push(truckSpec(v)) },
-        h('div.top', h('div.tk', icon('truck', 21)), h('div.who', h('div.nm', v.name), h('div.sub', [v.kind, v.plate].filter(Boolean).join(' · '))), ui.badge(st.label, st.color), icon('chevron.right', 14, 'var(--label3)')),
+      return h('div.mt-card' + (wide && MUI.sel === v.id ? '.sel' : ''), { role: 'button', tabindex: 0, 'aria-label': v.name + ', ' + st.label, style: { '--c': st.color }, onclick: () => pick(v) },
+        h('div.top', h('div.tk', icon('truck', 21)), h('div.twho', h('div.nm', v.name), h('div.sub', [v.kind, v.plate].filter(Boolean).join(' · '))), ui.badge(st.label, st.color), !wide && icon('chevron.right', 14, 'var(--label3)')),
         h('div.meta', h('div', nfmt(F.odo[v.id] || 0) + ' mi' + (t ? ' · fuel ' + t.fuel + '% · ' + t.volts.toFixed(1) + ' V' : ' · no GPS unit')), P.text && h('div', P.text)),
         top && h('div.urg', icon(top.icon, 16, top.sev === 3 ? 'var(--red)' : 'var(--orange)'), h('span', top.text + (items.length > 1 ? ' · and ' + (items.length - 1) + ' more' : ''))),
-        n && h('div.mt-bar', { style: { '--c': c || 'var(--green)' } }, h('i', { style: { width: Math.max(2, Math.round(Math.min(1, n.frac) * 100)) + '%' } })),
-        n && h('div.mt-next', { style: c ? { '--c': c } : null }, h('span', 'Next service · ' + n.s.name), h('span', n.st.text))); };
+        n && h('div.mt-bar', h('i', { style: { width: Math.max(2, Math.round(Math.min(1, n.frac) * 100)) + '%' } })),
+        n && h('div.mt-next', { style: c ? { '--c2': c } : null }, h('span', 'Next service · ' + n.s.name), h('span', n.st.text))); };
     const go = (ic, title, spec, detail) => ui.row({ icon: ic, iconPlain: true, iconColor: 'var(--tint)', title, detail: detail || null, chevron: true, onTap: () => push(spec()) });
     const soon = X ? X.expiring(false, 'trucks').length : 0, track = X && { phone: 'Driver’s phone', truck: 'Truck GPS', both: 'Phone and GPS' }[X.cfg.tracking.source];
-    const el = ui.list(
-      h('div.mt-tiles',
+    const tiles = h('div.mt-tiles',
         tile('Trucks in service', String(trucks.length - shop.length), shop.length ? plural(shop.length, 'truck') + ' in the shop' : 'of ' + plural(trucks.length, 'truck')),
         tile('Need attention', String(attn), attn ? [reports.length && plural(reports.length, 'report'), low.length && low.length + ' low battery', due.length && due.length + ' due', codes && plural(codes, 'code')].filter(Boolean).join(' · ') : 'Nothing right now', { color: attn ? 'var(--red)' : null, onTap: () => push(attnSpec()) }),
         tile('Next service due', next ? next.n.s.name : 'None scheduled', next ? next.v.name + ' · ' + next.n.st.text : 'Add one on a truck’s page', { txt: true, color: next && tone(next.n.st), onTap: next ? () => push(truckSpec(next.v)) : null }),
         tile('Open repairs', String(reports.length + shop.length), reports.length + shop.length ? [reports.length && plural(reports.length, 'pre-trip report'), shop.length && shop.length + ' in the shop'].filter(Boolean).join(' · ') : 'Nothing open', { onTap: () => push(attnSpec()) })),
-      h('div.section', h('div.section-header.plain', 'Trucks'), h('div.mt-cards', trucks.map(card)), !trucks.length && h('div.section-footer', 'No trucks yet. Add one under Fleet setup.')),
+      list = h('div.section', h('div.section-header.plain', 'Trucks'), h('div.mt-cards', order.map(card)), !trucks.length && h('div.section-footer', 'No trucks yet. Add one under Fleet setup.'));
+    const rest = [
       ui.section({ header: 'Records', plainHeader: true },
         go('checklist', 'Inspection history', () => historySpec(), String(F.inspections.length)),
         go('wrench', 'Repairs and maintenance log', repairsSpec, String(F.repairs.length))),
@@ -395,11 +416,40 @@ function maintRoot() {
         BZ && go('doc.text', 'Documents and pre-trip checklist', () => BZ.fleetSpec('trucks'))),
       ui.section({ header: 'Costs and alerts', plainHeader: true, footer: 'A notification pops up for everyone with Maintenance when a truck’s battery reads below the limit, when a pre-trip inspection reports a problem, and when service is coming due. Who has Maintenance is set in Settings → Team and roles.' },
         ui.row({ icon: 'fuelpump', iconPlain: true, iconColor: 'var(--tint)', title: 'Fuel price', subtitle: (MT.fuelSplit ? fuelLine() : metric() ? 'Per liter' : 'Per gallon') + ' · updated ' + fmt.day(D.key(new Date(MT.fuelAt)), 'md'), detail: MT.fuelSplit ? null : fmt.money(metric() ? MT.fuelPrice / GAL : MT.fuelPrice, true), chevron: true, onTap: () => fuelSheet(re) }),
-        ui.pickerRow({ icon: 'battery', iconPlain: true, iconColor: 'var(--tint)', title: 'Low battery alert below', value: MT.voltMin, options: [11.5, 11.8, 12.0, 12.2, 12.4].map(x => ({ value: x, label: x.toFixed(1) + ' V' })), onChange: v => { MT.voltMin = v; WD.changed(); page.refresh(); setTimeout(RC.maintCheck, 400); } })));
-    el.classList.add('mt-root'); return el;
+        ui.pickerRow({ icon: 'battery', iconPlain: true, iconColor: 'var(--tint)', title: 'Low battery alert below', value: MT.voltMin, options: [11.5, 11.8, 12.0, 12.2, 12.4].map(x => ({ value: x, label: x.toFixed(1) + ' V' })), onChange: v => { MT.voltMin = v; WD.changed(); page.refresh(); setTimeout(RC.maintCheck, 400); } }))];
+    if (!wide) { const el = ui.list(tiles, list, rest); el.classList.add('mt-root'); return el; }
+    /* Wide: the list stays put on the left and the chosen truck's page is drawn on the right. */
+    const sel = q.vehicle(MUI.sel), left = ui.list(tiles, list, rest), spec = sel && truckSpec(sel), side = h('div.mt-side', { style: { maxHeight: Math.max(320, page.body.clientHeight || 700) + 'px' } },
+      sel ? [h('div.mt-dhead', h('div.title2', sel.name), ui.badge(truckStatus(sel).label, truckStatus(sel).color), canMaint() && ui.button('Add a record', { kind: 'tinted', small: true, block: false, icon: 'plus', onTap: () => repairSheet(sel, {}, re) })), spec.render(page)]
+        : ui.empty({ icon: 'truck', title: 'No trucks yet', text: 'Add one under Fleet setup.' }));
+    left.classList.add('mt-root'); return h('div.wide.mt-split', left, side);
   } };
 }
-WD.screens.maintenance = { root: maintRoot, truckSpec, attentionSpec: attnSpec, locationsSpec, fuelSheet, sizeSheet };
+WD.screens.maintenance = { root: maintRoot, truckSpec, attentionSpec: attnSpec, locationsSpec, fuelSheet, sizeSheet, ui: MUI,
+  /** Another column of the desktop workspace chose a truck or a route: show that truck here. */
+  onLinked(sel) { const v = sel.vehicleId ? q.vehicle(sel.vehicleId) : sel.routeId && RC.vehicleOn ? RC.vehicleOn(sel.routeId, sel.day || today()) : null; if (!v || !canMaint()) return false; MUI.sel = v.id; WD.changed(); return true; } };
+if (WD.app.uiState) WD.app.uiState('maintenance', MUI);
+
+/* ================= Report a problem (drivers) ================= */
+/** A driver reports something wrong with a truck at any time of day, without going through the Maintenance section (which drivers don't have).
+    It is saved like a pre-trip report with a defect: Maintenance gets the alert, the truck shows Flagged, and someone closes it when it is fixed. */
+RC.reportProblem = (v0, done) => {
+  const trucks = data.vehicles.filter(x => x.active !== false), f = { vid: (v0 || trucks[0] || {}).id, picked: {}, note: '', drive: 'yes', files: [] };
+  const submit = p => { const v = q.vehicle(f.vid), defects = F.checklist.filter(k => f.picked[k]), text = f.note.trim();
+    if (!v) return ui.toast('Choose the truck', 'truck'); if (!defects.length && !text) return ui.toast('Say what’s wrong', 'pencil', 2400);
+    const x = { id: uid('n'), vehicleId: v.id, by: me(), byId: S.me.id, at: +WD.now(), odo: F.odo[v.id] || 0, odoFrom: tel(v.id) ? 'gps' : 'typed', defects, note: (f.drive === 'no' ? 'Not safe to drive. ' : '') + text, problem: true, files: f.files.slice(), report: { open: true, seen: {} } };
+    F.inspections.push(x); p.dismiss(); WD.changed(); ui.toast('Sent to Maintenance · ' + v.name, 'wrench', 2600); setTimeout(RC.maintCheck, 900); done && done(x); };
+  ui.sheet({ title: 'Report a problem', leading: [{ label: 'Cancel', onTap: p => p.dismiss() }], trailing: [{ label: 'Send', bold: true, onTap: submit }],
+    render: p => ui.list(
+      ui.section({ fold: false }, ui.pickerRow({ title: 'Truck', icon: 'truck', iconColor: 'var(--gray)', value: f.vid, options: trucks.map(x => ({ value: x.id, label: x.name })), onChange: x => { f.vid = x; p.refresh(); } })),
+      ui.section({ header: 'What’s wrong', fold: false },
+        h('div.mt-prob', F.checklist.map(k => h('button' + (f.picked[k] ? '.on' : ''), { type: 'button', 'aria-pressed': f.picked[k] ? 'true' : 'false', onclick: () => { f.picked[k] = !f.picked[k]; p.refresh(); } }, k))),
+        ui.inputRow({ multiline: true, placeholder: 'What happened? A warning light, a noise, a leak…', value: f.note, onInput: x => { f.note = x; } })),
+      ui.section({ header: 'Can it still be driven?', fold: false }, h('div', { style: 'padding:8px 16px;background:var(--cell)' }, ui.segmented([{ value: 'yes', label: 'Yes, safe to drive' }, { value: 'no', label: 'No, not safe' }], f.drive, x => { f.drive = x; p.refresh(); }))),
+      ui.section({ header: 'Photos' + (f.files.length ? ' · ' + f.files.length : ''), fold: false }, fileStrip(f.files, null, i => { f.files.splice(i, 1); p.refresh(); }), fileButtons(f.files, () => p.refresh())),
+      h('div', { style: 'padding:6px 0 4px' }, ui.button('Send to Maintenance', { icon: 'wrench', onTap: () => submit(p) })),
+      note('Everyone with Maintenance gets a notification now, and the truck shows as Flagged until someone closes the report.')) }, { detent: 'large' });
+};
 
 /* ================= Clock-in: load warning, then the pre-trip inspection ================= */
 const hddQty = job => (((job.items || []).find(i => i.id === 'hdd') || {}).qty) || 0;

@@ -24,6 +24,7 @@ const dayLabel = k => { const n = D.diff(D.today(), k); return n === 0 ? 'Today'
 const durLabel = c => !c.duration ? '—' : c.duration < 60 ? c.duration + ' s' : mmss(c.duration);
 
 WD.addIcons({
+  'circle.grid.3x3': '<g fill="currentColor" stroke="none"><circle cx="6" cy="6" r="1.800"/><circle cx="12" cy="6" r="1.800"/><circle cx="18" cy="6" r="1.800"/><circle cx="6" cy="12" r="1.800"/><circle cx="12" cy="12" r="1.800"/><circle cx="18" cy="12" r="1.800"/><circle cx="6" cy="18" r="1.800"/><circle cx="12" cy="18" r="1.800"/><circle cx="18" cy="18" r="1.800"/></g>',
   mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
   'speaker.wave': '<path d="M4 9v6h4l5 4V5L8 9H4zM16.5 8.500a5 5 0 0 1 0 7M19 6a8.500 8.500 0 0 1 0 12"/>',
   'delete.left': '<path d="M9 5h11a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H9l-6-7 6-7zM12 9.500l5 5M17 9.500l-5 5"/>',
@@ -57,6 +58,16 @@ WD.css(`
 .cl-callbtn:disabled { opacity: .45; } .cl-callbtn:active { opacity: .7; }
 .cl-fab { position: absolute; right: 14px; bottom: 14px; z-index: 6; appearance: none; border: 0; height: 48px; padding: 0 18px 0 14px; border-radius: 24px; background: var(--tint); color: #fff; font-size: 16px; font-weight: 600; display: inline-flex; align-items: center; gap: 7px; cursor: pointer; box-shadow: 0 6px 18px rgba(0,0,0,.24), 0 1px 3px rgba(0,0,0,.18); }
 .cl-fab:active { opacity: .8; } .page.behind > .cl-fab { display: none; }
+.cl-fab.kp { right: auto; left: 14px; background: var(--elevated); color: var(--tint); box-shadow: 0 6px 18px rgba(0,0,0,.2), 0 0 0 .5px var(--sep); }
+.cl-kpsheet { padding-top: 10px; }
+.cl-split { display: flex; height: 100%; min-height: 0; } .cl-split > div { min-width: 0; overflow-y: auto; scrollbar-width: thin; }
+.cl-left { flex: none; width: 348px; border-right: .5px solid var(--sep); } .cl-left > .list { padding: 0 12px 22px; } .cl-left .cl-alllink { margin-bottom: 14px; }
+.cl-tools { display: flex; gap: 8px; padding: 10px 12px 0; } .cl-tools .btn { flex: 1; }
+.cl-det { flex: 1; } .cl-det.three { display: flex; overflow: hidden; } .cl-det.three > div { min-width: 0; overflow-y: auto; scrollbar-width: thin; } .cl-det.three > .cl-conv { flex: 1; } .cl-det.three > .cl-cust { flex: none; width: 292px; border-left: .5px solid var(--sep); }
+.cl-det:not(.three) > .cl-cust { border-top: .5px solid var(--sep); } .cl-cust > .list { padding: 12px 12px 22px; }
+.cl-chead { display: flex; align-items: center; gap: 10px; } .cl-chead .m { flex: 1; min-width: 0; } .cl-chead b { display: block; font-size: 16px; line-height: 20px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cl-cbtns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.cl-rev.sel { box-shadow: inset 0 0 0 2px var(--tint); } .cl-left .row.sel { background: color-mix(in srgb, var(--tint) 12%, var(--cell)); }
 .cl-dial .segmented button { font-size: 13px; letter-spacing: -.3px; padding: 0 2px; }
 .cl-alllink { margin: 14px 4px 70px; font-size: 13px; color: var(--label2); } .cl-alllink button { appearance: none; border: 0; background: none; padding: 0; color: var(--tint); font: inherit; font-weight: 600; cursor: pointer; }
 .cl-fu { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; margin: 8px 0 2px; font-size: 13px; color: var(--label2); } .cl-fu > span { display: inline-flex; align-items: center; gap: 4px; margin-right: auto; }
@@ -116,6 +127,8 @@ WD.css(`
 .cl-ai .bt { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; } .cl-ai .bt .btn { min-height: 36px; }
 .cl-org { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; color: var(--label); } .cl-org i { width: 8px; height: 8px; border-radius: 50%; background: var(--c, var(--gray)); display: inline-block; }
 .cl-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; margin-right: 14px; display: inline-block; }
+.cl-ai1 { display: flex; align-items: center; gap: 7px; width: 100%; min-height: 44px; margin-top: 8px; padding: 0 12px; border: 0; border-radius: 12px; background: color-mix(in srgb, var(--purple) 13%, var(--cell)); color: var(--label); font: inherit; font-size: 14px; letter-spacing: -.1px; text-align: left; cursor: pointer; }
+.cl-ai1 > .ic:first-child { color: var(--purple); } .cl-ai1 span:not(.ic) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; } .cl-ai1 b, .cl-ai1 > .ic:last-child { color: var(--tint); font-weight: 600; }
 .cl-aiwrap { margin-top: 10px; } .cl-aiwrap .btn { margin-top: 8px; }
 .cl-dates { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 14px; color: var(--label2); } .cl-dates .pill-input { font-size: 15px; min-height: 36px; }
 `);
@@ -378,12 +391,12 @@ C.detailSpec = id => ({ title: 'Call', render: page => {
 } });
 
 /* ================= Dialer tab ================= */
-const UI = { seg: 'keypad', typed: '', from: {} };
-function keypadView(page) {
+const UI = { seg: 'calls', typed: '', from: {}, sel: null };
+function keypadView(page, o = {}) {
   const org = cur(), lines = org.lines || [], sel = UI.from[org.id], isAuto = sel == null || sel === 'auto', idx = isAuto ? -1 : Math.min(sel, Math.max(0, lines.length - 1)), from = isAuto ? null : lines[idx] || { label: 'Main', number: '' };
   const fromB = h('b', isAuto ? 'Automatic · local number' : from.label + ' · ' + fmt.phone(from.number));
   const disp = h('div.cl-num', { role: 'button', title: 'Tap to type or paste a number', onclick: async () => { const v = RC.ask ? await RC.ask('Number to call', '555-0100', fmt.phoneTyping(UI.typed), null, 'tel') : null; if (v != null) { UI.typed = String(v).replace(/[^\d*#]/g, '').slice(0, 15); sync(); } } });
-  const sub = h('div.cl-sub'), hits = h('div.cl-hits'), callBtn = h('button.cl-callbtn', { 'aria-label': 'Call', onclick: () => { const n = UI.typed; if (dg(n).length < 3) return ui.toast('Enter a number first', 'phone'); UI.typed = ''; sync(); place(from ? { number: n, from } : { number: n }); } }, icon('phone.fill', 32));
+  const sub = h('div.cl-sub'), hits = h('div.cl-hits'), callBtn = h('button.cl-callbtn', { 'aria-label': 'Call', onclick: () => { const n = UI.typed; if (dg(n).length < 3) return ui.toast('Enter a number first', 'phone'); UI.typed = ''; sync(); if (o.onCall) o.onCall(); place(from ? { number: n, from } : { number: n }); } }, icon('phone.fill', 32));
   const autoWhy = h('div.cl-autowhy');
   const del = h('button.cl-del', { 'aria-label': 'Delete', onclick: () => { UI.typed = UI.typed.slice(0, -1); sync(); } }, icon('delete.left', 28));
   function sync() { const t = UI.typed, n = t.replace(/\D/g, '');
@@ -403,37 +416,79 @@ function keypadView(page) {
 const TS = () => WD.staff, agentOK = c => !TS() || TS().agentOK(c.by);
 /* 5.3: the Dialer's Calls and Texts segments are inboxes: only what is still unresolved. Every call, resolved or not, is in the Call log
    (the floating button), so nobody mistakes the inbox for the whole history. */
-function callsView(page) { const T = TS(), n = C.reviewCount(); if (!T) return [reviewView(page)];
-  return [T.liveStrip(), T.inboxHead('Call inbox', n ? plural(n, 'call') + ' still to deal with' : 'Nothing waiting', 'calls', page), reviewView(page),
+function callsView(page) { const T = TS(), n = C.reviewCount(), act = C.actCount(); if (!T) return [reviewView(page)];
+  return [T.liveStrip(), T.inboxHead('Call inbox', n ? plural(n, 'call') + ' still to deal with' + (act ? ', ' + act + ' to call back today' : '') : 'Nothing waiting', 'calls', page), reviewView(page),
     h('div.cl-alllink', 'Resolved calls leave the inbox. ', h('button', { onclick: () => page.push(C.logSpec()) }, 'The Call log has every call.'))]; }
 function recentView(page) { const cs = list().filter(c => !c.archived && agentOK(c)).slice(0, 25);
   return cs.length ? ui.section({ footer: 'Tap a call to call back from the same line. ⓘ opens the call. The call log has every call and the filters.' }, cs.map(c => callRow(c, { onTap: () => C.callBack(c), info: () => page.push(C.detailSpec(c.id)) })),
     ui.row({ title: 'Open the call log', tint: true, center: true, onTap: () => page.push(C.logSpec()) })) : ui.empty({ icon: 'phone', title: 'No calls yet', text: 'Calls on your Quo numbers show here.' }); }
 function reviewView(page) { const st = ST(), cs = list().filter(c => isOpen(c, st) && agentOK(c)), edit = WD.can('crm.edit');
-  return [C.aiCard(s => page.push(s)),
+  return [C.aiCard(s => page.push(s), true),
     cs.length ? [h('div.footnote.secondary', { style: 'margin:12px 4px 0' }, 'Not answered or under ' + st.threshold + ' s. Each stays here until someone resolves it' + (st.autoResolve ? ' or calls back.' : '.')),
-      cs.map(c => { const y = why(c, st); return h('div.cl-rev', h('div.cl-rev-top', { onclick: () => page.push(C.detailSpec(c.id)) }, dirIcon(c),
+      cs.map(c => { const y = why(c, st); return h('div.cl-rev' + (isSel('call', c.id) ? '.sel' : ''), h('div.cl-rev-top', { onclick: () => pick('call', c.id, page) }, dirIcon(c),
         h('div.cl-rev-main', h('div.cl-t', nameOf(c)), h('div.footnote.secondary', subLine(c)), c.summary && c.status !== 'missed' && h('div.cl-snip.footnote', c.summary)),
         h('div.cl-meta', ui.badge(y, y === 'Missed' ? 'var(--red)' : 'var(--orange)'), h('div', when(c.at)))),
         C.followBar(c), h('div.cl-rev-btns', ui.button('Call back now', { small: true, icon: 'phone.fill', onTap: () => C.callBack(c) }), ui.button('Resolve', { kind: 'gray', small: true, icon: 'checkmark', disabled: !edit, onTap: () => C.resolve(c) }))); }),
       edit && cs.length > 1 && h('div', { style: 'margin-top:14px' }, ui.button('Resolve all ' + cs.length, { kind: 'plain', onTap: async () => { if (await ui.actionSheet({ title: 'Resolve all ' + cs.length + ' calls?', message: 'They leave this list. You can undo right after.', buttons: [{ label: 'Resolve all', value: true }] })) C.resolve(cs); } }))]
     : ui.empty({ icon: 'checkmark.circle', title: 'Call inbox clear', text: 'Missed calls, voicemails and calls under ' + st.threshold + ' s show here until someone resolves them. The Call log has every call.' })]; }
-/* 5.3: the Dialer always opens on the keypad when its tab is pressed (onTabTap), a new text can be written from any segment (the pencil in the
-   bar, the message button beside Call, New text in Texts), and the bar offers the log that matches the segment: the call log or the text log. */
-/** The floating log button: the Call log, or the Text log while the Text inbox is showing. On the keypad it gives way to the delete key once a number is typed. */
-function logFab(page) { const old = page.el.querySelector(':scope > .cl-fab'); if (old) old.remove(); const X = TS() && WD.texts, texts = UI.seg === 'texts' && X && X.logSpec;
-  const el = h('button.cl-fab', { 'aria-label': texts ? 'Text log: every text' : 'Call log: every call', onclick: () => page.push(texts ? X.logSpec() : C.logSpec()) }, icon('list.bullet', 19), texts ? 'Text log' : 'Call log');
-  if (UI.seg === 'keypad' && UI.typed) el.style.display = 'none'; page.el.appendChild(el); }
-function root() { return { title: 'Dialer', trailing: page => { const X = TS() && WD.texts;
+/* UI review: the tab is the Inbox. It opens on the call inbox (Calls · Texts · Team); the keypad is a button that opens a sheet
+   (C.openKeypad). Under 700 points wide it is a list and a tap opens the call or conversation; from 700 it is a split view: the inbox on
+   the left, the selected call or conversation with the customer's details, recent jobs and unpaid invoices on the right. Selecting
+   something tells the other workspace columns (WD.app.linkSelect). The badge counts only what needs someone today (C.actCount). */
+const paneW = page => WD.app.paneW ? WD.app.paneW(page.el) : (S.desktop ? 1068 : 393), isWide = page => !!S.desktop && paneW(page) >= 700;
+let wideNow = false, selSpec = { key: '', spec: null };
+const isSel = (kind, id) => wideNow && !!UI.sel && UI.sel.kind === kind && UI.sel.id === id;
+/** Calls somebody has to act on today: a missed call or voicemail nobody has returned, or one flagged by hand. Short calls stay in the inbox for review but are not counted. */
+const actNow = (c, st) => isOpen(c, st) && (c.flag === 'manual' || (c.dir === 'in' && (c.status === 'missed' || c.status === 'voicemail')));
+C.actCount = () => { try { if (!S.signedIn || !WD.can('crm.view')) return 0; const st = ST(); return callsOf().filter(c => actNow(c, st)).length; } catch (e) { return 0; } };
+/** The keypad, as a sheet. o: {number} puts a number on it. */
+C.openKeypad = (o = {}) => { if (!WD.can('crm.view')) return ui.toast('Calling needs customer access', 'lock'); if (o.number != null) UI.typed = String(o.number).replace(/[^\d*#]/g, '').slice(0, 15);
+  return ui.sheet({ title: 'Keypad', leading: [{ label: 'Close', onTap: pg => pg.dismiss() }], render: page => ui.list(h('div.cl-kpsheet', keypadView(page, { onCall: () => page.dismiss() }))) }, { detent: 'large' }); };
+/** A call or a conversation was chosen in the inbox. kind: 'call' | 'text'. */
+function pick(kind, id, page) { const X = WD.texts, it = kind === 'text' ? X && X.list().find(x => x.id === id) : byId(id), cid = it && it.customerId;
+  if (cid && WD.app.linkSelect) WD.app.linkSelect({ from: 'dialer', customerId: cid });
+  if (isWide(page)) { UI.sel = { kind, id }; page.refresh(); } else page.push(kind === 'text' ? X.threadSpec(id) : C.detailSpec(id)); }
+C.pick = pick; C.isSel = isSel;
+/** The customer beside a call or conversation: who they are, recent jobs, unpaid invoices. */
+function custPane(cu, number, page) { const edit = WD.can('crm.edit');
+  if (!cu) return h('div.list', ui.section({ header: 'Customer', fold: false, footer: 'Nobody on file has ' + fmt.phone(number) + '.' }, ui.row({ icon: 'person.badge.plus', iconPlain: true, title: 'Create lead', tint: true, disabled: !edit, onTap: () => newLead(number) }), edit && ui.row({ icon: 'person.2', iconPlain: true, title: 'Add to an existing customer', tint: true, onTap: () => addNumberTo(number, () => page.refresh()) })));
+  const lead = PIPE.includes(cu.lifecycle), loc = (cu.locations || [])[0] || {}, p = (cu.contacts || [])[0], bill = WD.can('billing.view'), R11 = WD.r11 || {}, unpaid = bill && R11.unpaidInv ? R11.unpaidInv(cu) : [], late = R11.overdue ? R11.overdue(cu) : [], owed = unpaid.reduce((s, i) => s + i.amount, 0);
+  const lim = D.add(D.today(), 7), jobs = q.jobsForCustomer(cu.id).filter(j => !j.allDay && j.day <= lim).sort((a, b) => a.day < b.day ? 1 : a.day > b.day ? -1 : 0).slice(0, 5);
+  const jobRow = j => { const st = WD.jobStatuses[j.status] || WD.jobStatuses.scheduled; return ui.row({ title: fmt.day(j.day, 'rel'), subtitle: q.routeName(j.routeId) + ' · ' + q.jobType(j.type).title, badge: ui.badge(st.title, st.color), chevron: true, onTap: () => { if (WD.app.linkSelect) WD.app.linkSelect({ from: 'dialer', jobId: j.id, customerId: cu.id, routeId: j.routeId, day: j.day }); if (WD.screens.jobs && WD.screens.jobs.openDetails) WD.screens.jobs.openDetails(j.id); } }); };
+  return h('div.list', h('div.cl-chead', ui.avatar(cu.name, { size: 40 }), h('div.m', h('b', cu.name), h('div.footnote.secondary', [loc.address, p && p.name].filter(Boolean).join(' · ') || 'No address on file')), ui.badge(lead ? 'Lead' : 'Customer', lead ? 'var(--blue)' : 'var(--green)')),
+    h('div.cl-cbtns', ui.button(lead ? 'Open lead' : 'Open customer', { small: true, kind: 'tinted', icon: 'person.crop.circle', onTap: () => openRecord(cu) }), WD.can('jobs.edit') && WD.screens.jobs && WD.screens.jobs.openEditor && ui.button('New job', { small: true, kind: 'gray', icon: 'plus', onTap: () => WD.screens.jobs.openEditor({ customerId: cu.id }) })),
+    ui.section({ header: 'Recent jobs', fold: false }, jobs.length ? jobs.map(jobRow) : ui.row({ title: 'No jobs yet' })),
+    bill && ui.section({ header: 'Unpaid invoices', fold: false, footer: unpaid.length ? fmt.money(owed) + ' owed' + (late.length ? ', ' + plural(late.length, 'invoice') + ' overdue' : '') + '.' : null },
+      unpaid.length ? unpaid.slice(0, 5).map(i => ui.row({ title: i.number || 'Invoice', subtitle: fmt.day(i.day, 'md') + (late.includes(i) ? ' · overdue' : ''), detail: h('span', { style: { color: late.includes(i) ? 'var(--red)' : null } }, fmt.money(i.amount)) })) : ui.row({ title: 'Nothing owed' }),
+      unpaid.length && WD.rc && WD.rc.openStatement ? ui.row({ title: 'Open the statement', tint: true, onTap: () => WD.rc.openStatement(cu) }) : null)); }
+/** The right side of the split view. */
+function detailPane(page) { const s = UI.sel, X = WD.texts;
+  if (!s) return h('div.cl-det', h('div.cl-conv', ui.empty({ icon: 'checkmark.circle', title: 'Nothing waiting', text: 'New calls and texts show on the left. The logs have everything that was resolved.' })));
+  const key = s.kind + ':' + s.id; if (selSpec.key !== key) selSpec = { key, spec: s.kind === 'text' ? X.threadSpec(s.id) : C.detailSpec(s.id) };
+  const it = s.kind === 'text' ? X.list().find(x => x.id === s.id) : byId(s.id), cu = it && it.customerId ? q.customer(it.customerId) : null, px = Object.create(page); px.pop = () => { UI.sel = null; page.refresh(); };
+  return h('div.cl-det' + (paneW(page) >= 1000 ? '.three' : ''), h('div.cl-conv', selSpec.spec.render(px)), it && h('div.cl-cust', custPane(cu, it.number, page))); }
+/** The floating buttons of the narrow layout: Keypad on the left, the Call log (the Text log while Texts shows) on the right. */
+function logFab(page, off) { page.el.querySelectorAll(':scope > .cl-fab').forEach(x => x.remove()); if (off) return; const X = TS() && WD.texts, texts = UI.seg === 'texts' && X && X.logSpec;
+  page.el.appendChild(h('button.cl-fab.kp', { 'aria-label': 'Keypad: dial a number', onclick: () => C.openKeypad() }, icon('circle.grid.3x3', 19), 'Keypad'));
+  page.el.appendChild(h('button.cl-fab', { 'aria-label': texts ? 'Text log: every text' : 'Call log: every call', onclick: () => page.push(texts ? X.logSpec() : C.logSpec()) }, icon('list.bullet', 19), texts ? 'Text log' : 'Call log')); }
+function root() { return { title: 'Inbox', trailing: page => { const X = TS() && WD.texts;
     return [X && X.compose && WD.can('crm.edit') && { icon: 'square.and.pencil', label: 'New text', onTap: () => X.compose() }]; }, render: page => {
-  if (!WD.can('crm.view')) return ui.empty({ icon: 'lock', title: 'The dialer needs customer access', text: 'Ask an admin to change your role.' });
-  const n = C.reviewCount(), T = TS(), tn = T && WD.texts ? WD.texts.inboxCount() : 0; if (UI.seg === 'recent' || UI.seg === 'review') { if (T) T.ui.callBox = UI.seg === 'review' ? 'inbox' : 'all'; UI.seg = 'calls'; }
-  if (!['keypad', 'calls', 'texts', 'team'].includes(UI.seg) || (!T && UI.seg !== 'calls')) UI.seg = 'keypad';
-  logFab(page);
-  return ui.list(h('div.cl-dial', ui.segmented([{ value: 'keypad', label: 'Keypad' }, { value: 'calls', label: 'Call inbox', badge: n }].concat(T ? [{ value: 'texts', label: 'Text inbox', badge: tn }, { value: 'team', label: 'Team' }] : []), UI.seg, v => { UI.seg = v; page.refresh(); })),
-    UI.seg === 'keypad' ? keypadView(page) : UI.seg === 'calls' ? callsView(page) : UI.seg === 'texts' ? T.textsView(page) : T.teamView(page)); } }; }
+  if (!WD.can('crm.view')) return ui.empty({ icon: 'lock', title: 'The inbox needs customer access', text: 'Ask an admin to change your role.' });
+  const n = C.actCount(), T = TS(), X = T && WD.texts, tn = X ? X.reviewCount() : 0; if (UI.seg === 'recent' || UI.seg === 'review') { if (T) T.ui.callBox = UI.seg === 'review' ? 'inbox' : 'all'; UI.seg = 'calls'; }
+  if (!['calls', 'texts', 'team'].includes(UI.seg) || (!T && UI.seg !== 'calls')) UI.seg = 'calls';
+  wideNow = isWide(page) && UI.seg !== 'team'; logFab(page, wideNow);
+  if (wideNow) { const st = ST(), kind = UI.seg === 'texts' ? 'text' : 'call', has = UI.sel && UI.sel.kind === kind && (kind === 'text' ? X.list().some(t => t.id === UI.sel.id) : !!byId(UI.sel.id));
+    if (!has) { const f = kind === 'text' ? X.list().find(X.waiting) : list().find(c => isOpen(c, st) && agentOK(c)); UI.sel = f ? { kind, id: f.id } : null; } }
+  const segs = h('div.cl-dial', ui.segmented([{ value: 'calls', label: 'Calls', badge: n }].concat(T ? [{ value: 'texts', label: 'Texts', badge: tn }, { value: 'team', label: 'Team' }] : []), UI.seg, v => { UI.seg = v; page.refresh(); }));
+  const body = UI.seg === 'calls' ? callsView(page) : UI.seg === 'texts' ? T.textsView(page) : T.teamView(page);
+  if (!wideNow) return ui.list(segs, body);
+  const old = page.body && page.body.querySelector('.cl-split'), keep = old ? [old.querySelector('.cl-left').scrollTop, (old.querySelector('.cl-conv') || {}).scrollTop || 0, selSpec.key] : null;
+  const logs = X && X.logSpec && UI.seg === 'texts', left = h('div.cl-left', h('div.cl-tools', ui.button('Keypad', { small: true, kind: 'tinted', icon: 'circle.grid.3x3', onTap: () => C.openKeypad() }), ui.button(logs ? 'Text log' : 'Call log', { small: true, kind: 'gray', icon: 'list.bullet', onTap: () => page.push(logs ? X.logSpec() : C.logSpec()) })), ui.list(segs, body));
+  const el = h('div.cl-split.wide', left, detailPane(page));
+  if (keep) requestAnimationFrame(() => { left.scrollTop = keep[0]; const cv = el.querySelector('.cl-conv'); if (cv && keep[2] === selSpec.key) cv.scrollTop = keep[1]; });
+  return el; } }; }
 C.ui = UI;
-WD.screens.dialer = { root, onTabTap: () => { UI.seg = 'keypad'; } };
+WD.screens.dialer = { root, onTabTap: () => { UI.seg = 'calls'; } };
 
 /* ================= Call log ================= */
 /** Every call, in and out, on every number, with filters. preset: any of {dir, status, line, by, who, range, dur, flagged, text, resolved,
@@ -526,7 +581,9 @@ const inOrg = async (it, fn) => { if (it.org.id === frontId()) return fn(it.call
 const mkTask = (c, title) => { if (!canEdit()) return false; if (!c.customerId || !K().addTask) { ui.toast('Follow-ups belong to a customer or lead. Create a lead for this number first.', 'info.circle', 3400); WD.nav.push(C.detailSpec(c.id)); return false; }
   K().addTask(c.customerId, title, 0, { owner: S.me && S.me.id }); c.taskMade = true; WD.changed(); ui.toast('Follow-up added for today', 'checkmark'); return true; };
 /** The card at the top of Needs review and of the call log. push: how to open the full review. Nothing without AI Premium. */
-C.aiCard = push => WD.aip && WD.aip.block ? WD.aip.block(() => { const its = aiItems(); if (!its.length) return null; const urgent = its.filter(i => i.pri === 'urgent').length, nums = new Set(its.map(i => i.org.id + '|' + i.call.to)).size, orgs = new Set(its.map(i => i.org.id)).size;
+C.aiCard = (push, line) => WD.aip && WD.aip.block ? WD.aip.block(() => { const its = aiItems(); if (!its.length) return null; const urgent = its.filter(i => i.pri === 'urgent').length, nums = new Set(its.map(i => i.org.id + '|' + i.call.to)).size, orgs = new Set(its.map(i => i.org.id)).size;
+  /* In the inbox it is one line, so the calls themselves start right under the heading. */
+  if (line) return h('button.cl-ai1', { 'aria-label': 'AI call review: ' + plural(its.length, 'suggested call back') + '. Review', onclick: () => (push || WD.nav.push)(C.reviewSpec()) }, icon('sparkles', 16), h('span', plural(its.length, 'suggested call back') + (urgent ? ' · ' + urgent + ' urgent today' : '')), h('b', 'Review'), icon('chevron.right', 13));
   return h('div.cl-aiwrap', WD.aip.card({ title: 'AI call review', text: plural(its.length, 'thing') + ' to get back to from ' + plural(nums, 'phone number') + (orgs > 1 ? ' in ' + orgs + ' businesses' : '') + (urgent ? ' · ' + urgent + ' urgent today' : '') + '.', lines: its.slice(0, 3).map(aiSentence),
     action: ui.button(its.length > 3 ? 'See all ' + its.length : 'Open the review', { kind: 'tinted', small: true, block: false, icon: 'sparkles', onTap: () => (push || WD.nav.push)(C.reviewSpec()) }) })); }) : null;
 C.reviewSpec = () => ({ title: 'AI call review', render: page => {
@@ -546,7 +603,7 @@ C.reviewSpec = () => ({ title: 'AI call review', render: page => {
       : ui.empty({ icon: 'checkmark.circle', title: 'Nothing to get back to', text: 'No open voicemails, missed calls or promised follow-ups in the last 7 days.' }),
     h('div', { style: 'padding:14px 4px 0' }, ui.note('Urgent today: someone is waiting on a call back. This week: a promise made on a call. FYI: worth knowing, nothing owed. Mark done also resolves the call’s review flag.')));
 } });
-if (WD.aip && WD.aip.feature) WD.aip.feature('AI call review', 'Dialer → Needs review, and the call log', 'Reads the transcripts and voicemails from every Quo number, in each business you work for, and lists who to get back to and why, most urgent first.');
+if (WD.aip && WD.aip.feature) WD.aip.feature('AI call review', 'Inbox → Calls, and the call log', 'Reads the transcripts and voicemails from every Quo number, in each business you work for, and lists who to get back to and why, most urgent first.');
 
 /* ================= Incoming calls: which business is it for? ================= */
 /** Runs fn once the caller card that is about to open has closed again. */
@@ -635,7 +692,8 @@ WD.panel.addAction('Quo call: unknown caller, other business’s area code', () 
 WD.panel.addAction('Quo call: unknown caller on this business’s line', () => { const l = cur().lines || []; C.incoming({ number: '+14155550878', to: (l[1] || l[0] || {}).number }); });
 WD.panel.addAction('Missed call', () => C.simulateMissed('missed'));
 WD.panel.addAction('Short call (12 s)', () => C.simulateMissed('short'));
-WD.panel.addJump('Dialer', () => WD.nav.switchTab('dialer'));
+WD.panel.addJump('Inbox', () => WD.nav.switchTab('dialer'));
+WD.panel.addJump('Keypad', () => { WD.nav.switchTab('dialer'); C.openKeypad(); });
 WD.panel.addJump('Call log', () => C.openLog());
 WD.panel.addJump('Needs review (calls)', () => { UI.seg = 'review'; WD.nav.switchTab('dialer'); WD.changed(); });
 WD.panel.addJump('AI call review', () => { if (!WD.aip || !WD.aip.on()) return ui.toast('Turn AI Premium on in the panel first', 'sparkles'); WD.nav.switchTab('dialer'); WD.nav.push(C.reviewSpec()); });

@@ -4,9 +4,9 @@
 'use strict';
 const WD = window.WD = { screens: {}, data: {} };
 /** Prototype version (Settings → About). Bump on every publish; the “what’s new” tutorial shows once per version. */
-WD.version = '5.4';
+WD.version = '6.0';
 /** Earlier releases kept on the published site under v/<version>/ (Settings → Older versions). Add the outgoing version on every publish. */
-WD.olderVersions = ['5.3', '5.2', '5.1', '5.0', '4.3', '4.2', '4.1'];
+WD.olderVersions = ['5.4', '5.3', '5.2', '5.1', '5.0', '4.3', '4.2', '4.1'];
 const $ = (s, r) => (r || document).querySelector(s);
 
 /* ================= DOM helper ================= */
@@ -154,6 +154,7 @@ const I = WD.icons = {
   'list.bullet': '<path d="M9 6.500h11M9 12h11M9 17.500h11"/><circle cx="4.500" cy="6.500" r="1" fill="currentColor"/><circle cx="4.500" cy="12" r="1" fill="currentColor"/><circle cx="4.500" cy="17.500" r="1" fill="currentColor"/>',
   checklist: '<path d="M3.500 6.500l1.500 1.500 3-3M3.500 12.500L5 14l3-3M3.500 18.500L5 20l3-3M11.500 7h9M11.500 13h9M11.500 19h9"/>',
   columns: '<rect x="3" y="5" width="18" height="14" rx="2.500"/><path d="M9 5v14M15 5v14"/>',
+  'arrow.expand': '<path d="M14 4h6v6M20 4l-7 7M10 20H4v-6M4 20l7-7"/>', 'arrow.shrink': '<path d="M19 11h-6V5M13 11l7-7M5 13h6v6M11 13l-7 7"/>', 'sidebar.thin': '<rect x="3" y="5" width="18" height="14" rx="2.500"/><path d="M8 5v14M16 10l-3 2 3 2"/>',
   'square.grid': '<rect x="3.500" y="3.500" width="7" height="7" rx="1.500"/><rect x="13.500" y="3.500" width="7" height="7" rx="1.500"/><rect x="3.500" y="13.500" width="7" height="7" rx="1.500"/><rect x="13.500" y="13.500" width="7" height="7" rx="1.500"/>',
   ellipsis: '<circle cx="5" cy="12" r="1.600" fill="currentColor"/><circle cx="12" cy="12" r="1.600" fill="currentColor"/><circle cx="19" cy="12" r="1.600" fill="currentColor"/>',
   'ellipsis.circle': '<circle cx="12" cy="12" r="9.500"/><circle cx="7.800" cy="12" r="1" fill="currentColor"/><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="16.200" cy="12" r="1" fill="currentColor"/>',
@@ -566,7 +567,7 @@ function syncPushedBack() { $('#root').classList.toggle('pushed-back', sheets.so
 ui.closeAllSheets = () => sheets.slice().reverse().forEach(s => s.close());
 
 const app = WD.app = { tabs: [
-  { id: 'board', title: 'Dispatch', icon: 'calendar' }, { id: 'map', title: 'Map', icon: 'map' }, { id: 'dialer', title: 'Dialer', icon: 'phone', can: 'crm.view', badge: () => WD.calls && WD.calls.reviewCount ? WD.calls.reviewCount() : 0 },
+  { id: 'board', title: 'Dispatch', icon: 'calendar' }, { id: 'map', title: 'Map', icon: 'map' }, { id: 'dialer', title: 'Inbox', icon: 'phone', can: 'crm.view', badge: () => WD.calls && WD.calls.actCount ? WD.calls.actCount() : 0 },
   /* Customers, CRM and Invoices are one Admin tab with a selector (CRM first). The three keep their own entries, hidden, so their badges and screens still register. */
   { id: 'office', get title() { const s = app.officeSegs(); return s.length === 1 ? OFFICE[s[0]][0] : 'Admin'; }, get icon() { const s = app.officeSegs(); return s.length === 1 ? OFFICE[s[0]][1] : 'briefcase'; }, can: () => app.officeSegs().length > 0, badge: () => app.officeSegs().reduce((n, id) => { const t = app.tabs.find(x => x.id === id); return n + (t && t.badge ? t.badge() : 0); }, 0) },
   { id: 'customers', title: 'Customers', icon: 'person.2', can: 'crm.view', hidden: true }, { id: 'crm', title: 'CRM', icon: 'funnel', can: 'leads.view', hidden: true }, { id: 'invoices', title: 'Invoices', icon: 'doc.text', can: () => WD.can('billing.view') || WD.can('billing.field'), hidden: true }, { id: 'shift', title: 'Shift', icon: 'truck' }, { id: 'settings', title: 'Settings', icon: 'gearshape', hidden: true },
@@ -682,12 +683,14 @@ app.showMain = (tabId, keep) => {
   const more = app.tabs.find(t => t.menu), panes = h('div.tabpanes'), bar = h('div.tabbar'), state = tabState = { stacks: {}, active: null, buttons: {} };
   let tabs = [];
   state.cur = 'settings'; state.open = [];   // desktop workspace: the modules on screen, left to right (up to PANES)
+  state.sizes = {}; state.thin = {}; state.max = null;   // each column's share of the width, the columns folded to a strip, and the one shown full width
   /** (Re)build the bar from the person's layout. Open screens keep their place; a screen that left the bar is closed. */
   state.syncBar = () => {
-    tabs = app.barIds().map(app.dest).concat(more); state.buttons = {}; bar.replaceChildren(); bar.className = 'tabbar n' + tabs.length; const many = (WD.data.orgs || []).length > 1; bar.style.setProperty('--org', many && S.org && S.org.color || 'transparent');
+    tabs = app.barIds().map(app.dest).concat(more); if (S.desktop) tabs = tabs.map((t, i) => [t, i]).sort((a, b) => app.sideGroup(a[0].id) - app.sideGroup(b[0].id) || a[1] - b[1]).map(x => x[0]); state.buttons = {}; bar.replaceChildren(); bar.className = 'tabbar n' + tabs.length; const many = (WD.data.orgs || []).length > 1; bar.style.setProperty('--org', many && S.org && S.org.color || 'transparent');
     if (S.desktop) bar.appendChild(h('button.side-org', { 'aria-label': 'Business: ' + (S.org || {}).name, onclick: e => state.orgMenu(e.currentTarget) }, h('i'), h('span', (S.org || {}).name, h('small', many ? 'Switch business' : 'RouteClerk'))));
-    tabs.forEach(t => { const b = state.buttons[t.id] = h('button.tab' + (state.active === t.id ? '.active' : ''), { 'aria-label': t.title, onclick: () => t.menu ? (S.desktop ? state.go('settings') : state.openMenu(b)) : state.tap(t.id) }, WD.icon(t.menu && S.desktop ? 'gearshape' : t.icon, 27), h('span', t.menu && S.desktop ? 'Settings' : t.title), S.desktop && h('i.tab-split', { role: 'button', title: 'Open ' + (t.menu ? 'Settings' : t.title) + ' beside what is on screen', 'aria-label': 'Open ' + (t.menu ? 'Settings' : t.title) + ' beside what is on screen', onclick: e => { e.stopPropagation(); state.openBeside(t.id); } }, WD.icon('columns', 15))); bar.appendChild(b); });
-    if (S.desktop) bar.appendChild(h('button.side-work', { 'aria-label': 'Workspace: modules on screen', onclick: e => state.workMenu(e.currentTarget) }, WD.icon('columns', 18), h('span', 'Workspace', h('small', state.open.length > 1 ? state.open.length + ' modules side by side' : 'One module · add more'))));
+    let grp = -1;
+    tabs.forEach(t => { if (S.desktop && app.sideGroup(t.id) !== grp) { grp = app.sideGroup(t.id); bar.appendChild(h('div.side-head', app.SIDE_GROUPS[grp][0])); } const b = state.buttons[t.id] = h('button.tab' + (state.active === t.id ? '.active' : ''), { 'aria-label': t.title, onclick: () => t.menu ? (S.desktop ? state.go('settings') : state.openMenu(b)) : state.tap(t.id) }, WD.icon(t.menu && S.desktop ? 'gearshape' : t.icon, 27), h('span', t.menu && S.desktop ? 'Settings' : t.title), S.desktop && h('i.tab-split', { role: 'button', title: 'Open ' + (t.menu ? 'Settings' : t.title) + ' beside what is on screen', 'aria-label': 'Open ' + (t.menu ? 'Settings' : t.title) + ' beside what is on screen', onclick: e => { e.stopPropagation(); state.openBeside(t.id); } }, WD.icon('columns', 15))); bar.appendChild(b); });
+    if (S.desktop) bar.appendChild(h('button.side-work', { 'aria-label': 'Workspace: modules on screen', onclick: e => state.workMenu(e.currentTarget) }, WD.icon('columns', 18), h('span', 'Workspace', h('small', state.open.length > 1 ? state.open.length + ' columns · layouts' : 'One column · layouts'))));
     Object.keys(state.stacks).forEach(id => { if (tabs.some(t => t.id === id) || id === state.active) return; const st = state.stacks[id]; state.open = state.open.filter(k => k !== id); st.el.remove(); stacks.delete(st); delete state.stacks[id]; });
     if (state.cur !== 'settings' && tabs.some(t => t.id === state.cur) && state.active !== 'more') { const old = state.stacks.more; if (old) { old.el.remove(); stacks.delete(old); delete state.stacks.more; } state.cur = 'settings'; }
     state.badges();
@@ -710,42 +713,93 @@ app.showMain = (tabId, keep) => {
     if (state.active === id) { state.stacks[id].popToRoot(); return; }
     if (state.active) state.prev = state.active;
     ensure(t);
-    if (S.desktop && state.open.length > 1) { const i = state.open.indexOf(state.active); state.open[i < 0 ? 0 : i] = id; } else state.open = [id];
+    if (S.desktop && state.open.length > 1) { const i = state.open.indexOf(state.active), old = state.open[i < 0 ? 0 : i]; state.open[i < 0 ? 0 : i] = id; state.sizes[id] = state.sizes[old]; if (state.max === old) state.max = id; delete state.thin[id]; } else state.open = [id];
     state.active = id; show(); saveWork();
     const p = state.stacks[id].top(); if (p.spec.live !== false) p.refresh(); p.spec.onReappear && p.spec.onReappear(p);
     WD.emit('tab', id);
   };
   const PANES = 3, title = id => { const t = tabs.find(x => x.id === id); return !t ? id : t.menu ? (app.dest(state.cur) || { title: 'Settings' }).title : t.title; };
-  const saveWork = () => { if (S.desktop) store.set('wd.work', JSON.stringify(state.open)); };
+  /* The workspace is kept per role: which modules are side by side, how wide each is, and which are folded to a strip. */
+  const readWork = key => { try { return JSON.parse(store.get(key) || '{}') || {}; } catch (e) { return {}; } };
+  const layoutNow = () => ({ open: state.open.slice(), sizes: Object.assign({}, state.sizes), thin: state.open.filter(k => state.thin[k]) });
+  const saveWork = () => { if (!S.desktop) return; const all = readWork('wd.work3'); all[S.role] = layoutNow(); store.set('wd.work3', JSON.stringify(all)); };
+  const refreshOpen = () => requestAnimationFrame(() => state.open.forEach(k => { const p = state.stacks[k] && state.stacks[k].top(); if (p) p.refresh(); }));
+  const relayout = () => { show(); saveWork(); refreshOpen(); };
+  /** Put a whole layout on screen: {open: [ids], sizes: {id: share}, thin: [ids]}. Used by the role presets, a saved layout and the layout left last time. */
+  state.applyLayout = (L, focus) => { const ids = ((L && L.open) || []).filter((id, i, a) => a.indexOf(id) === i && tabs.some(t => t.id === id)).slice(0, PANES); if (!ids.length) return false;
+    ids.forEach(id => ensure(tabs.find(t => t.id === id))); state.open = ids; state.sizes = Object.assign({}, L.sizes); state.thin = {}; (L.thin || []).forEach(k => { if (ids.includes(k)) state.thin[k] = true; }); state.max = null;
+    state.active = focus && ids.includes(focus) ? focus : ids.includes(state.active) ? state.active : ids[0]; delete state.thin[state.active]; relayout(); WD.emit('tab', state.active); return true; };
+  /** Fold a column to a thin strip (its name, turned sideways); pressing the strip opens it again. One column always stays open. */
+  state.collapse = id => { if (state.open.filter(k => !state.thin[k]).length < 2) return ui.toast('One column has to stay open.', 'columns', 2200); state.thin[id] = true; if (state.max === id) state.max = null; if (state.active === id) state.active = state.open.find(k => !state.thin[k]); relayout(); WD.emit('tab', state.active); };
+  state.expand = id => { delete state.thin[id]; state.active = id; relayout(); WD.emit('tab', id); };
+  /** One column across the whole width, and back to side by side with the same button. */
+  state.toggleMax = id => { state.max = state.max === id ? null : id; if (state.max) { delete state.thin[id]; state.active = id; } relayout(); WD.emit('tab', state.active); };
+  /* Drag the edge between two columns to resize them. The screen is drawn scaled, so the pointer distance is divided by the scale. */
+  const gripDown = (e, id) => { const i = state.open.indexOf(id), left = state.open[i - 1]; if (i < 1 || state.thin[id] || state.thin[left] || state.max) return; e.preventDefault(); e.stopPropagation();
+    const a = state.stacks[left].el, b = state.stacks[id].el, scale = a.getBoundingClientRect().width / (a.offsetWidth || 1) || 1, wa = a.offsetWidth, wb = b.offsetWidth, sum = (state.sizes[left] || 1) + (state.sizes[id] || 1), x0 = e.clientX, grip = e.currentTarget; grip.classList.add('on');
+    const move = ev => { const na = Math.max(170, Math.min(wa + wb - 170, wa + (ev.clientX - x0) / scale)); state.sizes[left] = sum * na / (wa + wb); state.sizes[id] = sum - state.sizes[left]; a.style.setProperty('--w', state.sizes[left]); b.style.setProperty('--w', state.sizes[id]); };
+    const up = () => { document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); grip.classList.remove('on'); relayout(); };
+    document.addEventListener('pointermove', move); document.addEventListener('pointerup', up); };
   function ensure(t) { const id = t.id; if (state.stacks[id]) return;
     const mod = WD.screens[t.menu ? state.cur : id], st = state.stacks[id] = makeStack(); st.el.dataset.tab = id; panes.appendChild(st.el);
     /* In a workspace each module has a strip with its name and a close button; pressing anywhere in a module makes it the one new screens open in. */
-    st.el.appendChild(h('div.pane-bar', h('span'), h('button', { 'aria-label': 'Close this module', title: 'Close this module', onclick: e => { e.stopPropagation(); state.closePane(id); } }, WD.icon('xmark', 13))));
-    st.el.addEventListener('pointerdown', () => { if (state.open.length > 1 && state.active !== id && state.open.includes(id)) state.focus(id); }, true);
+    const pb = (ic, label, fn, cls) => h('button' + (cls || ''), { 'aria-label': label, title: label, onclick: e => { e.stopPropagation(); fn(); } }, WD.icon(ic, 13));
+    st.el.appendChild(h('div.pane-bar', h('span'), pb('sidebar.thin', 'Fold this column to a thin strip', () => state.collapse(id)), pb('arrow.expand', 'Full width, or back to side by side', () => state.toggleMax(id), '.pane-max'), pb('xmark', 'Close this column', () => state.closePane(id))));
+    st.el.appendChild(h('div.pane-grip', { title: 'Drag to resize', onpointerdown: e => gripDown(e, id) }));
+    st.el.appendChild(h('button.pane-thin', { 'aria-label': 'Open this column', title: 'Open this column', onclick: e => { e.stopPropagation(); state.expand(id); } }, WD.icon('chevron.right', 14), h('span.t')));
+    st.el.addEventListener('pointerdown', e => { if (e.target.closest && e.target.closest('.pane-grip, .pane-thin')) return; if (state.open.length > 1 && state.active !== id && state.open.includes(id)) state.focus(id); }, true);
     const spec = mod && mod.root ? mod.root() : null, hm = app.homes[t.menu ? state.cur : id]; if (spec && hm && !spec.home) spec.home = hm;
     st.push(spec || { title: t.title, large: true, render: () => ui.empty({ icon: t.icon, title: t.title, text: 'This screen is not part of the prototype yet.' }) }, false); }
-  function show() { const many = state.open.length > 1; panes.classList.toggle('multi', many);
-    Object.entries(state.stacks).forEach(([k, st]) => { const on = state.open.includes(k); st.el.classList.toggle('active', on); st.el.classList.toggle('focus', many && k === state.active); st.el.style.order = on ? state.open.indexOf(k) : ''; const lab = st.el.querySelector(':scope > .pane-bar > span'); if (lab) lab.textContent = title(k); });
+  function show() { const many = state.open.length > 1; if (!many || !state.open.includes(state.max)) state.max = null; delete state.thin[state.active]; panes.classList.toggle('multi', many); panes.classList.toggle('maxed', many && !!state.max);
+    Object.entries(state.stacks).forEach(([k, st]) => { const on = state.open.includes(k); st.el.classList.toggle('active', on); st.el.classList.toggle('focus', many && k === state.active); st.el.style.order = on ? state.open.indexOf(k) : '';
+      st.el.classList.toggle('thin', many && on && !!state.thin[k] && !state.max); st.el.classList.toggle('max', many && state.max === k); st.el.classList.toggle('first', state.open[0] === k); st.el.style.setProperty('--w', state.sizes[k] || 1);
+      const mx = st.el.querySelector(':scope > .pane-bar > .pane-max'); if (mx) mx.replaceChildren(WD.icon(state.max === k ? 'arrow.shrink' : 'arrow.expand', 13));
+      st.el.querySelectorAll(':scope > .pane-bar > span, :scope > .pane-thin > .t').forEach(lab => { lab.textContent = title(k); }); });
     Object.entries(state.buttons).forEach(([k, b]) => { b.classList.toggle('active', k === state.active); b.classList.toggle('open', many && state.open.includes(k)); });
-    const w = bar.querySelector('.side-work small'); if (w) w.textContent = many ? state.open.length + ' modules side by side' : 'One module · add more'; }
-  state.focus = id => { if (!state.open.includes(id)) return; state.active = id; show(); WD.emit('tab', id); };
+    const w = bar.querySelector('.side-work small'); if (w) w.textContent = many ? state.open.length + ' columns · layouts' : 'One column · layouts'; }
+  state.focus = id => { if (!state.open.includes(id)) return; const was = state.thin[id]; state.active = id; show(); if (was) { saveWork(); refreshOpen(); } WD.emit('tab', id); };
   /** Desktop: put another module on screen beside the ones already there (up to three). */
   state.openBeside = id => { const t = tabs.find(x => x.id === id); if (!t || !S.desktop) return; if (state.open.includes(id)) return state.focus(id);
     if (state.open.length >= PANES) return ui.toast('Three modules fit side by side. Close one first.', 'columns', 2600);
-    ensure(t); state.open.push(id); state.active = id; show(); saveWork(); requestAnimationFrame(() => { state.open.forEach(k => { const p = state.stacks[k] && state.stacks[k].top(); if (p) p.refresh(); }); }); WD.emit('tab', id); };
-  state.closePane = id => { if (state.open.length < 2) return; state.open = state.open.filter(k => k !== id); if (state.active === id) state.active = state.open[0]; show(); saveWork(); requestAnimationFrame(() => state.open.forEach(k => { const p = state.stacks[k] && state.stacks[k].top(); if (p) p.refresh(); })); WD.emit('tab', state.active); };
-  state.workMenu = anchor => { const rest = tabs.filter(t => !state.open.includes(t.id));
-    ui.menu(anchor, [{ header: 'On screen now' }, ...state.open.map(k => ({ label: title(k), checked: true, disabled: state.open.length < 2, onTap: () => state.closePane(k) })),
-      ...(state.open.length < PANES ? [{ header: 'Open beside' + (state.open.length > 1 ? ' them' : ' it') }, ...rest.map(t => ({ label: t.menu ? 'Settings' : t.title, checked: false, onTap: () => state.openBeside(t.id) }))] : [{ header: 'Three modules fit. Untick one to change it.' }]),
-      ...(state.open.length > 1 ? ['divider', { label: 'Back to one module', icon: 'xmark', onTap: () => { state.open = [state.active]; show(); saveWork(); const p = state.stacks[state.active].top(); p.refresh(); } }] : [])]); };
+    ensure(t); state.open.push(id); state.active = id; state.max = null; relayout(); WD.emit('tab', id); };
+  state.closePane = id => { if (state.open.length < 2) return; state.open = state.open.filter(k => k !== id); delete state.thin[id]; delete state.sizes[id]; if (state.active === id) state.active = state.open.find(k => !state.thin[k]) || state.open[0]; relayout(); WD.emit('tab', state.active); };
+  state.workMenu = anchor => { const rest = tabs.filter(t => !state.open.includes(t.id)), names = L => L.open.filter(id => tabs.some(t => t.id === id)).map(title).join(' | '), usable = L => L && L.open.filter(id => tabs.some(t => t.id === id)).length > 1;
+    const mine = readWork('wd.workMine')[S.role], presets = Object.values(app.workPresets).filter(usable);
+    ui.menu(anchor, [{ header: 'Layouts' }, ...presets.map(p => ({ label: p.name, subtitle: names(p), icon: 'columns', onTap: () => state.applyLayout(p) })),
+      usable(mine) && { label: 'My layout', subtitle: names(mine), icon: 'star.fill', onTap: () => state.applyLayout(mine) },
+      state.open.length > 1 && { label: 'Save this as my layout', icon: 'plus', onTap: () => { const all = readWork('wd.workMine'); all[S.role] = layoutNow(); store.set('wd.workMine', JSON.stringify(all)); ui.toast('Saved as your layout', 'checkmark'); } },
+      'divider', { header: 'On screen now' }, ...state.open.map(k => ({ label: title(k), checked: true, disabled: state.open.length < 2, onTap: () => state.closePane(k) })),
+      ...(state.open.length < PANES ? [{ header: 'Open beside' + (state.open.length > 1 ? ' them' : ' it') }, ...rest.map(t => ({ label: t.menu ? 'Settings' : t.title, checked: false, onTap: () => state.openBeside(t.id) }))] : [{ header: 'Three columns fit. Untick one to change it.' }]),
+      ...(state.open.length > 1 ? ['divider', { label: 'Back to one column', icon: 'xmark', onTap: () => { state.open = [state.active]; state.thin = {}; state.max = null; relayout(); } }] : [])].filter(Boolean)); };
   state.badges = () => tabs.forEach(t => { const b = state.buttons[t.id], n = t.menu ? (t.badge ? t.badge() : 0) : app.menuBadge(t); const old = b.querySelector('.tab-badge'); if (old) old.remove(); if (n) b.appendChild(h('span.tab-badge', n)); });
   state.syncBar();
   $('#root').appendChild(h('div.tabview', panes, bar));
+  const left = S.desktop && !keep ? readWork('wd.work3')[S.role] : null;   // read before the first screen is selected, which saves the layout
   const first = tabId || (S.role === 'driver' && WD.screens.shift ? 'shift' : 'board'); if (tabs.some(t => t.id === first)) state.select(first); else if (app.dest(first)) state.go(first); else state.select(tabs[0].id); state.badges();
   /* Desktop: bring back the workspace this person left (which modules were side by side). */
-  if (S.desktop && !keep) { try { const W = JSON.parse(store.get('wd.work') || '[]').filter(id => tabs.some(t => t.id === id)); if (W.length > 1 && !tabId) { const at = state.active; W.filter(id => id !== at).slice(0, 2).forEach(id => state.openBeside(id)); state.focus(at); } } catch (e) { /* no saved workspace */ } }
+  /* The first time, each role starts on its preset (app.workPresets), so nobody builds a workspace from a blank screen. */
+  if (S.desktop && !keep) { const L = left || app.workPresets[app.presetFor(S.role)]; if (L && (L.open || []).length > 1 && (!tabId || L.open.includes(tabId))) state.applyLayout(L, tabId || state.active); }
 };
 WD.on('change', () => tabState && tabState.badges());
+/* The desktop sidebar lists the sections under four headings. A section that is not named here goes under Setup. */
+app.SIDE_GROUPS = [['Operations', ['board', 'map', 'dialer']], ['Customers & Money', ['office', 'crm', 'customers', 'invoices', 'contracts', 'calc', 'reports', 'bids']], ['Fleet & Team', ['shift', 'maintenance']], ['Setup', ['services', 'products', 'files', 'settings', 'more']]];
+app.sideGroup = id => { const i = app.SIDE_GROUPS.findIndex(g => g[1].includes(id)); return i < 0 ? app.SIDE_GROUPS.length - 1 : i; };
+/* Desktop workspace presets, one per role: what a person sees the first time, before they swap a column or save their own. `sizes` are shares of the width (1 when not given). */
+app.workPresets = { dispatcher: { name: 'Dispatcher', open: ['board', 'map', 'dialer'], sizes: { board: 1.3 } }, office: { name: 'Office', open: ['dialer', 'customers', 'invoices'] }, owner: { name: 'Owner', open: ['board', 'office', 'shift'], sizes: { board: 1.3 } } };
+app.presetFor = role => role === 'admin' ? 'owner' : role;
+/** Linked columns. A screen calls this when something is selected in it: {from, customerId, jobId, routeId, vehicleId, day}. Every other column on
+    screen whose screen has `onLinked(sel)` is told, and shows what it has about it (the customer's record, the stop on the map, the truck's route).
+    While a screen's onLinked runs, new pages open in that screen's own column. Returns true when another column took it; false on an iPhone or with one column. */
+app.linkSelect = sel => { const s = tabState; if (!s || !S.desktop || !sel || s.open.length < 2 || s.linking || sheets.length) return false; const from = s.active; let hit = false; s.linking = true;
+  try { s.open.forEach(id => { if (id === from || s.thin[id] || (s.max && s.max !== id)) return; const mod = WD.screens[id === 'more' ? s.cur : id], fn = mod && mod.onLinked; if (!fn) return;
+    s.active = id; try { if (fn(sel)) hit = true; } catch (e) { console.warn('onLinked', id, e); } s.active = from; }); } finally { s.active = from; s.linking = false; }
+  return hit; };
+/** The navigation stack of a column that is on screen (by section id), or null. */
+app.paneStack = id => { const s = tabState; if (!s) return null; const k = s.stacks[id] ? id : id === s.cur ? 'more' : null; return k && s.open.includes(k) ? s.stacks[k] : null; };
+/** How wide the column holding `el` is, in points. Screens use it to choose a narrow (list) or a wide (list and details) layout; pages are refreshed when a column is resized. */
+app.paneW = el => { const st = el && el.closest && el.closest('.navstack'), w = st && st.isConnected ? st.clientWidth : 0; if (w) return w; const sc = screen();
+  if (!S.desktop || !tabState) return sc ? sc.clientWidth : 393; const p = sc.querySelector('.tabpanes'), all = p ? p.clientWidth : 1044, o = tabState.open.filter(k => !tabState.thin[k]); if (tabState.max || o.length < 2) return all;
+  const sum = o.reduce((n, k) => n + (tabState.sizes[k] || 1), 0); return Math.round(all * (tabState.sizes[tabState.active] || 1) / sum); };
 /** Finish signing in and show the tabs. */
 /* Sign-in policy: an admin chooses per company how often people must sign in again (Settings → Sign-in and security).
    The prototype remembers the last sign-in and the policy in this browser so reloading doesn't always show the sign-in screens. */

@@ -22,6 +22,9 @@ const openLead = id => WD.screens.crm && WD.screens.crm.openLead(id);
 
 WD.css(`
 .c2-pad { padding: 10px 16px 0; } .c2-pad .rc-ai { margin: 0; }
+.c2-ai1 { display: flex; align-items: center; gap: 7px; width: 100%; min-height: 44px; margin-top: 6px; padding: 0 12px; border: 0; border-radius: 12px; background: color-mix(in srgb, var(--purple) 13%, var(--cell)); color: var(--label); font: inherit; font-size: 14px; letter-spacing: -.1px; text-align: left; cursor: pointer; }
+.c2-ai1 > .ic:first-child { color: var(--purple); } .c2-ai1 span:not(.ic) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; } .c2-ai1 b { color: var(--tint); font-weight: 600; } .c2-ai1 > .ic:last-child { color: var(--tint); } .c2-desk .c2-ai1 { max-width: 860px; }
+.c2-two { display: flex; gap: 8px; } .c2-two > * { flex: 1 1 0; min-width: 0; } .c2-two .c2-ai1 b { display: none; }
 .c2-key { margin: 12px 0 0; border: 3px solid var(--orange); border-radius: 16px; background: color-mix(in srgb, var(--orange) 12%, var(--cell)); overflow: hidden; }
 .c2-key-h { display: flex; align-items: center; gap: 7px; min-height: 44px; padding: 2px 12px; color: var(--label); } .c2-key-h b { font-size: 16px; font-weight: 700; letter-spacing: -.3px; white-space: nowrap; } .c2-key-h svg { color: var(--orange); flex: none; }
 .c2-key-h .v { font-size: 13px; color: var(--label2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; } .c2-key-h .cu-link { margin-left: auto; flex: none; min-height: 44px; padding-left: 10px; font-weight: 600; }
@@ -130,6 +133,12 @@ const overdue = i => i.status !== 'done' && i.due < today(), custName = i => (q.
 const emailFor = i => { const c = q.customer(i.customerId), p = c && (c.contacts.find(x => x.name === i.who && x.email) || c.contacts.find(x => x.email)); return i.email || (p && p.email) || (c && c.billingEmail) || ''; };
 const holderIn = text => ((/certificate holder:?\s*([^.\n,]+)/i.exec(text || '') || [])[1] || '').trim();
 C2.openCount = () => inq().filter(i => i.status !== 'done').length;
+/** Requests somebody has to deal with today: open and due today or overdue. This is the red count on the Needs tab and part of the CRM badge. */
+C2.dueCount = () => { try { return inq().filter(i => i.status !== 'done' && i.due <= today()).length; } catch (e) { return 0; } };
+/** Wide enough for the dashboards (crm.js `wide`): a full desktop page or a wide workspace column. */
+const wideOn = page => WD.screens.crm && WD.screens.crm.wide ? WD.screens.crm.wide(page) : S.desktop;
+/** The AI's suggestions as one line: a count and Review. The detail is on the review page. */
+const aiLine = (text, onTap) => h('button.c2-ai1', { 'aria-label': text + '. Review', onclick: onTap }, icon('sparkles', 16), h('span', text), h('b', 'Review'), icon('chevron.right', 13));
 
 /* ================= Low-value leads: rules and the automatic reply (AI Premium) ================= */
 const LV = () => { const s = (data.settings || {}).crm || (data.settings.crm = {}); return s.lowValue || (s.lowValue = { on: true, boxes: 6, via: 'text', hoursOnly: true, handoff: true, purgePrice: 95, dropPrice: 8, dropHours: 'Monday to Friday, 8:00 to 4:30', link: 'https://go.discountshred.example/book',
@@ -283,15 +292,15 @@ C2.needsView = page => {
   const filters = h('div.c2-filters', h('button.c2-fb' + (N.type !== 'all' ? '.on' : ''), { 'aria-label': 'Filter by type: ' + tName, onclick: e => ui.menu(e.currentTarget, [{ label: 'All types', checked: N.type === 'all', onTap: () => { N.type = 'all'; page.refresh(); } }].concat(types().map(t => ({ label: t.name + ' · ' + all.filter(i => i.type === t.id && i.status !== 'done').length, checked: N.type === t.id, onTap: () => { N.type = t.id; page.refresh(); } })))) }, h('span', tName), icon('chevron.up.chevron.down', 14)),
     h('button.c2-fb' + (N.owner !== 'all' ? '.on' : ''), { 'aria-label': 'Filter by person: ' + oName, onclick: e => ui.menu(e.currentTarget, [{ label: 'Everyone', checked: N.owner === 'all', onTap: () => { N.owner = 'all'; page.refresh(); } }].concat(owners().map(u => ({ label: u.name + ' · ' + all.filter(i => i.owner === u.id && i.status !== 'done').length, checked: N.owner === u.id, onTap: () => { N.owner = u.id; page.refresh(); } })))) }, h('span', oName), icon('chevron.up.chevron.down', 14)));
   const can = aiOn() ? open.map(i => ({ i, r: recommendInq(i) })).filter(x => x.r && x.r.auto) : [];
-  const aiCard = can.length ? AIP.card({ title: 'AI Premium', text: 'It can answer ' + plural(can.length, 'request') + ' now: ' + can.slice(0, 3).map(x => custName(x.i) + ' (' + x.r.label.toLowerCase() + ')').join(', ') + (can.length > 3 ? '…' : '.'), action: edit ? ui.button('Review and approve', { icon: 'sparkles', kind: 'filled', onTap: () => page.push(C2.reviewSpec()) }) : null }) : null;
+  const aiCard = can.length && edit ? aiLine('AI can answer ' + plural(can.length, 'request') + ' now', () => page.push(C2.reviewSpec())) : null;
   const sections = () => [ISK.map(k => { const xs = list.filter(i => i.status === k).sort((a, b) => k === 'done' ? (b.doneAt || 0) - (a.doneAt || 0) : a.due.localeCompare(b.due) || a.at - b.at);
       return xs.length ? ui.section({ header: IS[k][0] + ' · ' + xs.length, fold: true, folded: k === 'done', foldKey: 'needs-' + k }, xs.map(inqRow)) : null; }),
     !list.length && ui.empty({ icon: 'tray', title: all.length ? 'Nothing matches the filter' : 'No customer requests', text: all.length ? 'Choose All types and Everyone to see every request.' : 'Requests from customers land here: a COI, a W-9, an extra pickup.' }),
     admin() && ui.section({ fold: false }, ui.row({ icon: 'doc.text', iconColor: 'var(--indigo)', title: 'Company documents', subtitle: docs().filter(d => d.file).map(d => d.short || d.name).join(', '), chevron: true, onTap: () => page.push(C2.docsSpec()) }),
       ui.row({ icon: 'list.bullet', iconColor: 'var(--teal)', title: 'Request types', detail: String(types().length), chevron: true, onTap: () => page.push(C2.typesSpec()) }))];
-  if (!S.desktop) return ui.list(ui.section(null, tiles), filters, aiCard && h('div', { style: 'padding-top:10px' }, aiCard), sections());
+  if (!wideOn(page)) return ui.list(aiCard, ui.section(null, tiles), filters, sections());
   return h('div.wide.c2-desk', h('div.c2-dash', { style: 'grid-template-columns:minmax(0,1fr) minmax(0,1fr)' }, h('div.c2-card', h('h4', 'Requests'), tiles), h('div.c2-card', h('h4', 'Open requests by type'), typeBars(t => { N.type = N.type === t ? 'all' : t; page.refresh(); }, N.type))),
-    aiCard && h('div', { style: 'padding-top:12px;max-width:860px' }, aiCard),
+    aiCard && h('div', { style: 'max-width:860px' }, aiCard),
     h('div.c2-tool', ui.segmented([{ value: 'list', label: 'List' }, { value: 'sheet', label: 'Spreadsheet' }], N.view, v => { N.view = v; page.refresh(); }), h('div', { style: 'width:420px' }, filters)),
     N.view === 'sheet' ? sheet({ st: N.sheet, cols: inqCols(), rows: inqFiltered, open: i => WD.nav.push(C2.inquirySpec(i.id)), file: 'customer-requests.csv', rowClass: i => overdue(i) ? 'over' : '' }) : ui.list(sections()));
 };
@@ -332,8 +341,11 @@ function vipCard(c, full) { const x = X(), lc = x.lastContact(c), late = c.nextA
       c.plan ? fact('Plan', c.plan, '.w') : null));
 }
 /** Leads side, above everything: the AI review card and the key accounts. Not affected by the stage, priority or source filters. */
-C2.leadsTop = page => { const v = vips(), total = v.reduce((s, c) => s + (c.estValue || 0), 0);
-  return [aiOn() && canEdit() ? reviewCard(page) : null,
+C2.leadsTop = page => { const v = vips(), total = v.reduce((s, c) => s + (c.estValue || 0), 0), ai = aiOn() && canEdit() ? reviewCard(page) : null;
+  /* Narrow (the phone, a narrow column): the AI line and the key accounts share one row, so the first lead is near the top. */
+  if (!wideOn(page)) { const key = v.length ? h('button.cr-key1', { 'aria-label': 'Key accounts in play: ' + v.length + (total ? ', ' + money(total) + ' a year' : '') + '. See all', onclick: () => page.push(C2.vipSpec()) }, icon('star.fill', 16), h('span', ai ? plural(v.length, 'key account') : plural(v.length, 'key account') + ' in play' + (total ? ' · ' + money(total) + ' a year' : '')), icon('chevron.right', 13)) : null;
+    return ai && key ? h('div.c2-two', ai, key) : ai || key; }
+  return [ai,
     v.length ? h('div.c2-key', h('div.c2-key-h', icon('star.fill', 16), h('b', 'Key accounts in play'), h('span.v', v.length + (total ? ' · ' + money(total) + ' a year' : '')), h('button.cu-link', { 'aria-label': 'See all key accounts', onclick: () => page.push(C2.vipSpec()) }, 'See all')), h('div.c2-key-s', v.map(c => vipCard(c)))) : null]; };
 C2.vipSpec = () => ({ title: 'Key accounts', render: page => { const x = X(), v = vips(), total = v.reduce((s, c) => s + (c.estValue || 0), 0), quoted = v.reduce((s, c) => s + x.quoteValue(c), 0), due = v.filter(c => x.isDue(c)).length;
   return ui.list(ui.section(null, h('div.co-tiles', h('div', h('b', String(v.length)), h('span', 'In play')), h('div', h('b', money(total)), h('span', 'A year')), h('div', h('b', money(quoted)), h('span', 'Quoted')), h('div', h('b', { style: due ? 'color:var(--red)' : null }, String(due)), h('span', 'Due')))),
@@ -399,9 +411,8 @@ C2.leadCard = (c, page) => { if (!aiOn()) return null; const x = X(), p = c.cont
     action: rec ? ui.button(rec.label, { icon: 'sparkles', kind: 'filled', onTap: perform }) : null })); };
 const reviewItems = () => { const out = []; (X().pipe ? X().pipe() : []).forEach(c => { const r = recommend(c); if (r) out.push({ id: 'l' + c.id, c, cid: c.id, name: c.name, owner: c.owner, lead: true, ...r }); });
   inq().forEach(i => { const r = recommendInq(i); if (r) out.push({ id: 'q' + i.id, inq: i, cid: i.customerId, name: custName(i), owner: i.owner, lead: false, ...r }); }); return out; };
-function reviewCard(page) { const it = reviewItems(), a = it.filter(i => i.auto).length; if (!it.length) return null;
-  return h('div', { style: 'padding-top:10px' }, AIP.card({ title: 'AI pipeline review', text: plural(it.length, 'recommended action') + ' across your leads and customer requests: it can do ' + a + ' itself, ' + (it.length - a) + (it.length - a === 1 ? ' needs' : ' need') + ' a person.', lines: it.slice(0, 2).map(i => i.name + ': ' + i.label.toLowerCase()),
-    action: ui.button('Review and approve', { icon: 'sparkles', kind: 'filled', onTap: () => page.push(C2.reviewSpec()) }) })); }
+function reviewCard(page) { const it = reviewItems(); if (!it.length) return null;
+  return aiLine(plural(it.length, 'suggested action'), () => page.push(C2.reviewSpec())); }
 /** Every lead and every customer request, with what to do about each. Approving runs what the AI can do and makes tasks of the rest. */
 C2.reviewSpec = () => { const sel = {}; let result = null;
   return { title: 'AI pipeline review', trailing: page => aiOn() ? [{ icon: 'clock', label: 'Earlier approvals', onTap: () => page.push(C2.aiLogSpec()) }] : [],

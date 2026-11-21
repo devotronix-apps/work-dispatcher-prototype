@@ -199,11 +199,12 @@ data.vehicles = [
 ];
 /** Per-day overrides when a truck starts or ends somewhere else: key vehicleId + '|' + day → { startId, endId }. */
 data.vehicleDays = {};
-/* A route is a business route (never a person). nickname / colorOverride / visible / order are per-user preferences. */
+/* Route colors stay clear of the status colors: no red (problem), green (done) or the button blue. Each company can set its own (Settings → Routes).
+   A route is a business route (never a person). nickname / colorOverride / visible / order are per-user preferences. */
 data.routes = [
-  { id: 'r1', name: 'North Route', color: '#039BE5', nickname: '', colorOverride: null, visible: true, order: 0, timeZone: 'America/Chicago', driverId: 'u4', vehicleId: 'v1', googleCalendar: 'north@discountshred.example', writable: true },
-  { id: 'r2', name: 'South Route', color: '#33B679', nickname: '', colorOverride: null, visible: true, order: 1, timeZone: 'America/Chicago', driverId: 'u5', vehicleId: 'v2', googleCalendar: 'south@discountshred.example', writable: true },
-  { id: 'r3', name: 'West Route', color: '#F4511E', nickname: '', colorOverride: null, visible: true, order: 2, timeZone: 'America/Chicago', driverId: 'u6', vehicleId: 'v3', googleCalendar: 'west@discountshred.example', writable: true },
+  { id: 'r1', name: 'North Route', color: '#0097A7', nickname: '', colorOverride: null, visible: true, order: 0, timeZone: 'America/Chicago', driverId: 'u4', vehicleId: 'v1', googleCalendar: 'north@discountshred.example', writable: true },
+  { id: 'r2', name: 'South Route', color: '#C28A00', nickname: '', colorOverride: null, visible: true, order: 1, timeZone: 'America/Chicago', driverId: 'u5', vehicleId: 'v2', googleCalendar: 'south@discountshred.example', writable: true },
+  { id: 'r3', name: 'West Route', color: '#D81B60', nickname: '', colorOverride: null, visible: true, order: 2, timeZone: 'America/Chicago', driverId: 'u6', vehicleId: 'v3', googleCalendar: 'west@discountshred.example', writable: true },
   { id: 'r4', name: 'Purge Truck', color: '#8E24AA', nickname: '', colorOverride: null, visible: true, order: 3, timeZone: 'America/Chicago', driverId: null, vehicleId: 'v4', googleCalendar: 'purges@discountshred.example', writable: true },
 ];
 /* Map space is 1000 × 1000 (x → east, y → south). The shop sits near the middle. */

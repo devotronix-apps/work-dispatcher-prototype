@@ -29,7 +29,11 @@ WD.css(`
 .mp.z2 .mp-svg .minor { stroke-width: 3px; opacity: 1; } .mp.z3 .mp-svg .minor { stroke-width: 6px; opacity: 1; }
 .mp.z2 .mp-svg .acase { stroke-width: 8px; } .mp.z2 .mp-svg .art { stroke-width: 6px; } .mp.z3 .mp-svg .acase { stroke-width: 13px; } .mp.z3 .mp-svg .art { stroke-width: 10.5px; }
 .mp.z2 .mp-svg .hcase { stroke-width: 11px; } .mp.z2 .mp-svg .hwy { stroke-width: 8.5px; } .mp.z3 .mp-svg .hcase { stroke-width: 17px; } .mp.z3 .mp-svg .hwy { stroke-width: 13.5px; }
-.mp-svg .rline { fill: none; stroke-width: 2.5px; stroke-dasharray: 7 5; stroke-linecap: round; stroke-linejoin: round; opacity: .85; }
+/* Route lines follow the streets: a solid line in the route color over a pale casing; legs already driven are muted. */
+.mp-svg .rline { fill: none; stroke-width: 3.5px; stroke-linecap: round; stroke-linejoin: round; opacity: .92; } .mp-svg .rline.done { opacity: .42; }
+.mp-svg .rcase { fill: none; stroke: var(--mp-halo); stroke-width: 6.5px; stroke-linecap: round; stroke-linejoin: round; } .mp-svg .rcase.done { opacity: .4; }
+.mp-pin.link .mp-pv { animation: mp-link 1.1s ease-out 2; } @keyframes mp-link { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--c) 70%, transparent); } 100% { box-shadow: 0 0 0 22px transparent; } }
+.mp-cust { display: flex; align-items: center; gap: 10px; margin: -4px 0 12px; padding: 8px 10px; border-radius: 12px; background: var(--fill3); font-size: 13px; line-height: 17px; } .mp-cust > div:not(.avatar) { flex: 1; min-width: 0; } .mp-cust b { display: block; font-size: 14px; font-weight: 600; } .mp-cust span { color: var(--label2); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .mp-cust .owe { color: var(--red); font-weight: 600; }
 .mp-svg .trail { fill: none; stroke-width: 4px; stroke-linecap: round; stroke-linejoin: round; opacity: .28; }
 .mp-ov, .mp-layer { position: absolute; inset: 0; pointer-events: none; }
 .mp-o { position: absolute; left: 0; top: 0; width: 0; height: 0; will-change: transform; }
@@ -43,7 +47,7 @@ WD.css(`
 .mp.z2 .mp-lbl.street, .mp.z3 .mp-lbl.street, .mp.z2 .mp-lbl.park, .mp.z3 .mp-lbl.park { display: block; }
 .mp.z3 .mp-lbl.hood { opacity: .45; }
 .mp-hit { pointer-events: auto; cursor: pointer; }
-.mp-pv { position: absolute; left: -14px; top: -14px; width: 28px; height: 28px; border-radius: 50%; background: var(--c); border: 3px solid var(--ring); box-shadow: 0 1px 4px rgba(0,0,0,.35);
+.mp-pv { position: absolute; left: -14px; top: -14px; width: 28px; height: 28px; border-radius: 50%; background: var(--c); border: 2.5px solid var(--ring); box-shadow: 0 1px 4px rgba(0,0,0,.35);
   color: var(--fg, #fff); font-size: 12px; font-weight: 700; letter-spacing: 0; display: grid; place-items: center; transition: transform .2s cubic-bezier(.3,.8,.3,1.3); }
 .mp-pin.sel { z-index: 3; } .mp-pin.sel .mp-pv { transform: scale(1.3); box-shadow: 0 3px 10px rgba(0,0,0,.4); }
 /* Finished and skipped stops: a greyed fill with full-contrast text and a check or cross badge, never a faded number. */
@@ -123,9 +127,10 @@ button.mp-note { cursor: pointer; }
 /* ================= Base map: generated once, deterministically ================= */
 const HROADS = [[45, 'Orchard Park Rd'], [170, 'Northgate Blvd'], [300, 'Mercer St'], [430, 'Larkspur Ln'], [525, 'Industrial Way'], [650, 'Ridgeview Dr'], [760, 'Harbor Rd'], [875, 'Mission St']];
 const VROADS = [[60, 'Westfield Rd'], [185, 'Lantern St'], [310, 'Civic Ave'], [435, 'Bank St'], [560, 'Foundry Ln'], [700, 'Scholar Way'], [830, 'Greenway Dr'], [950, 'Quail Hollow Rd']];
-const RIVER = [[440, -500], [400, -150], [380, 0], [345, 110], [265, 215], [140, 300], [20, 360], [-150, 420], [-500, 470]];
-const I35 = [[650, -500], [645, -100], [630, 200], [612, 420], [600, 560], [625, 760], [680, 960], [720, 1200], [740, 1500]];
-const R9 = [[-500, 610], [0, 600], [250, 590], [480, 585], [700, 595], [1000, 575], [1500, 560]];
+const LO = -1500, HI = 2500;   // how far the streets are drawn; the service area is 0–1000
+const RIVER = [[470, -1500], [440, -500], [400, -150], [380, 0], [345, 110], [265, 215], [140, 300], [20, 360], [-150, 420], [-500, 470], [-1500, 520]];
+const I35 = [[650, -1500], [650, -500], [645, -100], [630, 200], [612, 420], [600, 560], [625, 760], [680, 960], [720, 1200], [740, 1500], [760, 2500]];
+const R9 = [[-1500, 620], [-500, 610], [0, 600], [250, 590], [480, 585], [700, 595], [1000, 575], [1500, 560], [2500, 550]];
 const PARKS = [['Riverside Park', [[175, 245], [300, 240], [305, 300], [190, 310]]], ['Foundry Park', [[455, 445], [540, 440], [545, 500], [460, 505]]],
   ['Greenway Park', [[850, 280], [935, 275], [940, 385], [845, 380]]], ['Westfield Commons', [[60, 690], [170, 685], [175, 770], [65, 775]]], ['Bayside Park', [[505, 905], [640, 900], [645, 960], [500, 965]]]];
 const HOODS = [['ORCHARD PARK', 470, 95], ['NORTHGATE', 735, 112], ['GREENWAY', 895, 205], ['DOWNTOWN', 500, 355], ['LARKSPUR', 120, 385], ['CIVIC CENTER', 250, 520],
@@ -139,23 +144,44 @@ function smooth(pts, closed) {
   return d + 'L' + pts[pts.length - 1].join(' ');
 }
 function blob(cx, cy, r, seed) { const pts = []; for (let i = 0; i < 14; i++) { const a = i / 14 * Math.PI * 2, k = 1 + 0.16 * Math.sin(i * 2.3 + seed) + 0.09 * Math.cos(i * 4.1 + seed); pts.push([+(cx + Math.cos(a) * r * k * 1.2).toFixed(1), +(cy + Math.sin(a) * r * k * 0.85).toFixed(1)]); } return smooth(pts, true); }
+/* The street network the base map draws, as data: arterials (the named roads, repeated every 125 outside the service area) and two
+   side streets between each pair. A route line and a truck follow these, since the prototype has no real road data. */
+const ROADS = (() => { const set = (named, h) => { const a = named.map(r => r[0]); for (let v = LO + 45; v < 0; v += 125) a.push(v); for (let v = 1000; v <= HI; v += 125) a.push(v); a.sort((x, y) => x - y);
+  const out = []; a.forEach((v, i) => { out.push({ v, a: 7, h }); const nx = a[i + 1]; if (nx != null) [1 / 3, 2 / 3].forEach(f => out.push({ v: v + (nx - v) * f, a: 3, h })); }); return out; };
+  return { h: set(HROADS, true), v: set(VROADS, false) }; })();
+const hy = (r, x) => r.v + wob(x, r.v, r.a), vx = (r, y) => r.v + wob(y, r.v, r.a);
+const nearH = (x, y) => ROADS.h.reduce((b, r) => Math.abs(hy(r, x) - y) < Math.abs(hy(b, x) - y) ? r : b), nearV = (x, y) => ROADS.v.reduce((b, r) => Math.abs(vx(r, y) - x) < Math.abs(vx(b, y) - x) ? r : b);
+const cross = (hr, vr) => { let x = vr.v, y = hr.v; for (let i = 0; i < 4; i++) { y = hy(hr, x); x = vx(vr, y); } return [x, y]; };
+const along = (r, a, b) => { const out = [], n = Math.max(1, Math.ceil(Math.abs(b - a) / 25)); for (let i = 0; i <= n; i++) { const t = a + (b - a) * i / n; out.push(r.h ? [t, hy(r, t)] : [vx(r, t), t]); } return out; };
+const streetCache = new Map();
+/** The way from a to b along the streets: out to the nearest street, along it to the cross street nearest b, along that, and in to b.
+    Always the same answer for the same two points, so lines never jump between redraws. → [[x, y], …] */
+function street(a, b) {
+  const key = [a.x, a.y, b.x, b.y].join(), hit = streetCache.get(key); if (hit) return hit;
+  const dx = b.x - a.x, dy = b.y - a.y; let pts;
+  if (Math.hypot(dx, dy) < 30) pts = [[a.x, a.y], [b.x, b.y]];
+  else if (Math.abs(dx) >= Math.abs(dy)) { const hr = nearH(a.x, a.y), vr = nearV(b.x, b.y), c = cross(hr, vr); pts = [[a.x, a.y], ...along(hr, a.x, c[0]), ...along(vr, c[1], b.y), [b.x, b.y]]; }
+  else { const vr = nearV(a.x, a.y), hr = nearH(b.x, b.y), c = cross(hr, vr); pts = [[a.x, a.y], ...along(vr, a.y, c[1]), ...along(hr, c[0], b.x), [b.x, b.y]]; }
+  pts = pts.map(p => [+p[0].toFixed(1), +p[1].toFixed(1)]); if (streetCache.size > 600) streetCache.clear(); streetCache.set(key, pts); return pts;
+}
+/** The point a fraction f of the way along a path. */
+function partWay(pts, f) { const len = pts.slice(1).map((p, i) => Math.hypot(p[0] - pts[i][0], p[1] - pts[i][1])); let left = len.reduce((s, n) => s + n, 0) * f;
+  for (let i = 0; i < len.length; i++) { if (left <= len[i]) { const k = len[i] ? left / len[i] : 0; return [pts[i][0] + (pts[i + 1][0] - pts[i][0]) * k, pts[i][1] + (pts[i + 1][1] - pts[i][1]) * k]; } left -= len[i]; } return pts[pts.length - 1]; }
 let baseCache = null;
 function buildBase() {
   if (baseCache) return baseCache;
-  const fill = named => { const out = named.map(([v, name]) => ({ v, name })); for (let v = -455; v < 0; v += 125) out.push({ v }); for (let v = 1000; v <= 1500; v += 125) out.push({ v }); return out.sort((a, b) => a.v - b.v); };
-  const line = (v, horiz, amp) => { const pts = []; for (let t = -500; t <= 1500; t += 50) pts.push(horiz ? [t, v + wob(t, v, amp)] : [v + wob(t, v, amp), t]); return pathOf(pts); };
-  const hs = fill(HROADS), vs = fill(VROADS), minors = [], arts = [], labels = [];
-  [[hs, true], [vs, false]].forEach(([set, horiz]) => set.forEach((r, i) => {
-    arts.push(line(r.v, horiz));
-    const nx = set[i + 1]; if (nx) [1 / 3, 2 / 3].forEach(f => minors.push(line(r.v + (nx.v - r.v) * f, horiz, 3)));
-    if (r.name) [(130 + i * 97) % 400 + 70, (130 + i * 97) % 400 + 520].forEach(t => {
-      const off = wob(t, r.v), d = dwob(t, r.v), angle = horiz ? Math.atan(d) * 180 / Math.PI : Math.atan2(1, d) * 180 / Math.PI - 180;
-      labels.push(horiz ? { x: t, y: r.v + off, text: r.name, cls: 'street', angle } : { x: r.v + off, y: t, text: r.name, cls: 'street', angle });
+  const line = r => { const pts = []; for (let t = LO; t <= HI; t += 50) pts.push(r.h ? [t, hy(r, t)] : [vx(r, t), t]); return pathOf(pts); };
+  const minors = [], arts = [], labels = [];
+  ROADS.h.concat(ROADS.v).forEach(r => (r.a === 7 ? arts : minors).push(line(r)));
+  [[HROADS, true], [VROADS, false]].forEach(([set, horiz]) => set.forEach(([v, name], n) => { const i = n + 4;
+    [(130 + i * 97) % 400 + 70, (130 + i * 97) % 400 + 520].forEach(t => {
+      const off = wob(t, v), d = dwob(t, v), angle = horiz ? Math.atan(d) * 180 / Math.PI : Math.atan2(1, d) * 180 / Math.PI - 180;
+      labels.push(horiz ? { x: t, y: v + off, text: name, cls: 'street', angle } : { x: v + off, y: t, text: name, cls: 'street', angle });
     });
   }));
   const lake = blob(905, 705, 70, 3), parks = PARKS.map(([, pts]) => smooth(pts, true)), river = smooth(RIVER), i35 = smooth(I35), r9 = smooth(R9);
   const ns = ' vector-effect="non-scaling-stroke"', paths = (list, cls) => list.map(d => '<path class="' + cls + '"' + ns + ' d="' + d + '"/>').join('');
-  const big = 'x="-600" y="-600" width="2200" height="2200"';
+  const big = 'x="' + (LO - 100) + '" y="' + (LO - 100) + '" width="' + (HI - LO + 200) + '" height="' + (HI - LO + 200) + '"';
   const markup = '<defs><mask id="mp-mm" maskUnits="userSpaceOnUse" ' + big + '><rect ' + big + ' fill="#fff"/><path d="' + river + '" stroke="#000" stroke-width="26" fill="none"/><path d="' + lake + '" fill="#000"/>' + parks.map(d => '<path d="' + d + '" fill="#000"/>').join('') + '</mask>'
     + '<mask id="mp-ma" maskUnits="userSpaceOnUse" ' + big + '><rect ' + big + ' fill="#fff"/><path d="' + lake + '" fill="#000"/></mask></defs>'
     + '<rect class="land" ' + big + '/><rect class="zone" x="420" y="508" width="180" height="66" rx="6"/><rect class="zone" x="380" y="290" width="200" height="130" rx="8"/>'
@@ -182,7 +208,7 @@ function spawn(r, driverId) {
   const stops = stopJobs(r.id), cur = stops.find(j => j.status === 'arrived'), nx = stops.find(j => j.status === 'enroute'), n = hash(r.id);
   const home = q.routeEnds(r.id, D.today()); let x = home.start.x, y = home.start.y, state = 'parked';
   if (cur) { x = cur.x; y = cur.y; state = 'on site'; }
-  else if (nx) { const prev = stops.slice(0, stops.indexOf(nx)).reverse().find(j => j.status === 'completed') || depot; x = prev.x + (nx.x - prev.x) * 0.45; y = prev.y + (nx.y - prev.y) * 0.45; state = 'driving'; }
+  else if (nx) { const prev = stops.slice(0, stops.indexOf(nx)).reverse().find(j => j.status === 'completed') || depot; [x, y] = partWay(street(prev, nx), 0.45); state = 'driving'; }
   const start = new Date(WD.now()); start.setHours(7, 20 + hash(r.id) % 30, 0, 0);
   const t = { routeId: r.id, vehicleId: r.vehicleId, driverId, x, y, heading: 0, speedMph: 0, state, lastFix: +WD.now() - (n % 9) * 1000, battery: 46 + n % 45, nextJobId: null, shiftStart: +start };
   return { t, px: x, py: y, at: performance.now(), hd: 0, trail: [[x, y]], dwell: cur ? 8 + n % 18 : 0, fixN: 0 };
@@ -226,9 +252,14 @@ function tick() {
     s.px = t.x; s.py = t.y; s.at = performance.now();
     let state = 'parked';
     if (target) {
-      const dx = target.x - t.x, dy = target.y - t.y, dist = Math.hypot(dx, dy);
+      /* The truck drives the same street path the route line shows; the path is worked out once per destination. */
+      const pkey = (target === endAt ? 'end' : target.id) + ':' + target.x + ',' + target.y, dist = Math.hypot(target.x - t.x, target.y - t.y);
       if (dist > 1.5) {
-        const step = Math.min(dist, SPEED); t.x += dx / dist * step; t.y += dy / dist * step; state = 'driving'; s.dwell = 0;
+        if (s.pkey !== pkey || !s.path) { s.pkey = pkey; s.path = street({ x: +t.x.toFixed(1), y: +t.y.toFixed(1) }, target); s.pi = 1; }
+        const fx = t.x, fy = t.y; let step = SPEED;
+        while (step > 0 && s.pi < s.path.length) { const p = s.path[s.pi], d = Math.hypot(p[0] - t.x, p[1] - t.y); if (d <= step) { t.x = p[0]; t.y = p[1]; step -= d; s.pi++; } else { t.x += (p[0] - t.x) / d * step; t.y += (p[1] - t.y) / d * step; step = 0; } }
+        if (s.pi >= s.path.length) { t.x = target.x; t.y = target.y; }
+        const dx = (t.x - fx) || (target.x - fx), dy = (t.y - fy) || (target.y - fy); state = 'driving'; s.dwell = 0;
         const hd = (Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360; s.hd += ((hd - s.hd % 360 + 540) % 360) - 180; t.heading = Math.round(hd);
         s.trail.push([+t.x.toFixed(1), +t.y.toFixed(1)]); if (s.trail.length > 240) s.trail.shift();
       } else if (target !== endAt) {
@@ -253,14 +284,14 @@ function posOf(t) { const s = sim[t.routeId]; if (!s) return [t.x, t.y]; const k
 const truckFor = routeId => data.trucks.find(t => t.routeId === routeId);
 const ago = ms => { const s = Math.max(0, Math.round((+WD.now() - ms) / 1000)); return s < 60 ? s + ' s ago' : Math.floor(s / 60) + ' min ago'; };
 const numberOf = job => { const s = q.stops(job.routeId, job.day).find(x => x.job === job); return s ? s.number : null; };
-/* Colors: the job type fills the pin and the route (calendar) color rims it. */
-const ringOf = job => q.routeColor(job.routeId), fillOf = job => WD.cardColor(job), pinStyle = job => ({ '--c': fillOf(job), '--ring': ringOf(job), '--fg': (WD.readableOn || WD.textOn)(fillOf(job)) });   // readableOn (board.js) compares real contrast ratios
+/* Colors: the route (calendar) color fills the pin, the same as the number circle on the board, inside a plain rim. Status is the greyed fill with a check or cross. */
+const ringOf = () => 'var(--cell, #fff)', fillOf = job => q.routeColor(job.routeId), pinStyle = job => ({ '--c': fillOf(job), '--ring': ringOf(job), '--fg': (WD.readableOn || WD.textOn)(fillOf(job)) });   // readableOn (board.js) compares real contrast ratios
 const dayLabel = k => { const rel = fmt.day(k, 'rel'), base = fmt.day(k, 'weekday') + ' ' + fmt.day(k, 'md'); return /^(Today|Tomorrow|Yesterday)$/.test(rel) ? rel + ', ' + base : base; };
 const openDetails = id => { if (WD.screens.jobs && WD.screens.jobs.openDetails) WD.screens.jobs.openDetails(id); else ui.toast('Job details aren’t available', 'info.circle'); };
 const mini = (job, n) => h('span.mp-mini' + (DONE[job.status] ? '.done' : ''), { style: pinStyle(job) }, n);
 
 /* ================= The map page ================= */
-let inst = null;
+let inst = null; const live = new Set();   // every map that exists: the Map section's and the one embedded in Dispatch
 function createMap(opts) {
   /* opts.embedded: the map sits inside another screen (Dispatch) that already shows the date, so its own date header is left out and the
      floating controls move up (class mp-embed). */
@@ -273,7 +304,7 @@ function createMap(opts) {
   const mapHome = { atHome: () => st.day === D.today() && st.showTrucks && !st.follow && !st.extra.size && st.hidden.size === hidden0.size && [...st.hidden].every(id => hidden0.has(id)),
     reset: () => { st.hidden = new Set(hidden0); st.extra.clear(); st.showTrucks = true; st.sel = null; st.follow = null; st.day = shownDay = D.today(); update(); fit(true); WD.changed(); } };
   let shownDay = st.day;
-  let W = 393, H = 769, view = { s: 1, x0: 0, y0: 0 }, fitted = false, raf = 0, anim = 0, ro = null;
+  let W = 393, H = 769, view = { s: 1, x0: 0, y0: 0 }, fitted = false, auto = false /* the view is still the automatic fit: nobody has panned or zoomed since */, raf = 0, anim = 0, ro = null, linked = null;
   const base = buildBase();
   const svg = document.createElementNS(NS, 'svg'); svg.setAttribute('class', 'mp-svg'); svg.setAttribute('preserveAspectRatio', 'none'); svg.innerHTML = base.markup;
   const routesG = document.createElementNS(NS, 'g'), trailsG = document.createElementNS(NS, 'g'); svg.appendChild(trailsG); svg.appendChild(routesG);
@@ -291,13 +322,13 @@ function createMap(opts) {
   /* ---------- View: scale + world offset, clamped to the 1000 × 1000 world ---------- */
   /* Zoom from a third of the service-area width out to street level, and pan freely: the only limit is that a strip of the
      mapped area stays on screen, so the map can't be lost. (The real app uses Apple Maps, which has no edge.) */
-  const clampS = s => Math.min(SMAX, Math.max(W / 1000 * ZOUT, s));
-  const clampV = v => { const s = clampS(v.s), ax = (o, span) => Math.min(1000 - span * 0.15, Math.max(-span * 0.85, o)); return { s, x0: ax(v.x0, W / s), y0: ax(v.y0, H / s) }; };
+  const clampS = s => Math.min(SMAX, Math.max(Math.max(W, H) / 1000 * ZOUT, s));
+  const clampV = v => { const s = clampS(v.s), ax = (o, span) => span >= 2000 ? Math.min(1000 - span * 0.5, Math.max(-span * 0.5, o)) : Math.min(1000 - span * 0.15, Math.max(-span * 0.85, o)); return { s, x0: ax(v.x0, W / s), y0: ax(v.y0, H / s) }; };
   const proj = (x, y) => [(x - view.x0) * view.s, (y - view.y0) * view.s];
   const put = (e, x, y) => { const [X, Y] = proj(x, y); e.style.transform = 'translate3d(' + X.toFixed(1) + 'px,' + Y.toFixed(1) + 'px,0)'; };
   const center = v => [v.x0 + W / 2 / v.s, v.y0 + H / 2 / v.s];
   /** View that puts world point (x, y) in the middle of the area between the top controls and the bottom card. */
-  const lookAt = (x, y, s, pt = 140, pb = 200) => ({ s, x0: x - W / 2 / s, y0: y - (pt + (H - pt - pb) / 2) / s });
+  const lookAt = (x, y, s, pt = 140, pb = 200) => (auto = false, { s, x0: x - W / 2 / s, y0: y - (pt + (H - pt - pb) / 2) / s });
   function apply(v) {
     view = clampV(v);
     svg.setAttribute('viewBox', [view.x0, view.y0, W / view.s, H / view.s].map(n => n.toFixed(2)).join(' '));
@@ -311,17 +342,21 @@ function createMap(opts) {
       apply({ s, x0: ca[0] + (cb[0] - ca[0]) * e - W / 2 / s, y0: ca[1] + (cb[1] - ca[1]) * e - H / 2 / s }); if (k < 1) anim = requestAnimationFrame(step); };
     anim = requestAnimationFrame(step);
   }
-  function zoomAt(p, k, animated) { const wx = view.x0 + p.x / view.s, wy = view.y0 + p.y / view.s, s = clampS(view.s * k), v = { s, x0: wx - p.x / s, y0: wy - p.y / s }; animated ? animateTo(v) : apply(v); }
+  function zoomAt(p, k, animated) { auto = false; const wx = view.x0 + p.x / view.s, wy = view.y0 + p.y / view.s, s = clampS(view.s * k), v = { s, x0: wx - p.x / s, y0: wy - p.y / s }; animated ? animateTo(v) : apply(v); }
   function fit(animated) {
     const pts = [[depot.x, depot.y]];
     shownRoutes().forEach(r => q.stops(r.id, st.day).forEach(s => pts.push([s.job.x, s.job.y])));
     liveTrucks().forEach(t => pts.push(posOf(t)));
     const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]), pt = embedded ? 64 : 150, pb = embedded ? Math.min(150, H * 0.3) : 175;
     const minx = Math.min(...xs), maxx = Math.max(...xs), miny = Math.min(...ys), maxy = Math.max(...ys);
-    const s = Math.min((W - 70) / Math.max(maxx - minx, 80), (H - pt - pb) / Math.max(maxy - miny, 80));
-    const v = lookAt((minx + maxx) / 2, (miny + maxy) / 2, clampS(s), pt, pb); animated ? animateTo(v) : apply(v); fitted = true;
+    const least = pts.length < 2 ? 600 : 80 /* nothing but the shop: show its part of town, not one street corner */, s = Math.min((W - 124) / Math.max(maxx - minx, least), (H - pt - pb) / Math.max(maxy - miny, least));
+    const v = lookAt((minx + maxx) / 2, (miny + maxy) / 2, clampS(s), pt, pb); v.x0 += 20 / v.s;   // the tools down the right edge cover about 54 points, so the stops sit a little left of center
+    animated ? animateTo(v) : apply(v); fitted = auto = true;
   }
-  function measure() { const w = el.clientWidth, hh = el.clientHeight; if (!w || !hh) return false; const changed = w !== W || hh !== H; W = w; H = hh; if (!fitted) fit(false); else if (changed) apply(view); return true; }
+  /* The map fills whatever box it is given. When the box changes size (a workspace column dragged wider, the window, the phone turned
+     into the website) an untouched view is fitted again; a view the person chose keeps its center and scale. */
+  function measure() { const w = el.clientWidth, hh = el.clientHeight; if (!w || !hh) return false; const changed = w !== W || hh !== H, c = center(view); W = w; H = hh;
+    if (!fitted || (changed && auto && !st.follow && !st.sel)) fit(false); else if (changed) apply({ s: view.s, x0: c[0] - W / 2 / view.s, y0: c[1] - H / 2 / view.s }); return true; }
 
   /* ---------- Gestures: drag to pan, pinch / ctrl-wheel / wheel / double-click to zoom ---------- */
   const ptrs = new Map(); let moved = 0;
@@ -335,7 +370,7 @@ function createMap(opts) {
   surface.addEventListener('pointermove', e => {
     if (!ptrs.has(e.pointerId)) return;
     const a = gest(); ptrs.set(e.pointerId, ui.localPoint(e, el)); const b = gest();
-    moved += Math.abs(b.x - a.x) + Math.abs(b.y - a.y) + Math.abs(b.d - a.d); if (moved > 6 && st.follow) stopFollow();
+    moved += Math.abs(b.x - a.x) + Math.abs(b.y - a.y) + Math.abs(b.d - a.d); if (moved > 6) auto = false; if (moved > 6 && st.follow) stopFollow();
     const s = clampS(a.d && b.d ? view.s * b.d / a.d : view.s), wx = view.x0 + a.x / view.s, wy = view.y0 + a.y / view.s;
     apply({ s, x0: wx - b.x / s, y0: wy - b.y / s });
   });
@@ -353,13 +388,17 @@ function createMap(opts) {
   function pinEl(job, n) {
     const cls = job.status === 'completed' ? '.done' : job.status === 'skipped' ? '.skip' : '';
     const say = 'Stop ' + n + ', ' + job.title + ', ' + ((WD.jobStatuses[job.status] || {}).title || job.status).toLowerCase() + ', ' + q.routeName(job.routeId);
-    return h('div.mp-o.mp-pin.mp-hit' + cls + (st.sel === job.id ? '.sel' : ''), { role: 'button', tabindex: '0', 'aria-label': say, 'aria-pressed': String(st.sel === job.id), onclick: () => select(job.id), onkeydown: keyTap },
+    return h('div.mp-o.mp-pin.mp-hit' + cls + (st.sel === job.id ? '.sel' : '') + (linked === job.id ? '.link' : ''), { role: 'button', tabindex: '0', 'aria-label': say, 'aria-pressed': String(st.sel === job.id), onclick: () => { select(job.id); tell(job); }, onkeydown: keyTap },
       h('div.mp-pv', { style: pinStyle(job) }, n,
         cls && h('span.mp-pb', { 'aria-hidden': 'true', style: { background: cls === '.done' ? '#1B7F3B' : '#D70015' } }, icon(cls === '.done' ? 'checkmark' : 'xmark', 10))));
   }
   function drawStops() {
     const routes = shownRoutes(); pins = [];
-    routesG.innerHTML = routes.map(r => { const ends = q.routeEnds(r.id, st.day), pts = [ends.start, ...q.stops(r.id, st.day).map(s => s.job), ends.end]; return pts.length > 2 ? '<polyline class="rline" vector-effect="non-scaling-stroke" stroke="' + q.routeColor(r) + '" points="' + pts.map(p => p.x + ',' + p.y).join(' ') + '"/>' : ''; }).join('');
+    /* One street path per leg (start → stop 1 → … → end). A leg is muted once the stop it leads to is finished. */
+    const legs = routes.flatMap(r => { const ends = q.routeEnds(r.id, st.day), jobs = q.stops(r.id, st.day).map(s => s.job), pts = [ends.start, ...jobs, ends.end], c = q.routeColor(r);
+      return pts.length > 2 ? pts.slice(1).map((p, i) => ({ d: pathOf(street(pts[i], p)), c, done: i < jobs.length && !!DONE[jobs[i].status] })) : []; });
+    const ne = ' vector-effect="non-scaling-stroke"';
+    routesG.innerHTML = legs.map(l => '<path class="rcase' + (l.done ? ' done' : '') + '"' + ne + ' d="' + l.d + '"/>').join('') + legs.filter(l => l.done).concat(legs.filter(l => !l.done)).map(l => '<path class="rline' + (l.done ? ' done' : '') + '"' + ne + ' stroke="' + l.c + '" d="' + l.d + '"/>').join('');
     routes.forEach(r => q.stops(r.id, st.day).forEach(({ job, number }) => pins.push({ el: pinEl(job, number), x: job.x, y: job.y })));
     pinLayer.replaceChildren(...pins.map(p => p.el)); pins.forEach(it => put(it.el, it.x, it.y));
   }
@@ -397,7 +436,9 @@ function createMap(opts) {
   const kick = () => { if (!raf && visible() && (truckEls.size || meShown)) raf = requestAnimationFrame(loop); };
 
   /* ---------- Floating controls ---------- */
-  function select(id) { st.sel = id; drawStops(); drawUI(); }
+  function select(id) { st.sel = id; if (linked !== id) linked = null; drawStops(); drawUI(); }
+  /** A stop chosen on the map is passed to the other columns of the desktop workspace (the board scrolls to it, Customers opens the record). */
+  const tell = job => { if (WD.app.linkSelect) WD.app.linkSelect({ from: 'map', jobId: job.id, customerId: job.customerId, routeId: job.routeId, day: job.day }); };
   function setDay(k) { st.day = shownDay = k; st.sel = null; st.follow = null; update(); fit(true); }
   function stopFollow() { st.follow = null; drawUI(); }
   function follow(routeId) { const t = truckFor(routeId), v = t && q.vehicle(t.vehicleId); if (!t) return; st.follow = routeId; select(null); const [x, y] = posOf(t); animateTo(lookAt(x, y, Math.max(view.s, 1.4))); ui.toast('Following ' + (v ? v.name : 'truck'), 'location.fill'); kick(); }
@@ -444,7 +485,16 @@ function createMap(opts) {
     return h('div.mp-card.mp-glass.mp-stop',
       h('div.mp-sh', mini(job, n), h('div', h('div.headline', WD.workflow.titleNode(job)), h('div.footnote', job.allDay ? 'Note for the day' : stopLabel(job))), h('button.mp-x', { 'aria-label': 'Close', onclick: () => select(null) }, icon('xmark', 13))),
       h('div.mp-meta', ui.badge(stx.title, stx.color), job.pending && ui.badge('Pending sync', 'var(--orange)'), h('span', ui.dot(q.routeColor(job.routeId)), q.routeName(job.routeId)), h('span', job.address)),
+      custLine(job),
       h('div.mp-acts', ui.button('Details', { kind: 'gray', small: true, icon: 'info.circle', onTap: () => openDetails(job.id) }), ui.button('Directions', { kind: 'filled', small: true, icon: 'arrow.triangle.turn.up.right', onTap: () => WD.workflow.openDirections(job) })));
+  }
+  /** The customer behind a stop: who to ask for, their number, what is on site and anything unpaid. Tapping it opens the record. */
+  function custLine(job) {
+    const c = job.customerId && q.customer(job.customerId); if (!c) return null;
+    const p = (c.contacts || [])[0], owed = WD.can('billing.view') && WD.r11 && WD.r11.owed ? WD.r11.owed(c) : 0, open = WD.screens.customers && WD.screens.customers.openDetail;
+    return h('div.mp-cust' + (open ? '.mp-hit' : ''), { role: open ? 'button' : null, tabindex: open ? '0' : null, onclick: open ? () => open(c.id) : null, onkeydown: keyTap, style: open ? { cursor: 'pointer' } : null }, ui.avatar(c.name, { size: 34 }),
+      h('div', h('b', c.name), h('span', [p && p.name, p && p.phone && fmt.phone(p.phone), job.containers || c.containers].filter(Boolean).join(' · ') || 'No contact on file'), owed > 0 && h('span.owe', fmt.money(owed) + ' unpaid')),
+      open && icon('chevron.right', 14, 'var(--label3)'));
   }
   function update() { drawStops(); drawTrucks(); drawUI(); }
   /** AutoRoute the routes shown on the map for the day on screen; stays on the map afterwards. */
@@ -526,15 +576,24 @@ function createMap(opts) {
     st.sel = job.id; measure(); update(); fitted = true;
     if (job.located && job.x != null) animateTo(lookAt(job.x, job.y, Math.max(view.s, 1.5))); else ui.toast('This address isn’t on the map', 'questionmark.circle');
   }
+  /** From another workspace column: a job → its stop, centered, with the customer card; a route (and day) → only that route, fitted. */
+  function link(sel) {
+    const job = sel.jobId && q.job(sel.jobId);
+    if (job && !job.allDay) { linked = job.id; focus(job); if (embedded) WD.changed(); return true; }
+    const r = sel.routeId && q.route(sel.routeId); if (!r) return false;
+    if (sel.day) st.day = shownDay = sel.day; st.hidden.clear(); st.extra.clear(); q.routes().forEach(x => { if (x.id !== r.id) st.hidden.add(x.id); }); if (!r.visible) st.extra.add(r.id);
+    st.sel = linked = null; st.follow = null; measure(); update(); fit(true); if (embedded && sel.day) WD.changed(); return true;
+  }
   const resume = () => { measure(); if (st.day !== shownDay) { shownDay = st.day; st.sel = null; st.follow = null; update(); fit(true); } else update(); };   // the board changed the day meanwhile
   unsub.push(WD.on('trucks', () => { if (el.isConnected) drawTrucks(); }), WD.on('tab', id => { if (id === 'map' || (embedded && visible())) resume(); }));
   if (typeof ResizeObserver !== 'undefined') { ro = new ResizeObserver(() => measure()); ro.observe(el); }
-  return {
-    mount() { update(); return el; }, update, resume, focus, el,
+  const api = {
+    mount() { update(); return el; }, update, resume, focus, el, link, visible,
     /** Embedded: show exactly these routes (null = every route on the board). The chips still switch routes off and on afterwards. */
     setRoutes(ids) { st.hidden.clear(); st.extra.clear(); if (ids) { q.routes().forEach(r => { if (!ids.includes(r.id)) st.hidden.add(r.id); else if (!r.visible) st.extra.add(r.id); }); } st.sel = null; st.follow = null; update(); if (measure()) fit(false); },
-    destroy() { unsub.forEach(f => f()); cancelAnimationFrame(raf); cancelAnimationFrame(anim); if (ro) ro.disconnect(); },
+    destroy() { live.delete(api); unsub.forEach(f => f()); cancelAnimationFrame(raf); cancelAnimationFrame(anim); if (ro) ro.disconnect(); },
   };
+  live.add(api); return api;
 }
 
 function root() {
@@ -554,10 +613,15 @@ function miniMap(o) {
   let x0 = Math.min(...xs) - pad, x1 = Math.max(...xs) + pad, y0 = Math.min(...ys) - pad, y1 = Math.max(...ys) + pad, w = Math.max(x1 - x0, 120), hh = Math.max(y1 - y0, 120);
   if (w / hh > aspect) { const nh = w / aspect; y0 -= (nh - hh) / 2; hh = nh; } else { const nw = hh * aspect; x0 -= (nw - w) / 2; w = nw; }
   const svg = document.createElementNS(NS, 'svg'); svg.setAttribute('class', 'mp-svg'); svg.setAttribute('viewBox', [x0, y0, w, hh].map(n => n.toFixed(1)).join(' ')); svg.setAttribute('preserveAspectRatio', 'none');
-  svg.innerHTML = buildBase().markup + (o.lines || []).map(l => '<polyline fill="none" stroke="' + l.color + '" stroke-width="' + (l.width || 2.5) + '" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round"' + (l.dash ? ' stroke-dasharray="6 4"' : '') + ' opacity="' + (l.opacity || .9) + '" points="' + l.pts.map(p => p.x + ',' + p.y).join(' ') + '"/>').join('');
+  /* A solid line through a few points is a route, so it follows the streets like the big map; dashed lines (GPS tracks, rings) and `straight: true` stay as given. */
+  const way = l => l.dash || l.straight || l.pts.length < 2 || l.pts.length > 40 ? l.pts.map(p => p.x + ',' + p.y) : l.pts.slice(1).flatMap((p, i) => street(l.pts[i], p).map(c => c.join()));
+  svg.innerHTML = buildBase().markup + (o.lines || []).map(l => '<polyline fill="none" stroke="' + l.color + '" stroke-width="' + (l.width || 2.5) + '" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round"' + (l.dash ? ' stroke-dasharray="6 4"' : '') + ' opacity="' + (l.opacity || .9) + '" points="' + way(l).join(' ') + '"/>').join('');
   return h('div.mm', { style: { aspectRatio: String(aspect) } }, svg, o.points.map(p => h('div.mm-p' + (p.cls ? '.' + p.cls : ''), { style: { left: ((p.x - x0) / w * 100).toFixed(2) + '%', top: ((p.y - y0) / hh * 100).toFixed(2) + '%', ...(p.style || {}) }, title: p.title || null }, p.n != null ? p.n : p.icon ? icon(p.icon, 11) : null)), o.caption && h('div.mm-cap', o.caption));
 }
 WD.miniMap = miniMap; WD.pinStyle = pinStyle;
 /** A live map for another screen to embed (Dispatch's Board ↔ Map switch). The caller mounts it once, calls update()/resume() and destroy(). */
-WD.screens.map = { root, focusJob, create: o => createMap({ embedded: true, ...(o || {}) }), trucks: () => { reconcile(); return data.trucks; } };
+/** Workspace linking: another column chose a job (`sel.jobId`) or a route (`sel.routeId`, `sel.day`). The map on screen shows it; → true when one did. */
+function onLinked(sel) { if (!sel || sel.from === 'map') return false; const m = [...live].filter(x => x.visible()).sort((a, b) => (a === inst) - (b === inst))[0]; return m ? !!m.link(sel) : false; }
+WD.streetPath = street;   // (a, b) → [[x, y], …] along the drawn streets, for any other screen that draws a route
+WD.screens.map = { root, focusJob, onLinked, create: o => createMap({ embedded: true, ...(o || {}) }), trucks: () => { reconcile(); return data.trucks; } };
 })();

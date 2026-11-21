@@ -8,6 +8,8 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 WD.css(`
 .bd-top { height: 44px; display: flex; align-items: center; padding: 0 4px; flex: none; }
+/* In a workspace column the bar's buttons sit closer together (a mouse, not a finger), so the date is never squeezed out. */
+.phone.desktop .tabpanes.multi .bd-top .nav-btn, .phone.desktop .tabpanes.multi .bd-date .nav-btn { min-width: 32px; } .phone.desktop .tabpanes.multi .bd-date .t { flex: none; } .phone.desktop .tabpanes.multi .bd-date .t b { font-size: 15px; letter-spacing: -.3px; }
 .bd-date { flex: 1; display: flex; align-items: center; justify-content: center; min-width: 0; }
 .bd-date .t { border: 0; background: none; padding: 0 2px; min-height: 44px; min-width: 0; flex: 0 1 auto; cursor: pointer; text-align: center; color: var(--label); }
 .bd-date .t b { display: block; font-size: 17px; font-weight: 600; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .bd-date .t.long b { font-size: 15px; letter-spacing: -.3px; }
@@ -69,11 +71,13 @@ WD.css(`
 .bd-col { flex: none; position: relative; border-left: .5px solid var(--sep); padding: 6px 4px 24px; box-sizing: border-box; }
 .bd-col:first-child { border-left: 0; }
 .bd-col.past { background: color-mix(in srgb, var(--fill3) 45%, transparent); }
-/* Job cards. The text color is chosen per fill (WD.readableOn), so every line reaches 4.5:1; nothing on a card is faded with opacity. */
+/* Job cards are calm: a neutral background (white, dark gray in dark mode), the route color only on the left edge and the stop number, one small tag
+   or icon for the status, and red only for a real problem. The old fill by job type is still a choice in Settings → Display (.cs-solid, r15.js). */
 .bd-job { position: relative; margin-bottom: 5px; cursor: pointer; touch-action: pan-y; border-radius: 9px; }
 .bd-job:focus-visible { outline: 3px solid var(--tint); outline-offset: 2px; }
-.bd-job-in { border-radius: 9px; background: var(--c); color: var(--fg, #fff); padding: 4px; overflow: hidden; position: relative; display: flex; gap: 6px; align-items: flex-start; font-size: 13px; line-height: 16px; letter-spacing: -.1px; border: 3px solid var(--ring); }
-.bd-num { flex: none; width: 22px; height: 22px; border-radius: 50%; background: var(--ring); color: var(--nfg, #fff); font-size: 12px; font-weight: 800; display: grid; place-items: center; letter-spacing: 0; box-shadow: 0 0 0 1.5px rgba(255,255,255,.9); }
+.bd-job-in { border-radius: 9px; background: var(--cell); color: var(--label); padding: 5px 5px 5px 4px; overflow: hidden; position: relative; display: flex; gap: 6px; align-items: flex-start; font-size: 13px; line-height: 16px; letter-spacing: -.1px; border: 1px solid var(--sep); border-left: 4px solid var(--ring); box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+.bd-type { display: inline-block; font-size: 12px; line-height: 15px; font-weight: 600; letter-spacing: 0; border-radius: 4px; padding: 0 4px; margin-top: 2px; background: var(--fill3); color: var(--label2); }
+.bd-num { flex: none; width: 22px; height: 22px; border-radius: 50%; background: var(--ring); color: var(--nfg, #fff); font-size: 12px; font-weight: 800; display: grid; place-items: center; letter-spacing: 0; }
 .bd-job-main { min-width: 0; flex: 1; }
 /* The title is the part that gets shortened; the key facts under it wrap and are never cut off. */
 .bd-job-title { font-weight: 600; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; word-break: break-word; }
@@ -96,20 +100,22 @@ WD.css(`
 .bd-off { flex: none; font-size: 12px; line-height: 15px; font-weight: 800; text-transform: uppercase; letter-spacing: .2px; border-radius: 4px; padding: 0 4px; background: #D70015; color: #fff; }
 .bd-off.purgeOnly { background: #8A6100; } .bd-off.closed { background: #636366; }
 .bd-zoom { position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); background: var(--material); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-radius: 12px; padding: 10px 16px; font-size: 15px; font-weight: 600; z-index: 30; pointer-events: none; box-shadow: 0 4px 18px rgba(0,0,0,.18); text-align: center; max-width: 80%; }
-.bd-q { display: inline-block; background: #fff; color: #D70015; font-weight: 800; border-radius: 4px; padding: 0 4px; margin-right: 3px; font-size: 12px; line-height: 15px; }
-/* Finished and called-off jobs: a greyed fill with full-contrast text (and a check on completed ones), never faded text. */
-.bd-job.faded .bd-job-in, .bd-job.struck .bd-job-in { background: color-mix(in srgb, var(--c) 20%, color-mix(in srgb, var(--gray) 22%, var(--cell))); color: var(--label); }
+.bd-q { display: inline-block; background: color-mix(in srgb, var(--red) 14%, transparent); color: color-mix(in srgb, var(--red) 78%, var(--label)); font-weight: 800; border-radius: 4px; padding: 0 4px; margin-right: 3px; font-size: 12px; line-height: 15px; }
+/* Finished and called-off jobs: a greyed card with full-contrast text (and a check on completed ones), never faded text. */
+.bd-job.faded .bd-job-in, .bd-job.struck .bd-job-in { background: color-mix(in srgb, var(--gray) 15%, var(--cell)); color: var(--label); border-left-color: color-mix(in srgb, var(--ring) 45%, var(--gray)); box-shadow: none; }
 .bd-scroll.selecting .bd-job:not(.sel) .bd-job-in { opacity: 1; }
 .bd-slot { margin-bottom: 5px; border-radius: 9px; border: 2px dashed var(--tint); background: color-mix(in srgb, var(--tint) 12%, transparent); position: relative; box-sizing: border-box; transition: height .12s; }
 .bd-slot .bd-job-in { opacity: .45; border-color: transparent; }
 .bd-slot .bd-land { position: absolute; right: 6px; bottom: 4px; font-size: 12px; line-height: 15px; font-weight: 800; color: var(--label); background: var(--cell); border-radius: 4px; padding: 0 4px; letter-spacing: .2px; text-transform: uppercase; box-shadow: 0 0 0 1px var(--tint); }
 .bd-job.struck .bd-job-title { text-decoration: line-through; text-decoration-thickness: 2px; }
-.bd-tag { display: inline-block; font-size: 12px; line-height: 15px; font-weight: 800; letter-spacing: .2px; text-transform: uppercase; border-radius: 4px; padding: 0 4px; background: rgba(0,0,0,.78); color: #fff; margin-top: 2px; }
-.bd-tag.na { background: #fff; color: #D70015; box-shadow: 0 0 0 .5px rgba(0,0,0,.25); } .bd-tag.nb { background: #fff; color: #C93400; box-shadow: 0 0 0 .5px rgba(0,0,0,.25); }
+.bd-tag { display: inline-block; font-size: 12px; line-height: 15px; font-weight: 800; letter-spacing: .2px; text-transform: uppercase; border-radius: 4px; padding: 0 4px; background: var(--fill2); color: var(--label); margin-top: 2px; }
+/* One warning look (amber: needs doing) and one problem look (red: something is wrong). */
+.bd-tag.nb, .bd-flag.warn { background: color-mix(in srgb, var(--orange) 18%, transparent); color: color-mix(in srgb, var(--orange) 55%, var(--label)); } .bd-tag.na, .bd-flag.bad { background: color-mix(in srgb, var(--red) 14%, transparent); color: color-mix(in srgb, var(--red) 78%, var(--label)); }
 .bd-job.arrived .bd-job-in { outline: 2px solid var(--label); outline-offset: -2px; }
-/* Stripes are kept for the two warnings below, so a change that is still syncing shows a dashed outline instead. */
+/* A change that is still syncing shows a dashed outline. */
 .bd-job.pending .bd-job-in { border-style: dashed; }
 .bd-job.dragging { display: none; }
+.bd-job.linked .bd-job-in { box-shadow: 0 0 0 2px var(--tint); }
 .bd-job.flash .bd-job-in { animation: bd-flash 1.800s ease-out; }
 @keyframes bd-flash { 0%, 40% { box-shadow: 0 0 0 4px var(--yellow); transform: scale(1.04); } 100% { transform: none; } }
 .bd-add { display: flex; align-items: center; justify-content: center; gap: 4px; min-height: 44px; box-sizing: border-box; border-radius: 9px; border: 1px dashed var(--sep); color: var(--label2); font-size: 12px; font-weight: 600; cursor: pointer; letter-spacing: 0; }
@@ -130,7 +136,7 @@ WD.css(`
 .bd-mday.sel { background: var(--fill3); }
 .bd-mnum { width: 22px; height: 22px; margin: 0 auto 1px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; letter-spacing: 0; }
 .bd-mday.today .bd-mnum { background: #D70015; color: #fff; font-weight: 600; }
-.bd-mev { font-size: 12px; line-height: 14px; letter-spacing: -.2px; white-space: nowrap; overflow: hidden; border-radius: 3px; padding: 0 2px; margin-top: 1px; color: var(--label); background: color-mix(in srgb, var(--c) 30%, var(--cell)); border-left: 3px solid var(--ring); }
+.bd-mev { font-size: 12px; line-height: 14px; letter-spacing: -.2px; white-space: nowrap; overflow: hidden; border-radius: 3px; padding: 0 2px; margin-top: 1px; color: var(--label); background: var(--fill3); border-left: 3px solid var(--ring); }
 .bd-mev.struck { text-decoration: line-through; background: color-mix(in srgb, var(--gray) 16%, var(--cell)); }
 .bd-more { font-size: 12px; line-height: 14px; color: var(--label2); padding-left: 3px; letter-spacing: -.2px; white-space: nowrap; overflow: hidden; }
 .menu.compact .menu-item .mi-sub { display: none; }
@@ -142,14 +148,10 @@ WD.css(`
 .bd-rchips button.on { color: var(--label); border-color: color-mix(in srgb, var(--c) 55%, transparent); background: color-mix(in srgb, var(--c) 14%, transparent); font-weight: 600; } .bd-rchips button.on .dot { opacity: 1; }
 .bd-rnote { margin: 0 0 5px; border-radius: 8px; background: #FFE066; color: #1C1C1E; border-left: 4px solid #E0A800; font-size: 12px; line-height: 15px; font-weight: 600; padding: 5px 6px; cursor: pointer; letter-spacing: -.05px; overflow-wrap: anywhere; }
 .bd-rnote small { display: block; font-weight: 700; font-size: 12px; letter-spacing: .2px; text-transform: uppercase; opacity: .8; }
-/* Striped strokes are kept for the two warnings that block or change what dispatch does. The stripes sit outside the card's own outline,
-   as wide as the job-type stroke (3 points) in 6-point bands at 45°, and neither pair uses white or black, so both show on a light or a dark board.
-   Red and pink: more unpaid invoices than the company's limit. Orange and brown: the driver or truck is not cleared for this job; it wins when a card has both. */
-.bd-job.unpaid, .bd-job.blocked { padding: 3px; border-radius: 12px; background: repeating-linear-gradient(var(--sa, 45deg), var(--s1) 0 6px, var(--s2) 6px 12px); }
-/* Unpaid stripes lean the other way from the not-cleared stripes, so the two read apart by direction as well as color. */
-.bd-job.unpaid { --s1: #FFD60A; --s2: #6E6E73; --sa: -45deg; } .bd-job.blocked { --s1: #FF3B30; --s2: #D1D1D6; --sa: 45deg; }
-.bd-flag { display: inline-flex; align-items: center; gap: 2px; font-size: 12px; line-height: 15px; font-weight: 800; letter-spacing: .2px; text-transform: uppercase; border-radius: 4px; padding: 0 4px; margin: 2px 3px 0 0; background: rgba(0,0,0,.78); color: #fff; }
-.bd-flag.bad { background: #fff; color: #D70015; box-shadow: 0 0 0 .5px rgba(0,0,0,.25); } .bd-flag.warn { background: #fff; color: #8A5200; box-shadow: 0 0 0 .5px rgba(0,0,0,.25); }
+/* One warning style. A card that dispatch should stop and look at (more unpaid invoices than the company's limit, or a driver or truck not cleared
+   for the job) gets a red outline, and a red label on the card says which. The route's color stays on the left edge. There are no stripes. */
+.bd-job.unpaid .bd-job-in, .bd-job.blocked .bd-job-in { border-color: var(--red); border-left-color: var(--ring); box-shadow: 0 0 0 1.5px var(--red); }
+.bd-flag { display: inline-flex; align-items: center; gap: 2px; font-size: 12px; line-height: 15px; font-weight: 800; letter-spacing: .2px; text-transform: uppercase; border-radius: 4px; padding: 0 4px; margin: 2px 3px 0 0; background: var(--fill2); color: var(--label); }
 /* Selecting jobs to move: a solid bar under the date, in place of the warning lines, so it is seen and covers no job. */
 .bd-pick { flex: none; position: relative; z-index: 5; display: flex; align-items: center; gap: 6px; padding: 5px 8px; background: color-mix(in srgb, var(--tint) 78%, #000); color: #fff; font-size: 15px; box-shadow: 0 2px 8px rgba(0,0,0,.28); }
 .bd-pick.in { animation: bd-pick-in .3s cubic-bezier(.2,.9,.3,1.25); }
@@ -224,12 +226,14 @@ function step(n) { const b = S.board; if (b.mode === 'month') { const d = D.pars
 function keep(top, left) { const live = scroller && scroller.isConnected && !!scroller.offsetParent && !!scroller.placed; saved = { top: top === undefined ? (live ? scroller.scrollTop : saved.top) : top, left: left === undefined ? (live ? scroller.scrollLeft : saved.left) : left }; scroller = null; }
 function refresh() { if (page && page.el.isConnected) page.refresh(); }
 
-/* 5.3 Home. The default board: today, every route side by side (Routes view), the board rather than the map, three routes across, the
+/* A driver's default board is their own route for today alone (WD.app.driverRoute, round11b.js).
+   5.3 Home. The default board: today, every route side by side (Routes view), the board rather than the map, three routes across, the
    standard card detail, and the routes that were showing when the app opened. Home puts all of that back at once. */
 const firstVisible = new WeakMap(), startVisible = r => { if (!firstVisible.has(r)) firstVisible.set(r, !!r.visible); return firstVisible.get(r); };
 const boardHome = WD.app.home('board', {
-  atHome: () => { const b = S.board; return b.day === D.today() && b.mode === 'routes' && b.view === 'board' && !b.split && !b.select && b.detail === 1 && (S.desktop || b.cols === 3) && b.dayCount === (S.desktop ? 7 : 3) && q.routes().every(r => !!r.visible === startVisible(r)); },
-  reset: () => { const b = S.board; q.routes().forEach(r => { r.visible = startVisible(r); }); Object.assign(b, { day: D.today(), mode: 'routes', view: 'board', split: false, select: null, detail: 1, cols: 3, dayCount: S.desktop ? 7 : 3 }); keep(null, 0); refresh(); WD.changed(); },
+  atHome: () => { const b = S.board, mine = WD.app.driverRoute && WD.app.driverRoute(D.today()); if (mine) return b.day === D.today() && b.mode === 'days' && b.routeId === mine.id && b.dayCount === 1 && b.view === 'board' && !b.split && !b.select && b.detail === 1;
+    return b.day === D.today() && b.mode === 'routes' && b.view === 'board' && !b.split && !b.select && b.detail === 1 && (S.desktop || b.cols === 3) && b.dayCount === (S.desktop ? 7 : 3) && q.routes().every(r => !!r.visible === startVisible(r)); },
+  reset: () => { const b = S.board; q.routes().forEach(r => { r.visible = startVisible(r); }); Object.assign(b, { day: D.today(), mode: 'routes', view: 'board', split: false, select: null, detail: 1, cols: 3, dayCount: S.desktop ? 7 : 3 }); { const mine = WD.app.driverRoute && WD.app.driverRoute(D.today()); if (mine) Object.assign(b, { mode: 'days', routeId: mine.id, dayCount: 1 }); } keep(null, 0); refresh(); WD.changed(); },
 });
 /* ---------- Header rows ---------- */
 function topBar() {
@@ -340,7 +344,14 @@ function offStrip() {
 }
 
 /* ---------- Ordered lists ---------- */
-/* Colors: the job type fills the card and the route (calendar) color rims it. */
+/* Colors: the route (calendar) color is the left edge and the stop number. --c (the job-type color) is only used by the optional filled styles. */
+/* Linked columns (desktop workspace): the first click on a stop shows it in the columns beside the board (the map zooms to it, Customers opens the record)
+   and marks the card; a second click on the same card opens the job. With one column, or on an iPhone, a click opens the job as before. */
+let linkedId = null, linkTold = false;
+function openJob(job) {
+  if (linkedId !== job.id && WD.app.linkSelect && WD.app.linkSelect({ from: 'board', jobId: job.id, customerId: job.customerId, routeId: job.routeId, day: job.day })) {
+    linkedId = job.id; refresh(); if (!linkTold) { linkTold = true; ui.toast('Shown in the other columns. Click it again to open the job.', 'columns', 3200); } return; }
+  linkedId = null; jobsScreen().openDetails && jobsScreen().openDetails(job.id); }
 const cardStyle = job => { const c = WD.cardColor(job), ring = q.routeColor(job.routeId); return { '--c': c, '--ring': ring, '--fg': readableOn(c), '--nfg': readableOn(ring) }; };
 /* Card detail: pinch vertically on the board (or ⌘/ctrl-scroll, or the routes menu) — 0 shows more jobs with just the name, 2 shows fewer jobs with everything a dispatcher needs. Addresses are left off; they're one tap away. */
 const DETAIL = ['Less detail', 'Standard', 'More detail'];
@@ -378,7 +389,7 @@ function cell(job, number, ci) {
   const key = keyFacts(job), fx = facts(job).filter(x => !(x[0] === 'clock' && hasWindow(key)));
   /* What VoiceOver reads: "Stop 4, Summit Physical Therapy, scheduled", then anything that needs attention. */
   const say = [off ? 'Called off' : 'Stop ' + number, job.title, ((WD.jobStatuses[job.status] || {}).title || job.status).toLowerCase(), ...key, notBilled && 'not billed', noAddr, unpaid && 'unpaid invoices', ...bad.map(i => i.short), job.pending && 'change still syncing', q.routeName(job.routeId)].filter(Boolean).join(', ');
-  return h('div.bd-job.' + job.status + cls + (bad.length ? '.blocked' : '') + (struck ? '.struck' : '') + (off ? '.calledoff' : '') + (wf.dimmed(job) ? '.faded' : '') + (job.pending ? '.pending' : '') + (drag && drag.job.id === job.id ? '.dragging' : '') + (flashId === job.id ? '.flash' : '') + (picked ? '.sel' : ''),
+  return h('div.bd-job.' + job.status + cls + (bad.length ? '.blocked' : '') + (struck ? '.struck' : '') + (off ? '.calledoff' : '') + (wf.dimmed(job) ? '.faded' : '') + (job.pending ? '.pending' : '') + (drag && drag.job.id === job.id ? '.dragging' : '') + (flashId === job.id ? '.flash' : '') + (linkedId === job.id ? '.linked' : '') + (picked ? '.sel' : ''),
     { 'data-job': job.id, style: cardStyle(job), role: 'button', tabindex: '0', 'aria-label': say, 'aria-pressed': picking ? String(picked) : null },
     h('div.bd-job-in', h('span.bd-num', { 'aria-hidden': 'true' }, number),
       h('div.bd-job-main', ci && h('div.bd-time', ci.time || 'No time'), h('div.bd-job-title', !job.located && job.address && job.type !== 'meet' ? h('span.bd-q', '?') : null, done ? h('span.bd-done', icon('checkmark', 11)) : st && icon(st, 12), job.pending && icon('sync', 11), job.title, job.recurring ? h('span', { style: 'font-weight:400' }, ' ↻') : null),
@@ -388,7 +399,8 @@ function cell(job, number, ci) {
         WD.cardTags && !WD.closed[job.status] && (t => t.length ? h('div.d12', t) : null)(WD.cardTags(job)),
         /* 5.3: every stop shows its ETA, worked out again as the day goes on; red when it falls outside the time the customer was given. */
         !tag && !WD.closed[job.status] && WD.eta && WD.eta.cardChip(job),
-        !tag && h('div.bd-job-sub.d1', fx.map(x => x[1]).join(' · ') || (key.length ? null : type.title)),
+        !tag && job.type !== 'regular' && h('div.d12', h('span.bd-type', type.title)),
+        !tag && h('div.bd-job-sub.d1', fx.map(x => x[1]).join(' · ') || (key.length || job.type !== 'regular' ? null : type.title)),
         !tag && h('div.d2', details(job, key)))),
     picking && canSelect(job) && h('span.bd-check', icon('checkmark', 11)));
 }
@@ -410,7 +422,7 @@ function selectBar() {
 const shownDetail = () => Math.min(S.board.detail, layout.cap == null ? 2 : layout.cap);
 /** Opening a card or control without a pointer: the keyboard, or VoiceOver's double tap (which sends a click and no pointer events). */
 function activate(t) {
-  if (t.matches('.bd-job')) { const j = q.job(t.dataset.job); if (!j) return; if (S.board.select) toggleSelect(j); else jobsScreen().openDetails && jobsScreen().openDetails(j.id); }
+  if (t.matches('.bd-job')) { const j = q.job(t.dataset.job); if (!j) return; if (S.board.select) toggleSelect(j); else openJob(j); }
   else if (t.matches('.bd-add')) addStop(t.closest('.bd-col')); else t.click();
 }
 function onKey(e) { if (e.key !== 'Enter' && e.key !== ' ') return; const t = e.target; if (!t.matches || !t.matches('.bd-job, .bd-colhead, .bd-add, .bd-chip, .bd-rnote')) return; e.preventDefault(); activate(t); }
@@ -426,7 +438,8 @@ function grid() {
      the columns give up 22 points so the next one peeks in. Days view always fits its one or three days. */
   const per = b.mode === 'routes' && b.cols !== 'all' ? clamp(+b.cols || 3, 1, cols.length) : cols.length, peek = cols.length > per ? 22 : 0;
   /* On a computer every column is on screen at once, at least 170 points wide; more than fit scroll sideways. */
-  const colW = desk ? Math.max(170, Math.floor(W / cols.length)) : Math.floor((W - peek) / per), showHead = cols.length > 1, today = D.today(), canEdit = WD.can('jobs.edit');
+  /* In a narrow workspace column the board shows one or two routes at a readable width and the rest scroll sideways. */
+  const colW = desk ? Math.max(W < 620 ? Math.min(W, 230) : 170, Math.floor(W / cols.length)) : Math.floor((W - peek) / per), showHead = cols.length > 1, today = D.today(), canEdit = WD.can('jobs.edit');
   /* Narrow columns hold less: under 110 points the cards stop at Standard, under 84 at names only. */
   layout = { cols, colW, cap: colW < 84 ? 0 : colW < 110 ? 1 : 2 };
   /* Calendar scheduling lists each day by start time; jobs with no time come last under “No time set”. Stop order is untouched otherwise. */
@@ -526,7 +539,7 @@ function onPointerDown(e) {
     lastDown = Date.now(); cleanup(); if (active) return dragEnd(); if (pinch || Date.now() - pinchAt < 500) return;
     const dx = ev.clientX - sx, dy = ev.clientY - sy;
     if (held) return;
-    if (!moved) { if (job) jobsScreen().openDetails && jobsScreen().openDetails(job.id); else if (colEl && WD.can('jobs.edit') && (addEl || !e.target.closest('.bd-empty'))) addStop(colEl); }
+    if (!moved) { if (job) openJob(job); else if (colEl && WD.can('jobs.edit') && (addEl || !e.target.closest('.bd-empty'))) addStop(colEl); }
     else if (!job && Math.abs(dx) > 70 && Math.abs(dy) < 45 && (dx < 0 ? el.scrollLeft >= el.scrollWidth - el.clientWidth - 2 : el.scrollLeft <= 2)) step(dx < 0 ? 1 : -1);
   };
   const cancel = () => { lastDown = Date.now(); cleanup(); if (active) { drag.ghost.remove(); drag.ins.remove(); drag.slot.remove(); drag = null; refresh(); } };
@@ -687,6 +700,11 @@ function render(p) {
 }
 WD.screens.board = {
   root: () => ({ title: 'Dispatch', navbar: false, noScroll: true, live: false, render, onChange: p => { if (pinch) staleWhilePinching = true; else if (!drag) p.refresh(); }, onReappear: p => p.refresh() }),
+  /** From another workspace column: a job → its day, with the card marked and flashed; a route (a truck picked in Maintenance) → that route alone for the day. */
+  onLinked(sel) { const b = S.board, j = sel.jobId && q.job(sel.jobId), r = !j && sel.routeId && q.route(sel.routeId);
+    if (j) { b.day = j.day; if (b.mode === 'month') b.mode = 'routes'; if (b.mode === 'days' && b.routeId !== j.routeId) b.routeId = j.routeId; b.view = 'board'; linkedId = flashId = revealId = j.id; refresh(); return true; }
+    if (r) { Object.assign(b, { mode: 'days', routeId: r.id, dayCount: 1, day: sel.day || D.today(), view: 'board' }); keep(null, 0); refresh(); return true; }
+    return false; },
   /** Show a day (and optionally one job, highlighted) on the board. */
   show(day, jobId) { S.board.day = day; if (S.board.mode === 'month') S.board.mode = 'routes'; keep(null); flashId = jobId || null; const j = jobId && q.job(jobId); if (j) { const r = q.route(j.routeId); if (r && !r.visible) r.visible = true; revealId = j.id; } WD.nav.switchTab('board'); refresh(); },
 };
