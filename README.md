@@ -30,6 +30,16 @@ Board and map colors: the job type fills each card and pin (purge yellow, govern
 
 Jobs have no scheduled times: each route's day is an ordered list, and stop 1 is done first. Cards leave the address off and show the key facts (containers or boxes, window, time on site); pinch on the board (or ⌘/ctrl-scroll, or Card detail in the board’s ⋯ menu) to switch between less and more detail. Every card carries all three levels and the board’s `lvl0`–`lvl2` class picks one, so pinching never rebuilds the list. AutoRoute recommends when to leave the truck's parking place for a day that hasn't started, which you can accept or replace with your own time, and gives a window to each stop marked **Needs a window**. On the board, drag a job up or down to reorder it or into another column to reassign it, and tap a column's empty space (or **Add stop**) to add a job at the end. Notes for the day sit above the list. The prototype clock starts at 10:24 AM; other drivers' trucks move and complete their stops on their own, faster than real life, so the board and map change while you watch.
 
+## What changed in 5.4
+
+- **Area plan** (`WD.areas`, `r18.js`; `data.areaPlan`): which areas are served on which days, with no jobs. Dispatch → Month → ellipsis menu → **Show on the calendar: Jobs | Areas** (`S.board.monthShow`; the switch is only in the menu while Month is selected). Each rule is `{id, name, routeId, every (0 one time, 1, 2 or 4 weeks), day (first day), skip: [days]}` and shows in its route's color; `WD.areas.on(day, routeIds)` lists a day's areas and `WD.areas.openDay(day)` is the sheet to add, change or remove them and to open that day's jobs. The demo plan is seeded from the routes.
+- **Month swipe** (`monthSwipe` in `board.js`): swipe up for the next month, down for the previous one; a mouse wheel or trackpad does the same.
+- **Price rate on a job** (`priceRow` in `jobs.js`): in Service, between Containers and Office hours: each container's rate and the total for the visit, or the customer's price per visit when the job has no containers. Shown to people who can see or do billing.
+- **Dialer matches** (`showMatches` in `r14-calls.js`): the count under the typed number is a button that lists every matching contact; choosing one puts its number on the keypad.
+- **Full job history** (`WD.staff.jobHistory(job)`, `r16.js`): a button under Created by / Last changed by in job details.
+- **Counts in red circles**: `ui.segmented` options take `badge` (a count, `.seg-badge`). Used by the Dialer (Call inbox, Text inbox, Inbox) and the CRM segment bars (Leads, Needs, Tasks, Feedback).
+- **Theme colors**: `S.colors` is now `{accent, seg, text, textBold, bg}`. `text` recolors secondary text (`--label2`), `textBold` makes it heavier wherever it is used (`boldRule` in `core.js` collects every rule colored with `--label2`), `bg` is the page background (`--bg`); `text` and `bg` apply in light appearance only. Each color has a strip of nine shades, light to dark (`shades` in `rc.js`). The standard scheme (`WD.app.colorDefaults`) is blue accent with light blue segmented controls. The extra controls are temporary, for settling the color scheme.
+
 ## What changed in 5.3
 
 - **Dialer opens on the keypad**: pressing a tab or a Menu section calls the screen's optional `WD.screens[id].onTabTap()` before it shows (`state.tap` in `core.js`). The Dialer uses it to set `UI.seg = 'keypad'`, so every press of the Dialer tab shows the keypad. Code that switches tabs itself (`WD.nav.switchTab`, the panel jumps) does not run the hook and can still open another segment.
@@ -67,6 +77,7 @@ Jobs have no scheduled times: each route's day is an ordered list, and stop 1 is
 | `js/screens/r16-biz.js` | `WD.modules`, `WD.plans`, `WD.onboard`, `WD.files`: editions, plan grid, trial and promotions, the setup interview, Company Files |
 | `js/screens/r17.js` | The default view of each tab for the Home button (`WD.app.home` registrations) |
 | `js/screens/r17-eta.js` | `WD.eta`: live ETAs, late warnings, the driver's on-site estimate, time on site per customer, Products on jobs setting |
+| `js/screens/r18.js` | `WD.areas`: the area plan shown on Dispatch → Month → Areas |
 
 ## What changed in 5.1
 

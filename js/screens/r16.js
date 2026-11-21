@@ -54,6 +54,7 @@ WD.css(`
 .tm-file { background: var(--cell); border-radius: 12px; padding: 12px 14px; font: 13px/19px ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; color: var(--label); }
 .tm-q { background: var(--fill3); border-radius: 10px; padding: 8px 10px; font-size: 14px; line-height: 19px; margin-top: 6px; } .tm-q b { font-weight: 600; }
 .jb-audit { font-size: 13px; color: var(--label2); margin-top: 6px; display: flex; flex-wrap: wrap; gap: 2px 12px; } .jb-audit b { font-weight: 600; color: var(--label); }
+.jb-hist { appearance: none; border: 0; background: color-mix(in srgb, var(--tint) 14%, transparent); color: var(--tint); font: inherit; font-size: 13px; font-weight: 600; border-radius: 14px; min-height: 30px; padding: 0 12px; display: inline-flex; align-items: center; gap: 5px; cursor: pointer; flex-basis: auto; margin-top: 4px; }
 `);
 
 /* ================= Texts ================= */
@@ -161,7 +162,7 @@ T.agentOK = by => !UI3.agent || (UI3.agent === '-' ? !by : [].concat(by || []).i
 /** Inbox / All switch with the agent filter beside it. key: 'callBox' | 'textBox'. */
 T.boxBar = (key, inboxN, page, names) => { const cur = UI3[key], lab = !UI3.agent ? 'All agents' : UI3.agent === '-' ? 'Nobody' : first(UI3.agent);
   const btn = h('button.tm-ag' + (UI3.agent ? '.on' : ''), { 'aria-label': 'Filter by agent', onclick: e => ui.menu(e.currentTarget, [{ header: 'Show ' + (key === 'callBox' ? 'calls' : 'texts') + ' handled by' }, { label: 'All agents', checked: !UI3.agent, onTap: () => { UI3.agent = ''; page.refresh(); } }].concat(names.map(n => ({ label: n, checked: UI3.agent === n, onTap: () => { UI3.agent = n; page.refresh(); } })), [{ label: 'Nobody (missed, unanswered)', checked: UI3.agent === '-', onTap: () => { UI3.agent = '-'; page.refresh(); } }])) }, icon('person', 16), lab, icon('chevron.up.chevron.down', 12));
-  return h('div.tm-bar', ui.segmented([{ value: 'inbox', label: 'Inbox' + (inboxN ? ' · ' + inboxN : '') }, { value: 'all', label: 'All' }], cur, v => { UI3[key] = v; page.refresh(); }), btn); };
+  return h('div.tm-bar', ui.segmented([{ value: 'inbox', label: 'Inbox', badge: inboxN }, { value: 'all', label: 'All' }], cur, v => { UI3[key] = v; page.refresh(); }), btn); };
 T.box = key => UI3[key];
 /** The heading of an inbox on the Dialer: its name, what is in it, and the agent filter. kind: 'calls' | 'texts'. */
 T.inboxHead = (title, sub, kind, page) => { const names = T.agentNames(), lab = !UI3.agent ? 'All agents' : UI3.agent === '-' ? 'Nobody' : first(UI3.agent);
@@ -199,7 +200,16 @@ T.teamView = page => { const ps = T.presence(), today = agg(D.today(), D.today()
 /* ================= Who created and last changed a job ================= */
 T.jobAudit = job => { if (!job) return null; const ev = job.events || [], names = T.agentNames(), made = ev[0], last = ev.length > 1 ? ev[ev.length - 1] : null;
   const by = made ? made.actor : names[Math.floor(hs(job.id) * names.length)] || 'Office';
-  return h('div.jb-audit', h('span', 'Created by ', h('b', by), made && made.at ? ' · ' + fmt.rel(made.at) : ''), h('span', last ? ['Last changed by ', h('b', last.actor), ' · ' + fmt.rel(last.at)] : 'Not changed since')); };
+  return h('div.jb-audit', h('span', 'Created by ', h('b', by), made && made.at ? ' · ' + fmt.rel(made.at) : ''), h('span', last ? ['Last changed by ', h('b', last.actor), ' · ' + fmt.rel(last.at)] : 'Not changed since'),
+    h('button.jb-hist', { onclick: () => T.jobHistory(job) }, icon('clock', 15), 'Full job history')); };
+/** Everything that happened to a job, newest first: who did it, when, and (for an edit) exactly what changed. */
+T.jobHistory = job => { const ev = (job.events || []).slice().reverse(), stamp = at => { const d = new Date(at); return fmt.day(D.key(d), 'md') + ' at ' + fmt.time(d.getHours() * 60 + d.getMinutes()); };
+  ui.sheet({ title: 'Job history', leading: [{ label: 'Close', onTap: p => p.dismiss() }],
+    render: () => ui.list(h('div.note', { style: 'padding-bottom:10px' }, job.title + ' · ' + fmt.day(job.day)),
+      ev.length ? ui.section({ fold: false, showFooter: true, footer: 'Newest first. Tap an edit to see exactly what changed. Version ' + job.version + '.' },
+        ev.map(e => { const n = (e.changes || []).length; return ui.row({ leading: ui.avatar(e.actor, { size: 28 }), title: e.text + (n ? ' · ' + n + (n === 1 ? ' change' : ' changes') : ''), subtitle: [h('div', e.actor + ' · ' + stamp(e.at) + ' · ' + fmt.rel(e.at)), n ? h('div', e.changes.map(c => c.label).join(', ')) : null], chevron: !!n, onTap: n ? () => WD.x.showChanges(e) : null }); }))
+        : ui.empty({ icon: 'clock', title: 'No history yet', text: 'Changes to this job show here with who made them.' })) }, { detent: 'large' }); };
+
 
 /* ================= Generated office activity ================= */
 const HOURS = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18], CURVE = { 7: 1.5, 8: 5, 9: 8.5, 10: 9.5, 11: 8, 12: 4.5, 13: 6.5, 14: 7.5, 15: 6, 16: 4.5, 17: 2.5, 18: .8 }, DOW = [0, 1.3, 1.05, 1, .95, .8, .15], SHIFT = [[8, 17], [7, 16], [9, 18], [8, 15]], HISTORY = 540;

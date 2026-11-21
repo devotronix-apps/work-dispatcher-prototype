@@ -123,6 +123,10 @@ WD.css(`
 .bd-week { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(7, 1fr); border-top: .5px solid var(--sep); }
 .bd-mday { min-width: 0; padding: 2px 1px; cursor: pointer; overflow: hidden; }
 .bd-mday.other { opacity: .35; }
+.bd-month { touch-action: none; overflow: hidden; }
+.bd-month.up > .bd-week { animation: bd-mup .26s cubic-bezier(.2,.85,.25,1); } .bd-month.down > .bd-week { animation: bd-mdown .26s cubic-bezier(.2,.85,.25,1); }
+@keyframes bd-mup { from { transform: translateY(60px); opacity: 0; } } @keyframes bd-mdown { from { transform: translateY(-60px); opacity: 0; } }
+.bd-mev.area { font-weight: 600; margin: 2px 1px 0; padding: 1px 3px; border-radius: 4px; }
 .bd-mday.sel { background: var(--fill3); }
 .bd-mnum { width: 22px; height: 22px; margin: 0 auto 1px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; letter-spacing: 0; }
 .bd-mday.today .bd-mnum { background: #D70015; color: #fff; font-weight: 600; }
@@ -231,7 +235,7 @@ const boardHome = WD.app.home('board', {
 function topBar() {
   const b = S.board, today = D.today();
   let title = fmt.day(b.day), sub = fmt.day(b.day, 'rel');
-  if (b.mode === 'month') { title = fmt.day(b.day, 'month'); sub = ''; }
+  if (b.mode === 'month') { title = fmt.day(b.day, 'month'); sub = showAreas() ? 'Areas' : ''; }
   else if (b.mode === 'days' && b.dayCount > 1 && !mapOnly()) { title = fmt.day(b.day, 'md') + ' – ' + fmt.day(D.add(b.day, b.dayCount - 1), 'md'); sub = ''; }
   else if (sub === title) sub = '';
   const route = b.mode === 'days' && (b.dayCount > 1 || mapOnly()) && q.route(b.routeId);
@@ -240,7 +244,7 @@ function topBar() {
   /* Six 44-point buttons and the date do not fit across an iPhone, so AutoRoute is the first tool in the menu (and in each route heading's menu). */
   return h('div.bd-top',
     h('div.bd-date', btn('chevron.left', 'Previous ' + unit, () => step(-1), icon('chevron.left', 20)),
-      h('button.t' + (title.length > 11 ? '.long' : ''), { 'aria-label': 'Go to date, showing ' + title, onclick: pickDate }, h('b', title), route ? h('small.rt', ui.dot(q.routeColor(route)), q.routeName(route)) : sub && h('small' + (b.day === today ? '.today' : ''), sub)),
+      h('button.t' + (title.length > 11 ? '.long' : ''), { 'aria-label': 'Go to date, showing ' + title, onclick: pickDate }, h('b', title), route ? h('small.rt', ui.dot(q.routeColor(route)), q.routeName(route)) : sub && h('small' + (b.day === today && b.mode !== 'month' ? '.today' : ''), sub)),
       btn('chevron.right', 'Next ' + unit, () => step(1), icon('chevron.right', 20))),
     /* Board ↔ Map (5.1): one button that names the view a tap goes to. On a computer it sits here in the bar; on an iPhone it floats over the
        bottom of the board (viewPill), where there is room for a label, and the date gets the width back. */
@@ -273,6 +277,8 @@ function boardMenu(anchor) {
   const seg = (opts, val, fn) => ({ node: h('div.bd-mseg', ui.segmented(opts, val, v => { fn(v); m && m.close(); })) });
   m = ui.menu(anchor, [
     seg([{ value: 'routes', label: 'Routes' }, { value: 'days', label: 'Days' }, { value: 'month', label: 'Month' }], b.mode, v => { b.mode = v; if (v === 'month') b.view = 'board'; if (v === 'days' && !b.routeId) b.routeId = (q.visibleRoutes()[0] || q.routes()[0]).id; keep(undefined, 0); refresh(); }),
+    /* Month only: what the calendar shows. Jobs, or the area plan (which areas on which days, no jobs). */
+    ...(b.mode === 'month' && WD.areas ? [{ header: 'Show on the calendar' }, seg([{ value: 'jobs', label: 'Jobs' }, { value: 'areas', label: 'Areas' }], showAreas() ? 'areas' : 'jobs', v => { b.monthShow = v; refresh(); })] : []),
     ...(b.mode === 'days' ? [{ header: 'Route' }, ...q.routes().map(r => ({ label: q.routeName(r), checked: r.id === b.routeId, onTap: () => { b.routeId = r.id; refresh(); } })),
         /* A computer has room for a working week, a full week or two weeks; narrow columns scroll sideways. */
         ...(S.desktop ? [{ header: 'Days on screen' }] : []),
@@ -633,13 +639,28 @@ function monthWeeks(dayKey) {
   for (let w = 0; w < 6; w++) { const days = []; for (let d = 0; d < 7; d++) { days.push(k); k = D.add(k, 1); } if (w < 4 || D.parse(days[0]).getMonth() === month) weeks.push(days); }
   return { weeks, month };
 }
+/* Month shows jobs or, switched in the ellipsis menu, the area plan (WD.areas, r18.js): which areas are served on which days, with no jobs.
+   Swiping up goes to the next month and down to the previous one, as in Google Calendar; a mouse wheel or trackpad does the same. */
+let monthAnim = null, monthSwiped = 0, wheelLock = 0;
+const showAreas = () => S.board.monthShow === 'areas' && !!WD.areas;
+function monthSwipe(el) {
+  let s = null, acc = 0; const go = n => { monthAnim = n > 0 ? 'up' : 'down'; monthSwiped = Date.now(); step(n); };
+  el.addEventListener('pointerdown', e => { s = { x: e.clientX, y: e.clientY }; });
+  el.addEventListener('pointerup', e => { if (!s) return; const dx = e.clientX - s.x, dy = e.clientY - s.y; s = null; if (Math.abs(dy) > 36 && Math.abs(dy) > Math.abs(dx) * 1.5) go(dy < 0 ? 1 : -1); });
+  el.addEventListener('pointercancel', () => { s = null; });
+  el.addEventListener('wheel', e => { e.preventDefault(); if (Date.now() < wheelLock) return; acc += e.deltaY; if (Math.abs(acc) > 60) { wheelLock = Date.now() + 500; go(acc > 0 ? 1 : -1); } }, { passive: false });
+}
 function monthView() {
-  const b = S.board, { weeks, month } = monthWeeks(b.day), routes = q.visibleRoutes().map(r => r.id), today = D.today();
-  return h('div.bd-month', h('div.bd-mhead', ['S', 'M', 'T', 'W', 'T', 'F', 'S'].map(x => h('span', x))), weeks.map(days => h('div.bd-week', days.map(day => {
+  const b = S.board, { weeks, month } = monthWeeks(b.day), routes = q.visibleRoutes().map(r => r.id), today = D.today(), areas = showAreas();
+  const el = h('div.bd-month' + (areas ? '.areas' : '') + (monthAnim ? '.' + monthAnim : ''), h('div.bd-mhead', ['S', 'M', 'T', 'W', 'T', 'F', 'S'].map(x => h('span', x))), weeks.map(days => h('div.bd-week', days.map(day => {
+    const cls = 'div.bd-mday' + (D.parse(day).getMonth() !== month ? '.other' : '') + (day === today ? '.today' : ''), num = h('div.bd-mnum', D.parse(day).getDate()), swiped = () => Date.now() - monthSwiped < 400;
+    if (areas) { const list = WD.areas.on(day, routes);
+      return h(cls, { onclick: () => { if (!swiped()) WD.areas.openDay(day, refresh); } }, num, list.slice(0, 4).map(a => h('div.bd-mev.area', { style: { background: a.color, color: readableOn(a.color) }, title: a.name }, a.name)), list.length > 4 && h('div.bd-more', '+' + (list.length - 4) + ' more')); }
     const jobs = q.jobsOn(day).filter(j => routes.includes(j.routeId)).sort(boardSort);
-    return h('div.bd-mday' + (D.parse(day).getMonth() !== month ? '.other' : '') + (day === today ? '.today' : ''), { onclick: () => { b.day = day; b.mode = 'routes'; keep(null, 0); refresh(); } },
-      h('div.bd-mnum', D.parse(day).getDate()), WD.r11 && routes.some(r => WD.r11.noteFor(r, day)) && h('div.bd-mev', { style: { '--c': '#FFD60A', '--ring': '#E0A800', background: '#FFE066', color: '#1C1C1E' }, title: 'Route note' }, 'Note'), jobs.slice(0, 4).map(j => h('div.bd-mev' + (WD.struck[j.status] ? '.struck' : ''), { style: { '--c': j.allDay ? q.routeColor(j.routeId) : WD.cardColor(j), '--ring': q.routeColor(j.routeId) } }, j.title)), jobs.length > 4 && h('div.bd-more', '+' + (jobs.length - 4) + ' more'));
+    return h(cls, { onclick: () => { if (swiped()) return; b.day = day; b.mode = 'routes'; keep(null, 0); refresh(); } },
+      num, WD.r11 && routes.some(r => WD.r11.noteFor(r, day)) && h('div.bd-mev', { style: { '--c': '#FFD60A', '--ring': '#E0A800', background: '#FFE066', color: '#1C1C1E' }, title: 'Route note' }, 'Note'), jobs.slice(0, 4).map(j => h('div.bd-mev' + (WD.struck[j.status] ? '.struck' : ''), { style: { '--c': j.allDay ? q.routeColor(j.routeId) : WD.cardColor(j), '--ring': q.routeColor(j.routeId) } }, j.title)), jobs.length > 4 && h('div.bd-more', '+' + (jobs.length - 4) + ' more'));
   }))));
+  monthAnim = null; monthSwipe(el); return el;
 }
 function pickDate() {
   let cursor = S.board.day;

@@ -43,6 +43,7 @@ WD.css(`
 .cl-num { font-size: 34px; font-weight: 400; letter-spacing: .5px; min-height: 40px; line-height: 40px; margin-top: 0; color: var(--label); cursor: text; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cl-num.blank { color: var(--label3); font-size: 17px; letter-spacing: -.2px; }
 .cl-sub { font-size: 14px; color: var(--tint); min-height: 18px; line-height: 18px; }
+.cl-sub.link { cursor: pointer; font-weight: 600; min-height: 30px; line-height: 30px; }
 .cl-hits { margin: 0; display: flex; flex-direction: column; gap: 6px; }
 .cl-hit { appearance: none; border: 0; background: var(--cell); border-radius: 12px; min-height: 48px; padding: 6px 12px; display: flex; align-items: center; gap: 10px; text-align: left; cursor: pointer; color: var(--label); width: 100%; }
 .cl-hit .m { flex: 1; min-width: 0; } .cl-hit .n { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .cl-hit .p { font-size: 13px; color: var(--label2); }
@@ -233,6 +234,13 @@ function callRow(c, o = {}) { const st = ST(), y = why(c, st), open = !!y && !c.
     subtitle: [h('div', subLine(c)), c.summary && h('div.cl-snip', c.summary), h('div.cl-badges', statusBadge(c), open && !['Missed', 'Voicemail'].includes(y) && ui.badge(y, 'var(--orange)'), c.resolved && ui.badge('Resolved', 'var(--gray)'), c.archived && ui.badge('Archived', 'var(--gray)'), c.triedBack && !c.resolved && ui.badge('Called back · no answer', 'var(--orange)'), ui.who(c.by, { none: c.dir === 'in' && c.status !== 'answered' ? 'Nobody answered' : null }))],
     trailing: [h('div.cl-meta', h('div', when(c.at)), h('div', durLabel(c))), o.info && ui.iconBtn('info.circle', 'Call details', o.info)], onTap: o.onTap }); }
 const pad = (onKey, mini) => h('div.cl-pad' + (mini ? '.mini' : ''), [['1', ''], ['2', 'ABC'], ['3', 'DEF'], ['4', 'GHI'], ['5', 'JKL'], ['6', 'MNO'], ['7', 'PQRS'], ['8', 'TUV'], ['9', 'WXYZ'], ['*', ''], ['0', '+'], ['#', '']].map(([k, l]) => h('button.cl-key', { 'aria-label': k, onclick: () => onKey(k) }, k, h('small', l))));
+/** Every customer and lead contact whose phone number contains the digits typed on the keypad. */
+const matchesOf = n => (data.customers || []).filter(c => !c.archived).flatMap(c => (c.contacts || []).filter(x => x.phone && dg(x.phone).includes(n)).map(p => ({ c, p })));
+/** The keypad shows the two likeliest matches; tapping the count under the number lists all of them. Choosing one puts its number on the keypad. */
+function showMatches(n, pick) { const all = matchesOf(n);
+  const sheet = ui.sheet({ title: all.length + (all.length === 1 ? ' match' : ' matches') + ' for ' + n, leading: [{ label: 'Close', onTap: pg => pg.dismiss() }],
+    render: () => ui.list(ui.section({ fold: false, showFooter: true, footer: 'Customers and leads with a phone number that contains ' + n + '. Tap one to put its number on the keypad.' },
+      all.map(({ c, p }) => ui.row({ leading: h('div', { style: 'margin-right:12px' }, ui.avatar(c.name, { size: 34 })), title: c.name, subtitle: (p.name ? p.name + ' · ' : '') + fmt.phone(p.phone), badge: ui.badge(PIPE.includes(c.lifecycle) ? 'Lead' : 'Customer', PIPE.includes(c.lifecycle) ? 'var(--blue)' : 'var(--green)'), onTap: () => { sheet.close(); setTimeout(() => pick(p), 300); } })))) }, { detent: 'large' }); }
 /** A sheet to choose one of this business's customers or leads. */
 function pickCustomer(title, done) { let term = '';
   const sheet = ui.sheet({ title, leading: [{ label: 'Cancel', onTap: pg => pg.dismiss() }], search: { placeholder: 'Search customers and leads', onInput: (v, pg) => { term = v; pg.refresh(); } },
@@ -383,7 +391,8 @@ function keypadView(page) {
     disp.textContent = t ? (/[*#]/.test(t) || n.length > 10 ? t : fmt.phoneTyping(t)) : 'Enter a number'; disp.classList.toggle('blank', !t); del.style.visibility = t ? 'visible' : 'hidden'; callBtn.disabled = n.length < 3;
     const found = []; if (n.length >= 2) for (const c of data.customers || []) { if (c.archived) continue; const p = (c.contacts || []).find(x => dg(x.phone).includes(n)); if (p) found.push({ c, p }); if (found.length >= 12) break; }
     if (isAuto) { const pk = n.length >= 3 ? C.pickLine(t) : null; fromB.textContent = pk ? pk.line.label + ' · ' + fmt.phone(pk.line.number) : 'Automatic · local number'; autoWhy.textContent = pk ? 'Automatic: ' + pk.why : 'Automatic: the number they called us on, or the closest local one'; }
-    const exact = found.find(x => dg(x.p.phone) === dg(t)); sub.textContent = exact ? exact.p.name + ' · ' + exact.c.name : found.length > 2 ? plural(found.length, 'match') + (found.length >= 12 ? ' or more' : '') : '';
+    const exact = found.find(x => dg(x.p.phone) === dg(t)); const multi = !exact && found.length > 2, total = multi ? matchesOf(n).length : 0; sub.textContent = exact ? exact.p.name + ' · ' + exact.c.name : multi ? total + ' matches' + ' · Show all ›' : '';
+    sub.classList.toggle('link', multi); sub.onclick = multi ? () => showMatches(n, p => { UI.typed = dg(p.phone); sync(); page.refresh(); }) : null; multi ? sub.setAttribute('role', 'button') : sub.removeAttribute('role');
     fill(hits, exact ? [] : found.slice(0, 2).map(({ c, p }) => h('button.cl-hit', { onclick: () => { UI.typed = dg(p.phone); sync(); } }, ui.avatar(c.name, { size: 34 }), h('div.m', h('div.n', c.name), h('div.p', p.name + ' · ' + fmt.phone(p.phone))), ui.badge(PIPE.includes(c.lifecycle) ? 'Lead' : 'Customer', PIPE.includes(c.lifecycle) ? 'var(--blue)' : 'var(--green)')))); }
   sync();
   return h('div.cl-kp',
@@ -421,7 +430,7 @@ function root() { return { title: 'Dialer', trailing: page => { const X = TS() &
   const n = C.reviewCount(), T = TS(), tn = T && WD.texts ? WD.texts.inboxCount() : 0; if (UI.seg === 'recent' || UI.seg === 'review') { if (T) T.ui.callBox = UI.seg === 'review' ? 'inbox' : 'all'; UI.seg = 'calls'; }
   if (!['keypad', 'calls', 'texts', 'team'].includes(UI.seg) || (!T && UI.seg !== 'calls')) UI.seg = 'keypad';
   logFab(page);
-  return ui.list(h('div.cl-dial', ui.segmented([{ value: 'keypad', label: 'Keypad' }, { value: 'calls', label: 'Call inbox' + (n ? ' · ' + n : '') }].concat(T ? [{ value: 'texts', label: 'Text inbox' + (tn ? ' · ' + tn : '') }, { value: 'team', label: 'Team' }] : []), UI.seg, v => { UI.seg = v; page.refresh(); })),
+  return ui.list(h('div.cl-dial', ui.segmented([{ value: 'keypad', label: 'Keypad' }, { value: 'calls', label: 'Call inbox', badge: n }].concat(T ? [{ value: 'texts', label: 'Text inbox', badge: tn }, { value: 'team', label: 'Team' }] : []), UI.seg, v => { UI.seg = v; page.refresh(); })),
     UI.seg === 'keypad' ? keypadView(page) : UI.seg === 'calls' ? callsView(page) : UI.seg === 'texts' ? T.textsView(page) : T.teamView(page)); } }; }
 C.ui = UI;
 WD.screens.dialer = { root, onTabTap: () => { UI.seg = 'keypad'; } };

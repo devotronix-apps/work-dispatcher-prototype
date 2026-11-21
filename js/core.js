@@ -4,9 +4,9 @@
 'use strict';
 const WD = window.WD = { screens: {}, data: {} };
 /** Prototype version (Settings → About). Bump on every publish; the “what’s new” tutorial shows once per version. */
-WD.version = '5.3';
+WD.version = '5.4';
 /** Earlier releases kept on the published site under v/<version>/ (Settings → Older versions). Add the outgoing version on every publish. */
-WD.olderVersions = ['5.2', '5.1', '5.0', '4.3', '4.2', '4.1'];
+WD.olderVersions = ['5.3', '5.2', '5.1', '5.0', '4.3', '4.2', '4.1'];
 const $ = (s, r) => (r || document).querySelector(s);
 
 /* ================= DOM helper ================= */
@@ -339,8 +339,9 @@ ui.quarterRow = o => {
 ui.numField = (value, min, max, onChange, label) => h('input.numfield', { type: 'text', inputmode: 'numeric', 'aria-label': label || 'Quantity', value: String(value), onfocus: e => e.target.select(), onkeydown: e => { if (e.key === 'Enter') e.target.blur(); },
   onchange: e => { const n = parseInt(e.target.value.replace(/\D/g, ''), 10), v = Math.min(max, Math.max(min, isNaN(n) ? min : n)); e.target.value = String(v); if (v !== value) onChange(v); } });
 ui.stepper = (value, min, max, onChange) => h('div.stepper', h('button', { disabled: value <= min, onclick: () => onChange(value - 1) }, '−'), h('button', { disabled: value >= max, onclick: () => onChange(value + 1) }, '+'));
+/** An option may carry `badge` (a count): it shows in a red circle after the label, like the count on a tab. */
 ui.segmented = (options, value, onChange) => h('div.segmented', options.map(x => typeof x === 'object' ? x : { value: x, label: String(x) }).map(x =>
-  h('button' + (x.value === value ? '.on' : ''), { onclick: e => { [...e.currentTarget.parentNode.children].forEach(b => b.classList.remove('on')); e.currentTarget.classList.add('on'); onChange && onChange(x.value); } }, x.label)));
+  h('button' + (x.value === value ? '.on' : ''), { onclick: e => { [...e.currentTarget.parentNode.children].forEach(b => b.classList.remove('on')); e.currentTarget.classList.add('on'); onChange && onChange(x.value); } }, x.label, x.badge ? h('span.seg-badge', { 'aria-label': x.badge + ' waiting' }, String(x.badge)) : null)));
 /** ui.button('Save', {kind: 'filled'|'tinted'|'gray'|'plain'|'destructive'|'dark', icon, onTap(e, el), block, small, disabled}) */
 ui.button = (label, o = {}) => { const el = h('button.btn.' + (o.kind || 'filled') + (o.block === false ? '' : '.block') + (o.small ? '.small' : ''), { disabled: !!o.disabled, style: o.style, onclick: e => o.onTap && o.onTap(e, el) }, o.icon && WD.icon(o.icon, o.small ? 17 : 20), label); return el; };
 /** A round icon button for the trailing edge of a row (call, text, directions), so one row can carry its own actions. */
@@ -756,16 +757,32 @@ const stillSignedIn = () => { const last = +store.get('wd.lastSignIn'), pol = WD
 app.signIn = () => { S.signedIn = true; store.set('wd.lastSignIn', String(Date.now())); store.set('wd.signedOut', '0'); app.showMain(); syncPanel(); setTimeout(() => app.autoUpdateCheck(), 2500); };
 app.signOut = () => { store.set('wd.signedOut', '1'); S.signedIn = false; S.shift = null; ui.closeAllSheets(); if (WD.screens.auth && WD.screens.auth.show) WD.screens.auth.show(); else app.showMain(); syncPanel(); };
 app.setRole = role => { S.role = role; S.me = (WD.data.users || []).find(u => u.role === role && u.status !== 'invited') || S.me; if (S.signedIn) app.showMain(); syncPanel(); WD.emit('role', role); };
-app.setTheme = t => { S.theme = t; screen().dataset.theme = t; store.set('wd.theme', t); syncPanel(); WD.changed(); };
-/** Display → Theme colors (5.3). Each person picks an accent color (buttons, links, the selected tab) and the background of segmented controls.
-    null = the standard color. The choice is kept on this device, like the appearance and the text size. */
+app.setTheme = t => { S.theme = t; screen().dataset.theme = t; store.set('wd.theme', t); applyColors(); syncPanel(); WD.changed(); };
+/** Display → Theme colors. Each person picks an accent color (buttons, links, the selected tab), the background of segmented controls, the
+    color and weight of secondary text (the gray text of headings, second lines and footnotes), and the background behind the lists.
+    null = the standard color. The choice is kept on this device, like the appearance and the text size. Secondary text and background colors
+    apply in light appearance only, so a color chosen for a light screen never lands on a dark one. These are here while the scheme is being
+    worked out; once it is settled the extra controls can go. */
 WD.accentColors = [{ value: null, label: 'Blue', hex: '#007AFF' }, { value: '#5856D6', label: 'Indigo' }, { value: '#AF52DE', label: 'Purple' }, { value: '#0E8F9E', label: 'Teal' }, { value: '#248A3D', label: 'Green' }, { value: '#C2570C', label: 'Orange' }, { value: '#D6336C', label: 'Pink' }, { value: '#D70015', label: 'Red' }];
 WD.segColors = [{ value: null, label: 'Gray', hex: '#E3E3E8' }, { value: '#CFE6FF', label: 'Light blue' }, { value: '#CDEFD8', label: 'Mint' }, { value: '#FFE0C2', label: 'Peach' }, { value: '#E3D9FB', label: 'Lavender' }, { value: '#FFF1B8', label: 'Yellow' }, { value: '#FFD6E0', label: 'Pink' }];
-S.colors = { accent: null, seg: null };
+WD.textColors = [{ value: null, label: 'Gray', hex: '#6F6F74' }, { value: '#3A3A3C', label: 'Dark gray' }, { value: '#000000', label: 'Black' }, { value: '#3D4B5C', label: 'Slate' }, { value: '#1F3A5F', label: 'Navy' }, { value: '#0A58CA', label: 'Blue' }, { value: '#5C4630', label: 'Brown' }];
+WD.bgColors = [{ value: null, label: 'Light gray', hex: '#F2F2F7' }, { value: '#FFFFFF', label: 'White' }, { value: '#EAF3FF', label: 'Ice blue' }, { value: '#EEF2F6', label: 'Mist' }, { value: '#FBF7EE', label: 'Cream' }, { value: '#ECF7F0', label: 'Mint' }, { value: '#F3F0FB', label: 'Lavender' }, { value: '#EDEBE7', label: 'Warm gray' }];
+/* The standard scheme: blue accent with light blue segmented controls. */
+app.colorDefaults = { accent: null, seg: '#CFE6FF', text: null, textBold: false, bg: null };
+S.colors = { ...app.colorDefaults };
 const hexOK = v => /^#[0-9a-f]{6}$/i.test(v || '') ? v.toUpperCase() : null;
-const applyColors = () => { const st = screen().style, c = S.colors, set = (k, v) => v ? st.setProperty(k, v) : st.removeProperty(k);
-  set('--tint', c.accent); set('--seg-bg', c.seg); set('--seg-border', c.seg && 'color-mix(in srgb, ' + c.seg + ' 62%, #000)'); set('--seg-label', c.seg && (WD.readableOn ? WD.readableOn(c.seg) : '#1C1C1E')); };
-app.setColors = change => { S.colors = { accent: hexOK(change.accent === undefined ? S.colors.accent : change.accent), seg: hexOK(change.seg === undefined ? S.colors.seg : change.seg) }; applyColors(); store.set('wd.colors', JSON.stringify(S.colors)); WD.changed(); };
+const cleanColors = c => ({ accent: hexOK(c.accent), seg: hexOK(c.seg), text: hexOK(c.text), textBold: !!c.textBold, bg: hexOK(c.bg) });
+/* Bold secondary text: every rule that colors its text with --label2 (in the stylesheet or added by a screen) is collected, so the weight
+   follows the color wherever it is used, along with anything colored that way inline. */
+let boldStyle = null;
+const boldRule = () => { const sels = ['[style*="--label2"]'];
+  for (const sheet of document.styleSheets) { let rules; try { rules = sheet.cssRules; } catch (e) { continue; }
+    for (const r of rules) if (r.selectorText && r.style && /--label2/.test(r.style.color) && !/::|:before|:after/.test(r.selectorText)) sels.push(r.selectorText); }
+  if (!boldStyle) boldStyle = document.head.appendChild(h('style')); boldStyle.textContent = '.screen.bold2 :is(' + sels.join(', ') + ') { font-weight: 600; }'; };
+const applyColors = () => { const st = screen().style, c = S.colors, light = S.theme !== 'dark', set = (k, v) => v ? st.setProperty(k, v) : st.removeProperty(k);
+  set('--tint', c.accent); set('--seg-bg', c.seg); set('--seg-border', c.seg && 'color-mix(in srgb, ' + c.seg + ' 62%, #000)'); set('--seg-label', c.seg && (WD.readableOn ? WD.readableOn(c.seg) : '#1C1C1E'));
+  set('--label2', light && c.text); set('--bg', light && c.bg); screen().classList.toggle('bold2', c.textBold); if (c.textBold) boldRule(); };
+app.setColors = change => { S.colors = cleanColors({ ...S.colors, ...change }); applyColors(); store.set('wd.colors', JSON.stringify(S.colors)); WD.changed(); };
 /** Display → Text size. The whole interface is scaled, the way Dynamic Type enlarges an iPhone app. */
 WD.textSizes = [{ value: 0.9, label: 'Small' }, { value: 1, label: 'Default' }, { value: 1.12, label: 'Large' }, { value: 1.25, label: 'Extra large' }, { value: 1.4, label: 'Largest' }];
 app.setTextSize = z => { S.textSize = z = +z || 1; [$('#root'), overlays()].forEach(el => { el.style.zoom = z === 1 ? '' : z; }); store.set('wd.textSize', String(z)); WD.changed(); };
@@ -892,7 +909,8 @@ function fit() {
 function tick() { const t = $('.sb-time'); if (t) t.textContent = F.time(WD.nowMins(), true); }
 app.start = () => {
   if (store.get('wd.theme')) S.theme = store.get('wd.theme'); screen().dataset.theme = S.theme; if (+store.get('wd.textSize')) app.setTextSize(+store.get('wd.textSize'));
-  try { const c = JSON.parse(store.get('wd.colors') || 'null'); if (c) { S.colors = { accent: hexOK(c.accent), seg: hexOK(c.seg) }; applyColors(); } } catch (e) { /* no saved colors */ }
+  try { const c = JSON.parse(store.get('wd.colors') || 'null'); if (c) S.colors = cleanColors(c); } catch (e) { /* no saved colors */ }
+  applyColors();
   S.me = (WD.data.users || []).find(u => u.role === S.role) || { id: 'u0', name: 'You', role: 'owner' };
   S.org = (WD.data.orgs || [])[0] || { id: 'o1', name: 'Company' };
   S.board.day = D.today();

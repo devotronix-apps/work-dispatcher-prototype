@@ -125,6 +125,7 @@ function details(job, p) {
       ui.row({ title: 'Job type', trailing: h('span.hstack.secondary', type.color && ui.dot(type.color), type.title) }),
       !job.allDay && ui.row({ title: 'Customer type', detail: WD.custType(cust ? cust.custType : job.custType).title }),
       (job.items && job.items.length ? ui.row({ title: job.type === 'purge' ? 'Estimated boxes' : 'Containers', detail: WD.itemsLabel(job.items, job.type === 'purge') }) : job.containers && ui.row({ title: 'Containers', detail: job.containers })),
+      priceRow(job, cust),
       job.bizOpen && ui.row({ title: 'Office hours', detail: fmt.time(fmt.fromHHMM(job.bizOpen)) + ' – ' + fmt.time(fmt.fromHHMM(job.bizClose)) }),
       job.lunchFrom && ui.row({ title: 'Closed for lunch', detail: fmt.time(fmt.fromHHMM(job.lunchFrom)) + ' – ' + fmt.time(fmt.fromHHMM(job.lunchUntil)) }),
       job.closedDays && job.closedDays.length > 0 && ui.row({ title: 'Closed', detail: job.closedDays.join(', ') }),
@@ -147,6 +148,11 @@ function details(job, p) {
       !job.allDay && !WD.closed[job.status] && ui.row({ title: 'Customer canceled or rescheduled…', icon: 'phone', iconPlain: true, tint: true, disabled: !idle, onTap: idle ? () => callOff(job) : null })),
     canEdit && ui.section({ fold: false }, ui.row({ title: 'Delete job', icon: 'trash', iconPlain: true, iconColor: 'var(--red)', destructive: true, disabled: !idle, onTap: idle ? () => deleteJob(job, p) : null })));
 }
+/** What this visit is charged at: each container's rate and what they come to. A job with no containers shows the customer's price per visit. */
+const priceRow = (job, cust) => { if (job.allDay || !(WD.can('billing.view') || WD.can('billing.field'))) return null;
+  const lines = (job.items || []).filter(i => i.qty > 0).map(i => { const pb = data.priceBook.find(x => x.id === i.id) || {}; return { unit: pb.unit || (pb.name || 'item').toLowerCase(), qty: i.qty, rate: i.rate != null ? i.rate : pb.rate || 0 }; });
+  if (lines.length) return ui.row({ title: 'Price rate', subtitle: lines.map(l => fmt.money(l.rate, true) + (l.unit === 'flat fee' ? ' flat fee' : ' per ' + l.unit)).join(' · '), detail: fmt.money(lines.reduce((s, l) => s + l.qty * l.rate, 0), true) + ' this visit' });
+  const rate = cust && cust.stats && cust.stats.rate; return rate ? ui.row({ title: 'Price rate', detail: fmt.money(rate, true) + ' per visit' }) : null; };
 const windowText = j => (j.custFrom ? fmt.time(fmt.fromHHMM(j.custFrom)) : 'Any') + ' – ' + (j.custUntil ? fmt.time(fmt.fromHHMM(j.custUntil)) : 'Any');
 /** Copy a job onto another day (end of that route's list): used when a visit is rescheduled. */
 function copyTo(job, day, routeId) {
