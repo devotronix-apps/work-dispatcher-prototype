@@ -18,6 +18,7 @@ WD.css(`
 .rc-flag .sh-acts { margin-top: 9px; }
 .rc-drv { font-size: 12px; font-weight: 500; color: var(--label2); letter-spacing: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .rc-drv.ovr { color: var(--orange); font-weight: 600; }
+.rc-unq { color: var(--red); font-weight: 800; }
 .rc-gauge { height: 8px; width: 84px; border-radius: 4px; background: var(--fill2); overflow: hidden; } .rc-gauge i { display: block; height: 100%; border-radius: 4px; background: var(--green); }
 .rc-gauge.low i { background: var(--red); } .rc-gauge.mid i { background: var(--orange); }
 .rc-signed { padding: 12px 16px; background: var(--cell); } .rc-signed .ink { height: 70px; display: grid; place-items: center; border-bottom: 1px solid var(--label3); margin-bottom: 5px; } .rc-signed .ink svg, .rc-signed .ink img { max-height: 66px; max-width: 100%; }
@@ -504,11 +505,16 @@ RC.routeOf = (userId, day) => q.routes().find(r => (RC.driverOn(r.id, day) || {}
 const changed = (rid, day) => { const a = asg(rid, day), r = usual(rid); return !!a && (('driverId' in a && a.driverId !== (r.driverId || null)) || (!!a.vehicleId && a.vehicleId !== r.vehicleId)); };
 const setA = (rid, day, patch) => { RA[rid + '|' + day] = { ...(asg(rid, day) || {}), ...patch }; };
 const first = u => u ? u.name.split(' ')[0] : 'Nobody';
-RC.headTag = c => { if (!S.prefs.showDrivers) return null; const d = RC.driverOn(c.routeId, c.day), v = RC.vehicleOn(c.routeId, c.day);
-  return h('span.bd-offrow', h('span.rc-drv' + (changed(c.routeId, c.day) ? '.ovr' : ''), first(d) + (v ? ' · ' + v.name : ''))); };
+RC.headTag = c => { const f = fault(c), show = S.prefs.showDrivers; if (!show && !f.driver && !f.truck) return null; const d = RC.driverOn(c.routeId, c.day), v = RC.vehicleOn(c.routeId, c.day);
+  /* With “Show drivers on Dispatch” off, only the one that isn't qualified is named. */
+  const parts = [(show || f.driver) && unq(first(d), f.driver && d), (show || f.truck) && v && unq(v.name, f.truck)].filter(Boolean);
+  return h('span.bd-offrow', h('span.rc-drv' + (changed(c.routeId, c.day) ? '.ovr' : ''), { title: f.why.join(' ') || null }, parts.map((x, i) => [i ? ' · ' : null, x]))); };
+/* A driver or truck that isn't qualified for a job on the route that day is named in bold red (WD.r11.routeFault). */
+const fault = c => WD.r11 && WD.r11.routeFault ? WD.r11.routeFault(c.routeId, c.day) : { driver: false, truck: false, why: [] };
+const unq = (text, bad) => bad ? h('b.rc-unq', { 'aria-label': text + ', not qualified' }, text) : text;
 /** With one column there is no heading row, so the assignment shows as a line you can tap (or press and hold). */
-RC.assignStrip = cols => { if (cols.length !== 1 || !S.prefs.showDrivers) return null; const c = cols[0], d = RC.driverOn(c.routeId, c.day), v = RC.vehicleOn(c.routeId, c.day), edit = WD.can('jobs.edit');
-  return h('div.bd-strip', { style: { '--c': changed(c.routeId, c.day) ? 'var(--orange)' : 'var(--gray)', cursor: edit ? 'pointer' : 'default' }, onclick: () => edit && RC.assignSheet(c.routeId, c.day) }, icon('person', 16), (d ? d.name : 'No driver') + (v ? ' · ' + v.name : ' · no truck') + (changed(c.routeId, c.day) ? ' · this day only' : ''), h('span.spacer'), edit && 'Assign', edit && icon('chevron.right', 13)); };
+RC.assignStrip = cols => { if (cols.length !== 1) return null; const c = cols[0], f = fault(c); if (!S.prefs.showDrivers && !f.driver && !f.truck) return null; const d = RC.driverOn(c.routeId, c.day), v = RC.vehicleOn(c.routeId, c.day), edit = WD.can('jobs.edit');
+  return h('div.bd-strip', { style: { '--c': f.driver || f.truck ? 'var(--red)' : changed(c.routeId, c.day) ? 'var(--orange)' : 'var(--gray)', cursor: edit ? 'pointer' : 'default' }, title: f.why.join(' ') || null, onclick: () => edit && RC.assignSheet(c.routeId, c.day) }, icon('person', 16), h('span', d ? unq(d.name, f.driver) : 'No driver', v ? ' · ' : ' · no truck', v ? unq(v.name, f.truck) : null, changed(c.routeId, c.day) ? ' · this day only' : '', f.driver || f.truck ? ' · not qualified' : ''), h('span.spacer'), edit && 'Assign', edit && icon('chevron.right', 13)); };
 RC.assignSheet = (rid, day) => {
   if (!WD.can('jobs.edit')) return ui.toast('Dispatch access is needed to assign drivers', 'lock');
   const r = q.route(rid), was = RC.driverOn(rid, day), wasV = RC.vehicleOn(rid, day), f = { driverId: was ? was.id : null, vehicleId: wasV ? wasV.id : null };

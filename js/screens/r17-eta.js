@@ -64,7 +64,11 @@ E.cardChip = job => { const e = E.forJob(job); if (!e || e.state === 'off' || e.
   if (E.outside(e)) return h('div.bd-eta.out', { title: 'They were told ' + winText(e.told) }, icon('exclamationmark.triangle', 11), ' ETA ' + st(e.eta) + ' · ' + sp(e.late || e.early) + (e.late ? ' late' : ' early'));
   return h('div.d12', h('div.bd-eta', icon('clock', 11), ' ETA ' + st(e.eta))); };
 /** The warning line under the date bar. cols: the board's columns. */
-E.boardStrip = cols => { const list = E.lateList(cols.filter(c => c.day >= D.today())); if (!list.length) return null;
+/* Ignoring a late stop hides it from the board's line and the banners until the app is next opened (WD.reopenApp), or until its ETA
+   or the time given changes the answer: the mark is kept against the time the customer was told. The card keeps its red ETA. */
+const ignored = e => !!e.job.etaIgnored && e.job.etaIgnored === key(e.job, e.told), ignore = (e, on) => { e.job.etaIgnored = on ? key(e.job, e.told) : null; };
+E.toReview = cols => E.lateList(cols.filter(c => c.day >= D.today())).filter(e => !ignored(e));
+E.boardStrip = cols => { const list = E.toReview(cols); if (!list.length) return null;
   return h('div.bd-strip', { style: { '--c': 'var(--red)' }, role: 'button', tabindex: '0', onclick: () => E.lateSheet(cols) }, icon('exclamationmark.triangle', 16),
     list.length === 1 ? list[0].job.title + ' · ETA ' + tm(list[0].eta) + ', ' + E.outsideText(list[0]) + ' for the time we gave' : plural(list.length, 'stop') + ' will arrive outside the time we gave', icon('chevron.right', 14)); };
 const contactOf = job => { const c = job.customerId && q.customer(job.customerId), p = c && ((c.contacts || []).find(x => x.phone) || (c.contacts || [])[0]); return { c, p, phone: (p && p.phone) || job.phone || '' }; };
@@ -75,13 +79,16 @@ E.textEta = (job, e) => { const { p, phone } = contactOf(job), X = WD.texts; if 
 /** Give the customer a new window around the ETA as it stands now. */
 E.newWindow = (job, e) => { const w = WD.etaWindow(e.eta), was = winText(e.told); Object.assign(job, { exactAt: '', custFrom: hhmm(w.from), custUntil: hhmm(w.until), windowBy: 'us', custStrict: false, needsWindow: false, windowToSend: true });
   job.events.push({ at: +WD.now(), actor: me(), text: 'Time given changed from ' + was + ' to ' + tm(w.from) + ' – ' + tm(w.until) }); WD.changed(); ui.toast('New time: ' + tm(w.from) + ' – ' + tm(w.until) + '. Tell the customer.', 'clock', 2800); };
-const lateActions = (job, e, after) => h('div.et-btns', ui.button('Text the new ETA', { kind: 'tinted', small: true, block: false, icon: 'message', onTap: () => E.textEta(job, e) }),
-  WD.can('jobs.edit') && ui.button('Give a new time', { kind: 'gray', small: true, block: false, icon: 'clock', onTap: () => { E.newWindow(job, e); after && after(); } }));
-E.lateSheet = cols => ui.sheet({ title: 'Outside the time we gave', trailing: [{ label: 'Done', bold: true, onTap: p => p.dismiss() }], render: page => { const list = E.lateList(cols.filter(c => c.day >= D.today()));
-  return ui.list(list.length ? list.map(e => ui.section({ fold: false },
-      ui.row({ leading: ui.dot(q.routeColor(e.job.routeId)), title: e.job.title, subtitle: [h('div', q.routeName(e.job.routeId) + ' · told ' + winText(e.told)), h('div.et-bad', 'ETA now ' + tm(e.eta) + ' · ' + E.outsideText(e))], chevron: true, onTap: () => { page.dismiss(); setTimeout(() => WD.screens.jobs && WD.screens.jobs.openDetails && WD.screens.jobs.openDetails(e.job.id), 450); } }),
-      lateActions(e.job, e, () => page.refresh())))
-    : ui.empty({ icon: 'checkmark.circle', title: 'Every stop is on time', text: 'Nobody who was given a time will be missed as the day stands now.' }),
+const lateActions = (job, e, after, extra) => h('div.et-btns', ui.button('Text the new ETA', { kind: 'tinted', small: true, block: false, icon: 'message', onTap: () => E.textEta(job, e) }),
+  WD.can('jobs.edit') && ui.button('Give a new time', { kind: 'gray', small: true, block: false, icon: 'clock', onTap: () => { E.newWindow(job, e); after && after(); } }), extra);
+E.lateSheet = cols => ui.sheet({ title: 'Outside the time we gave', trailing: [{ label: 'Done', bold: true, onTap: p => p.dismiss() }], render: page => { const every = E.lateList(cols.filter(c => c.day >= D.today())), list = every.filter(e => !ignored(e)), hidden = every.filter(ignored), re = () => { WD.changed(); page.refresh(); };
+  const stopRow = e => ui.row({ leading: ui.dot(q.routeColor(e.job.routeId)), title: e.job.title, subtitle: [h('div', q.routeName(e.job.routeId) + ' · told ' + winText(e.told)), h('div.et-bad', 'ETA now ' + tm(e.eta) + ' · ' + E.outsideText(e))], chevron: true, onTap: () => { page.dismiss(); setTimeout(() => WD.screens.jobs && WD.screens.jobs.openDetails && WD.screens.jobs.openDetails(e.job.id), 450); } });
+  return ui.list(list.length > 1 && h('div', { style: 'padding:0 0 10px' }, ui.button('Ignore all ' + list.length, { kind: 'gray', icon: 'eye.slash', onTap: () => { list.forEach(e => ignore(e, true)); re(); ui.toast('Ignored for now', 'checkmark', 1600); } })),
+    list.length ? list.map(e => ui.section({ fold: false }, stopRow(e),
+      lateActions(e.job, e, () => page.refresh(), ui.button('Ignore', { kind: 'gray', small: true, block: false, onTap: () => { ignore(e, true); re(); } }))))
+    : ui.empty({ icon: 'checkmark.circle', title: hidden.length ? 'Nothing left to review' : 'Every stop is on time', text: hidden.length ? 'The stops you ignored are listed below.' : 'Nobody who was given a time will be missed as the day stands now.' }),
+    hidden.length > 0 && ui.section({ header: 'Ignored for now', fold: false, showFooter: true, footer: 'An ignored stop keeps its red ETA on the card. It is back in this list the next time the app is opened, or as soon as the time given changes.' },
+      hidden.map(e => h('div.row', { style: 'gap:8px' }, h('div.row-main', h('div.row-title', e.job.title), h('div.row-sub', 'ETA ' + tm(e.eta) + ' · ' + E.outsideText(e))), ui.button('Stop ignoring', { kind: 'gray', small: true, block: false, onTap: () => { ignore(e, false); re(); } })))),
     h('div', { style: 'padding:12px 4px 0' }, ui.note('ETAs move as the day goes on: each one follows from where the truck really is and how long each stop is taking.'))); } }, { detent: 'large' });
 
 /* ================= On the job ================= */
@@ -115,7 +122,7 @@ E.askOnSite = (job, after) => { const planned = WD.siteMinutes(job).minutes, col
 const known = new Set(), key = (job, told) => job.id + '|' + (told ? told.until : '');
 let checking = null;
 function check() { checking = null; if (!S.signedIn || (S.me || {}).role === 'driver') return; let list; try { list = E.lateList(q.visibleRoutes().map(r => ({ routeId: r.id, day: D.today() }))); } catch (e) { return; }
-  const fresh = list.filter(e => !known.has(key(e.job, e.told))); if (!fresh.length) return; fresh.forEach(e => known.add(key(e.job, e.told)));
+  const fresh = list.filter(e => !known.has(key(e.job, e.told)) && !ignored(e)); if (!fresh.length) return; fresh.forEach(e => known.add(key(e.job, e.told)));
   ui.banner({ title: fresh.length === 1 ? fresh[0].job.title + ' will be ' + E.outsideText(fresh[0]) : plural(fresh.length, 'stop') + ' will miss the time we gave', text: fresh.length === 1 ? 'ETA ' + tm(fresh[0].eta) + ' · told ' + winText(fresh[0].told) + ' · ' + q.routeName(fresh[0].job.routeId) : fresh.map(e => e.job.title).join(' · '), icon: 'exclamationmark.triangle', color: 'var(--red)', duration: 7000,
     onTap: () => E.lateSheet(q.visibleRoutes().map(r => ({ routeId: r.id, day: D.today() }))) }); }
 WD.on('change', () => { if (!checking) checking = setTimeout(check, 900); }); setInterval(() => { if (S.signedIn) { memo = new Map(); check(); } }, 60000);

@@ -224,7 +224,7 @@ function openEntry(i) {
 }
 
 /* ================= Customers tab root ================= */
-const R = { min: 0, seg: 'customers', filter: 'all', query: '', results: null, loading: false, lostOpen: false, busy: null, justDone: null, page: null };
+const R = { min: 0, seg: 'customers', filter: 'all', query: '', results: null, loading: false, lostOpen: false, busy: null, justDone: null, page: null, taskOpen: { appr: true, overdue: true, today: true, upcoming: false, post: false, done: false } };
 let searchToken = 0;
 function root() {
   return { title: 'Customers', large: true,
@@ -372,17 +372,31 @@ async function toggleTask(t) {
   R.busy = null; t.done = true; t.doneAt = +WD.now(); R.justDone = t.id; WD.changed();
   await WD.delay(700); R.justDone = null; WD.changed();
 }
+/** A follow-up drawn like a lead on the Leads tab: what to do, who for, when it is due and whose it is. */
+function taskCard(t) {
+  const c = q.customer(t.customerId), done = t.done || R.justDone === t.id, edit = WD.can('crm.edit'), n = D.diff(t.due, today), late = !t.done && n < 0, who = staff(t.owner);
+  const btn = h('button.cu-check', { 'aria-label': done ? 'Mark not done' : 'Complete', disabled: !edit, onclick: e => { e.stopPropagation(); toggleTask(t); } },
+    R.busy === t.id ? ui.spinner(20) : icon(done ? 'checkmark.circle.fill' : 'circle', 24, done ? 'var(--green)' : 'var(--label3)'));
+  return h('div.cr-lc.cu-tc' + (done ? '.cu-done' : ''), { role: c ? 'button' : null, tabindex: c ? '0' : null, 'aria-label': t.title, onclick: c ? () => openDetail(c.id) : null }, btn,
+    h('div.cr-lc-m', h('div.cr-lc-t', h('b', t.title)), c && h('div.cr-lc-s', c.name),
+      h('div.cr-lc-f', h('span.cr-chip' + (late ? '.late' : ''), icon('calendar', 12), t.done ? 'Done ' + fmt.rel(t.doneAt) : n < -1 ? 'Due ' + fmt.day(t.due, 'md') + ' · ' + (-n) + ' days late' : fmt.day(t.due, 'rel')), t.lead && ui.badge('Lead', 'var(--blue)'))),
+    h('div.cr-lc-r', (a => { a.title = 'Assigned to ' + who; a.setAttribute('aria-label', 'Assigned to ' + who); return a; })(ui.avatar(who, { size: 28 }))));
+}
+/* The Tasks tab is built like the Leads tab: a bordered block per group in the group's color, with its count and its own Hide / Show.
+   What needs a decision or is late comes first: price changes to approve (only when there are some), then Overdue, then Today.
+   Postponed jobs and price approvals are in the same list, so nothing waiting on someone is kept in a separate place. */
 function tasksView() {
   const open = data.tasks.filter(t => !t.done || R.justDone === t.id).sort((a, b) => a.due.localeCompare(b.due)), done = data.tasks.filter(t => t.done && R.justDone !== t.id).sort((a, b) => b.doneAt - a.doneAt).slice(0, 10);
-  /* Every category starts collapsed, showing how many items it holds; tap one to open it. Postponed jobs (and price changes waiting for
-     approval) are in the same pipeline, so nothing waiting on someone is kept in a separate place. */
-  const sec = (header, list, footer) => ui.section({ header, footer, fold: true, folded: true, keepEmpty: true }, list.map(t => taskRow(t)));
-  const X = WD.r11, post = X ? X.postponedRows() : [], appr = X ? X.approvalRows() : [];
-  return ui.list(h('div', { style: 'padding:10px 4px 0' }, ui.note('Tap a category to open it. The number is how many items it holds.')),
-    sec('Overdue', open.filter(t => t.due < today)), sec('Today', open.filter(t => t.due === today)), sec('Upcoming', open.filter(t => t.due > today)),
-    X && ui.section({ header: 'Postponed jobs', footer: 'Jobs a customer postponed with no new date. Tap one to set a date, assign it to a route, edit it or cancel it.', fold: true, folded: true, keepEmpty: true }, post),
-    X && (appr.length > 0 || X.approvalsOn()) && ui.section({ header: 'Price changes to approve', footer: 'A driver changed a standing price for this and all future visits. It applies once an owner or admin approves it.', fold: true, folded: true, keepEmpty: true }, appr),
-    sec('Done', done));
+  const X = WD.r11, post = X ? X.postponedRows() : [], appr = X ? X.approvalRows() : [], show = R.taskOpen;
+  const block = (key, color, label, items, foot, rows) => h('div.cr-st', { style: { '--c': color } },
+    h('div.cr-st-h', h('b', label), h('span.cr-st-n', String(items.length)), h('button.cu-link', { 'aria-label': (show[key] ? 'Hide ' : 'Show ') + label, onclick: e => { e.stopPropagation(); show[key] = !show[key]; WD.changed(); } }, show[key] ? 'Hide' : 'Show')),
+    show[key] ? (items.length ? (rows ? h('div.cells', { style: 'border-radius:0' }, items) : items) : h('div.cr-st-f', { style: 'border-top:0' }, 'Nothing here.')) : null, show[key] && foot && items.length ? h('div.cr-st-f', foot) : null);
+  const cards = list => list.map(taskCard);
+  return h('div', { style: 'padding:0 0 24px' },
+    appr.length > 0 && block('appr', 'var(--orange)', 'Price changes to approve', appr, 'A driver changed a standing price for this and all future visits. It applies once an owner or admin approves it.', true),
+    block('overdue', 'var(--red)', 'Overdue', cards(open.filter(t => t.due < today))), block('today', 'var(--blue)', 'Today', cards(open.filter(t => t.due === today))), block('upcoming', 'var(--gray)', 'Upcoming', cards(open.filter(t => t.due > today))),
+    X && block('post', 'var(--purple)', 'Postponed jobs', post, 'Jobs a customer postponed with no new date. Tap one to set a date, assign it to a route, edit it or cancel it.', true),
+    block('done', 'var(--green)', 'Done', cards(done)));
 }
 function newTask(customerId) {
   let title = '', cid = customerId || null, due = D.add(today, 1); const ok = () => !!(title.trim() && cid);
@@ -843,6 +857,7 @@ WD.css(`
 .cu-more { border: 0; background: none; color: var(--tint); padding: 6px; margin-right: -8px; cursor: pointer; line-height: 0; flex: none; }
 .cu-check { border: 0; background: none; padding: 0; cursor: pointer; line-height: 0; width: 28px; height: 28px; display: grid; place-items: center; flex: none; }
 .cu-check:disabled { cursor: default; }
+.cu-tc { align-items: flex-start; padding-left: 8px; } .cu-tc .cu-check { width: 36px; height: 36px; margin-top: -2px; } .cu-tc.cu-done b { text-decoration: line-through; color: var(--label2); } .cu-tc:not([role]) { cursor: default; }
 .cu-done .row-title { text-decoration: line-through; color: var(--label2); }
 .cu-link { border: 0; background: none; color: var(--tint); text-transform: none; font-size: 13px; padding: 0; cursor: pointer; display: inline-flex; gap: 3px; align-items: center; letter-spacing: -.08px; }
 .cu-sechead { display: flex; justify-content: space-between; align-items: center; }

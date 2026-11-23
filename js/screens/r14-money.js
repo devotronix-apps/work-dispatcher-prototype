@@ -45,7 +45,7 @@ WD.css(`
    only while that strip is being built; the Unpaid invoices report and the customer's own page still use the real answer. */
 if (WD.r11 && WD.r11.boardStrips && WD.r11.overLimit) { const X = WD.r11, strips = X.boardStrips, over = X.overLimit; let mute = false;
   X.overLimit = c => !mute && over(c);
-  X.boardStrips = inView => { mute = !!X.warnOn && !X.warnOn('board'); try { return strips(inView); } finally { mute = false; } }; }
+  X.boardStrips = (inView, o) => { mute = !!X.warnOn && !X.warnOn('board'); try { return strips(inView, o); } finally { mute = false; } }; }
 /* One fee table. Settings → Company → Pricing and Agreements edits WD.r11.cfg.portal; rc.js charges from data.pay. The portal fields
    read and write data.pay directly so the two can never disagree, and rc.js's fee now includes the fixed amount per payment. */
 (() => { const P = cfg().portal; if (!P || !data.pay) return;

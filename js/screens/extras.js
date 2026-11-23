@@ -354,15 +354,22 @@ X.compareOp = op => {
 };
 
 /* ================= Jobs missing an address ================= */
-X.missingSheet = () => {
+/** o: {inView(job), label} from the board: the jobs on the day (or days) showing are listed first, apart from the other upcoming days.
+    Ignoring hides the board's line for now; an ignored job is back the next time the app is opened (WD.reopenApp) until it has an address. */
+X.missingSheet = (o = {}) => {
   ui.sheet({ title: 'Missing addresses', trailing: [{ label: 'Done', bold: true, onTap: p => p.dismiss() }],
-    render: p => { const list = WD.missingAddresses(), ignored = data.jobs.filter(j => j.addrIgnored && j.day >= today() && WD.addressIssue(j));
+    render: p => { const list = WD.missingAddresses(), ignored = data.jobs.filter(j => j.addrIgnored && j.day >= today() && !WD.closed[j.status] && WD.addressIssue(j));
+      const here = o.inView ? list.filter(o.inView) : [], rest = list.filter(j => !here.includes(j)), re = () => { WD.changed(); p.refresh(); };
       const row = (j, ign) => h('div.row', { style: 'flex-wrap:wrap;gap:8px' }, h('div.row-main', h('div.row-title', j.title), h('div.row-sub', fmt.day(j.day, 'rel') + ' · ' + q.routeName(j.routeId) + ' · ' + q.jobType(j.type).title), h('div.row-sub', { style: 'color:var(--red);font-weight:600' }, WD.addressIssue(j))),
-        h('div.x-two', ui.button(ign ? 'Stop ignoring' : 'Ignore', { kind: 'gray', small: true, block: false, onTap: () => { j.addrIgnored = !ign; WD.changed(); p.refresh(); } }),
+        h('div.x-two', ui.button(ign ? 'Stop ignoring' : 'Ignore', { kind: 'gray', small: true, block: false, onTap: () => { j.addrIgnored = !ign; re(); } }),
           !ign && WD.can('jobs.edit') && ui.button('Fix', { kind: 'filled', small: true, block: false, onTap: () => WD.screens.jobs.openEditor({ jobId: j.id }) })));
-      return ui.list(ui.section({ header: 'Upcoming jobs', footer: 'Jobs can be saved without an address when the customer will call back with it. Which job types need a street address, a city or ZIP, or nothing is set in Settings → Job types and fields.' },
-          list.map(j => row(j)), !list.length && ui.row({ icon: 'checkmark.circle.fill', iconPlain: true, iconColor: 'var(--green)', title: 'Every upcoming job has what it needs' })),
-        ui.section('Ignored', ignored.map(j => row(j, true)))); } });
+      const all = xs => xs.length > 1 && ui.row({ title: 'Ignore all ' + xs.length + ' for now', tint: true, center: true, onTap: () => { xs.forEach(j => { j.addrIgnored = true; }); re(); } });
+      const none = title => ui.row({ icon: 'checkmark.circle.fill', iconPlain: true, iconColor: 'var(--green)', title });
+      const foot = 'Jobs can be saved without an address when the customer will call back with it. Ignoring one only hides the line on the board: it comes back the next time the app is opened, until the address is added. Which job types need a street address, a city or ZIP, or nothing is set in Settings → Job types and fields.';
+      return ui.list(
+        o.inView && ui.section({ header: (o.label || 'Showing now') + ' · ' + here.length, fold: false }, here.map(j => row(j)), all(here), !here.length && none('Nothing left to review here')),
+        (rest.length > 0 || !o.inView) && ui.section({ header: o.inView ? 'Other upcoming days · ' + rest.length : 'Upcoming jobs', fold: false, footer: foot }, rest.map(j => row(j)), !o.inView && all(rest), !rest.length && none('Every upcoming job has what it needs')),
+        ui.section({ header: 'Ignored for now', fold: false }, ignored.map(j => row(j, true)))); } });
 };
 
 /* ================= Older job history from the server ================= */
@@ -435,12 +442,12 @@ X.contactSummary = (c, items, describe) => {
 
 /* ================= What's new tutorial ================= */
 const TOUR = [
-  { icon: 'sparkles', title: 'New in ' + WD.version, text: 'A calmer look: plain job cards, new route colors, darker text and fewer red counts. The Dialer is now the Inbox, the CRM starts with a search, and the website has linked columns. Run this tour again from Menu → Settings → About.' },
-  { tab: 'Dispatch', icon: 'calendar', title: 'Dispatch', list: ['Job cards are plain. The route’s color is on the left edge and the stop number, and a small label names the job type.', 'Red means a problem: a card that needs a look has a red outline and a red label saying why. Not billed is amber.', 'A driver’s Dispatch opens on their own route for today.', 'On the map, routes follow the streets. Pins are the route’s color.', 'To fill cards with the job-type color as before: Settings → Display → Job cards on Dispatch.'] },
-  { tab: 'CRM', icon: 'funnel', title: 'CRM', list: ['Search customers and leads at the top.', 'One row of tabs: Leads, Tasks, Needs, Quotes, Assignments, Referrals, Feedback. Swipe it sideways.', 'The AI review is one line. Tap it to open the suggestions.'] },
-  { tab: 'Inbox', icon: 'phone', title: 'Inbox', list: ['The Dialer is now the Inbox. It opens on the calls and texts that are waiting.', 'Keypad is a button at the bottom left.', 'Red circles count only what needs someone today.'] },
-  { tab: 'Shift', icon: 'truck', title: 'Shift', list: ['The first time, agree to the location notice and clock in with one button. After that the notice is gone.', 'Report a problem with the truck from here.', 'Owners and office staff see the team first: who is clocked in, where they are, and hours this week.'] },
-  { tab: 'Menu', icon: 'line.3.horizontal', title: 'Menu', list: ['Maintenance lists the trucks with problems first, and each truck has one status color.', 'On the website, the sidebar is grouped under headings, and Workspace at the bottom sets up columns side by side: choose a layout for your job, drag an edge to resize, fold a column or make it full width. Selecting a call, a stop or a truck in one column shows it in the others.'] },
+  { icon: 'sparkles', title: 'New in ' + WD.version, text: 'Month shows the plan for each day, the review lists on Dispatch set the day you are looking at apart and can be ignored, and AutoRoute moves a stop with a press and hold. Run this tour again from Menu → Settings → About.' },
+  { tab: 'Dispatch', icon: 'calendar', title: 'Dispatch', list: ['Missing addresses and jobs that need a qualified driver or truck: the day showing is listed first, apart from other days. Fix or ignore each one, or ignore them all. The line goes away once that day is dealt with.', 'A late-ETA line can be ignored too. Anything you only ignored comes back the next time the app is opened.', 'A driver or truck that isn’t qualified for a job on its route is named in bold red.', 'The line for unpaid invoices is gone. The job’s card still says so, and the driver is still told at the stop.'] },
+  { tab: 'Dispatch', icon: 'calendar', title: 'Month', list: ['Month shows time off, weekend jobs such as shred events, and the areas each route is in that day.', 'Areas come from the towns of that day’s stops. Tap a day to rename one, for that day or for every time it repeats.', 'To see every job as before: the ⋯ menu → Show on the calendar → All jobs.'] },
+  { tab: 'Dispatch', icon: 'sparkles', title: 'AutoRoute', list: ['Press and hold a stop until it lifts, then drag it. Scrolling no longer moves a stop.', 'To drag from ≡ right away: Settings → Routes and board → Moving stops in AutoRoute.', 'When the stops repeat, Accept asks whether the order is for this day only or for every future day of that weekday.'] },
+  { tab: 'CRM', icon: 'funnel', title: 'Tasks', list: ['Tasks look like Leads: a block per group with its count and Hide or Show.', 'Price changes to approve come first when there are any, then Overdue, then Today.'] },
+  { tab: 'Menu', icon: 'line.3.horizontal', title: 'Settings', list: ['Drivers helping other routes has “Who has to ask”: switch approval off for the people you trust to take stops on their own, such as a lead driver.'] },
 ];
 X.tutorial = () => {
   const screen = document.getElementById('screen'), old = screen.querySelector('.x-tour'); if (old) old.remove();

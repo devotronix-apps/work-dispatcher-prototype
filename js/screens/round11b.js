@@ -45,10 +45,10 @@ X.unpaidSection = () => { const list = debtors(); if (!list.length) return null;
 const openUnpaid = () => { if (WD.can('crm.view')) { WD.nav.switchTab('customers'); setTimeout(() => WD.nav.push(X.unpaidSpec()), 80); } else WD.nav.push(X.unpaidSpec()); };
 
 /* ================= Warning lines on the Dispatch tab ================= */
-X.boardStrips = inView => { const seen = j => !inView || inView(j), out = [], strip = (color, ic, text, fn) => out.push(h('div.bd-strip', { style: { '--c': color }, onclick: fn }, icon(ic, 16), text, h('span.spacer'), 'Review', icon('chevron.right', 13)));
-  if (WD.can('billing.view') || WD.can('jobs.edit')) { const n = data.customers.filter(c => X.overLimit(c) && (!inView || data.jobs.some(j => j.customerId === c.id && !WD.closed[j.status] && inView(j)))).length; if (n) strip('var(--red)', 'dollarsign.circle', n + (n === 1 ? ' customer here has' : ' customers here have') + ' more than ' + plural(C.unpaid.limit, 'unpaid invoice'), WD.can('billing.view') ? openUnpaid : () => ui.toast('Ask the office: billing access is needed to see invoices', 'lock', 2800)); }
-  if (WD.can('jobs.edit')) { const n = X.flagged().filter(x => seen(x.job)).length; if (n) strip('var(--orange)', 'person.2', n + (n === 1 ? ' job here needs' : ' jobs here need') + ' a qualified driver or truck', () => WD.nav.push(X.issuesSpec()));
-  }
+/* Unpaid invoices have no line here: the job's card already says so and the route's driver is told at the stop.
+   o: {label} names the day (or days) showing, for the heading of the review list. */
+X.boardStrips = (inView, o = {}) => { const seen = j => !inView || inView(j), out = [], strip = (color, ic, text, fn) => out.push(h('div.bd-strip', { style: { '--c': color }, onclick: fn }, icon(ic, 16), text, h('span.spacer'), 'Review', icon('chevron.right', 13)));
+  if (WD.can('jobs.edit')) { const n = X.toReview().filter(x => seen(x.job)).length; if (n) strip('var(--orange)', 'person.2', n + (n === 1 ? ' job here needs' : ' jobs here need') + ' a qualified driver or truck', () => WD.nav.push(X.issuesSpec({ inView, label: o.label }))); }
   return out; };
 
 /* ================= Notes for the driver or office, at the top of a route's day ================= */
@@ -183,5 +183,6 @@ WD.panel.addJump('Admin: CRM', () => WD.nav.switchTab('crm'));
 WD.panel.addJump('Admin: Customers', () => WD.nav.switchTab('customers'));
 WD.panel.addJump('Admin: Invoices', () => WD.nav.switchTab('invoices'));
 WD.panel.addJump('Unpaid invoices', () => openUnpaid());
+WD.panel.addAction('Close and reopen the app (ignored reviews come back)', () => { const n = WD.reopenApp(); WD.changed(); WD.nav.switchTab('board'); ui.toast(n ? plural(n, 'ignored review') + ' back on the board' : 'Nothing was ignored', 'arrow.clockwise', 2600); });
 WD.panel.addJump('Flagged assignments', () => { WD.nav.switchTab('board'); WD.nav.push(X.issuesSpec()); });
 })();

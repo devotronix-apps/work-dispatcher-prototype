@@ -98,7 +98,10 @@ X.unitsSpec = () => ({ title: 'Country, currency and units', render: page => { i
 
 /* ================= Skills, licenses and clearances; truck capability ================= */
 const hddQty = job => (((job.items || []).find(i => i.id === 'hdd') || {}).qty) || 0;
-const vehicleFor = routeId => { const r = q.route(routeId), sh = S.shift; return r ? q.vehicle(sh && sh.routeId === routeId && sh.vehicleId ? sh.vehicleId : r.vehicleId) : null; };
+const vehicleFor = (routeId, day) => { const r = q.route(routeId), sh = S.shift; if (!r) return null; if (sh && sh.routeId === routeId && sh.vehicleId && (!day || day === today())) return q.vehicle(sh.vehicleId);
+  return day && WD.rc && WD.rc.vehicleOn ? WD.rc.vehicleOn(routeId, day) : q.vehicle(r.vehicleId); };
+/** The driver of a route on a day: the day's assignment (rc-ops.js) when there is one, else the route's usual driver. */
+const driverOf = (routeId, day) => day && WD.rc && WD.rc.driverOn ? WD.rc.driverOn(routeId, day) : q.driverFor(routeId);
 /** What a job needs from whoever does it: its own requirements plus its customer's (for example a prison's clearance). [{id, covers}] */
 X.needsOf = job => { const c = job.customerId && q.customer(job.customerId); return (job.needs || []).map(id => ({ id })).concat((c && c.needs) || []); };
 /** Does this person hold the credential on that day? → 'ok', 'expired', 'scope' (a clearance for a different institution) or 'none'. */
@@ -106,18 +109,18 @@ const holds = (u, need, day) => { const mine = ((u && u.creds) || []).filter(c =
   const scoped = mine.filter(c => !need.covers || !c.covers || c.covers === 'all' || c.covers === need.covers); if (!scoped.length) return 'scope';
   return scoped.some(c => !c.expires || c.expires >= day) ? 'ok' : 'expired'; };
 const needText = n => { const s = skill(n.id); return s ? s.name + (n.covers ? ' · ' + n.covers : '') : ''; };
-/** Everything wrong with a job on a route and day: [{level: 'bad' | 'warn', short (for the card), text}]. o.vehicle adds the truck's own license. */
+/** Everything wrong with a job on a route and day: [{level: 'bad' | 'warn', who: 'driver' | 'truck' (which of the two falls short), short (for the card), text}]. o.vehicle adds the truck's own license. */
 X.issues = (job, routeId, day, o = {}) => {
   if (!job || job.allDay || job.type === 'dump') return []; routeId = routeId || job.routeId; day = day || job.day;
-  const out = [], v = vehicleFor(routeId), d = q.driverFor(routeId), who = d ? d.name.split(' ')[0] : 'No driver';
-  if (hddQty(job) > 0 && !job.crusher && !(v && (v.caps || []).includes('hdd'))) out.push({ level: 'bad', short: 'Needs HD truck or crusher', text: (v ? v.name : 'This route’s truck') + ' can’t shred hard drives. Send a truck that can, or send a hard drive crusher with the driver.' });
-  if (job.material && job.handling === 'onsite' && !(v && (v.caps || []).includes('nonpaper'))) out.push({ level: 'warn', short: 'Non-paper truck', text: (v ? v.name : 'This route’s truck') + ' isn’t marked for non-paper materials. Pick the material up to shred offsite, or send a truck that can.' });
+  const out = [], v = vehicleFor(routeId, day), d = driverOf(routeId, day), who = d ? d.name.split(' ')[0] : 'No driver';
+  if (hddQty(job) > 0 && !job.crusher && !(v && (v.caps || []).includes('hdd'))) out.push({ level: 'bad', who: 'truck', short: 'Needs HD truck or crusher', text: (v ? v.name : 'This route’s truck') + ' can’t shred hard drives. Send a truck that can, or send a hard drive crusher with the driver.' });
+  if (job.material && job.handling === 'onsite' && !(v && (v.caps || []).includes('nonpaper'))) out.push({ level: 'warn', who: 'truck', short: 'Non-paper truck', text: (v ? v.name : 'This route’s truck') + ' isn’t marked for non-paper materials. Pick the material up to shred offsite, or send a truck that can.' });
   if (C.skills.on) {
     X.needsOf(job).forEach(n => { const s = skill(n.id); if (!s) return; if (!d) return out.push({ level: 'warn', short: s.name + ': no driver', text: 'Needs ' + needText(n) + ', and this route has no driver assigned.' });
       const st = holds(d, n, day); if (st === 'ok') return;
-      out.push({ level: 'bad', short: st === 'expired' ? who + ': ' + s.name.toLowerCase() + ' expired' : st === 'scope' ? who + ': not cleared here' : who + ' lacks ' + s.name.toLowerCase(),
+      out.push({ level: 'bad', who: 'driver', short: st === 'expired' ? who + ': ' + s.name.toLowerCase() + ' expired' : st === 'scope' ? who + ': not cleared here' : who + ' lacks ' + s.name.toLowerCase(),
         text: st === 'expired' ? d.name + '’s ' + s.name.toLowerCase() + ' has expired.' : st === 'scope' ? d.name + '’s ' + s.name.toLowerCase() + ' does not cover ' + n.covers + '.' : d.name + ' does not have ' + needText(n) + ' on file.' }); });
-    if (o.vehicle && v && v.needs && d) { const s = skill(v.needs), st = holds(d, { id: v.needs }, day); if (s && st !== 'ok') out.push({ level: 'bad', short: who + ': ' + s.name + ' needed', text: v.name + ' takes a ' + s.name + ' to drive. ' + d.name + (st === 'expired' ? '’s has expired.' : ' does not have one on file.') }); }
+    if (o.vehicle && v && v.needs && d) { const s = skill(v.needs), st = holds(d, { id: v.needs }, day); if (s && st !== 'ok') out.push({ level: 'bad', who: 'driver', short: who + ': ' + s.name + ' needed', text: v.name + ' takes a ' + s.name + ' to drive. ' + d.name + (st === 'expired' ? '’s has expired.' : ' does not have one on file.') }); }
   }
   return out;
 };
@@ -131,6 +134,12 @@ X.checkAssign = async (jobs, routeId, day) => {
   if (C.skills.mode === 'block') { await ui.alert({ title: 'Can’t assign to ' + q.routeName(routeId), message: h('div', list, h('div', { style: 'margin-top:8px' }, 'Your company blocks assignments that don’t meet the job’s requirements (Settings → Skills, licenses and clearances).')) }); return false; }
   return !!(await ui.actionSheet({ title: 'This doesn’t meet the job’s requirements', message: h('div', list, h('div', { style: 'margin-top:8px' }, 'It can still be assigned. The job stays flagged on the board until it is fixed.')), buttons: [{ label: 'Assign anyway and flag it', value: true }] }));
 };
+/** Is the driver or the truck of a route unqualified for any open job that day? → {driver, truck, why: [text]}. The board shows that name in bold red. */
+X.routeFault = (routeId, day) => { const out = { driver: false, truck: false, why: [] };
+  q.jobsFor(routeId, day).filter(j => !j.allDay && !WD.closed[j.status]).forEach(j => X.issues(j, routeId, day, { vehicle: true }).forEach(i => { if (i.who === 'driver' && i.level === 'bad') out.driver = true; else if (i.who === 'truck') out.truck = true; else return; if (!out.why.includes(i.text)) out.why.push(i.text); }));
+  return out; };
+/** Flagged assignments still to review: the ones nobody has ignored (job.qualIgnored; cleared when the app is next opened, WD.reopenApp). */
+X.toReview = () => X.flagged().filter(x => !x.job.qualIgnored);
 /* Cards and pins: what makes a job stand out. */
 const baseColor = WD.cardColor;
 WD.cardColor = job => job.type === 'dump' ? baseColor(job) : C.exact.on && job.exactAt ? C.exact.color : job.type === 'purge' && job.material && mat(job.material) ? mat(job.material).color : baseColor(job);
@@ -173,10 +182,17 @@ function skillSheet(s, page) {
       s && ui.section(null, ui.row({ title: 'Delete', destructive: true, onTap: async () => { if (await ui.actionSheet({ title: 'Delete “' + s.name + '”?', message: 'It is removed from people, jobs, customers and trucks.', buttons: [{ label: 'Delete', value: true, role: 'destructive' }] })) {
         C.skills.list.splice(C.skills.list.indexOf(s), 1); data.users.forEach(u => { u.creds = (u.creds || []).filter(c => c.id !== s.id); }); data.jobs.forEach(j => { if (j.needs) j.needs = j.needs.filter(x => x !== s.id); }); data.customers.forEach(c => { if (c.needs) c.needs = c.needs.filter(x => x.id !== s.id); }); data.vehicles.forEach(v => { if (v.needs === s.id) v.needs = ''; }); WD.changed(); p.dismiss(); page.refresh(); } } }))) }, { detent: 'medium' });
 }
-X.issuesSpec = () => ({ title: 'Flagged assignments', render: page => { const list = X.flagged();
-  return ui.list(ui.section({ header: list.length ? plural(list.length, 'job') + ' in the next 2 weeks' : null, fold: false, footer: 'Jobs assigned to a driver or truck that doesn’t have the skill, license, clearance or equipment the job needs. Reassign the job, update the person’s record, or (for hard drives) send a crusher.' },
-    list.map(x => ui.row({ leading: ui.dot(q.routeColor(x.job.routeId)), title: x.job.title, subtitle: [h('div', fmt.day(x.job.day, 'rel') + ' · ' + q.routeName(x.job.routeId)), x.issues.map(i => h('div', { style: 'color:var(--red)' }, i.text))], chevron: true, onTap: () => WD.screens.jobs.openDetails(x.job.id) })),
-    !list.length && ui.row({ icon: 'checkmark.circle.fill', iconPlain: true, iconColor: 'var(--green)', title: 'Every job has someone qualified' })));
+/** o: {inView(job), label} from the board: the jobs on the day (or days) showing come first, apart from the other days. */
+X.issuesSpec = (o = {}) => ({ title: 'Flagged assignments', render: page => { const all = X.flagged(), list = all.filter(x => !x.job.qualIgnored), ignored = all.filter(x => x.job.qualIgnored), re = () => { WD.changed(); page.refresh(); };
+  const here = o.inView ? list.filter(x => o.inView(x.job)) : [], rest = list.filter(x => !here.includes(x));
+  const row = (x, ign) => h('div.row', { style: 'flex-wrap:wrap;gap:8px' }, h('div.row-main', { style: 'cursor:pointer', onclick: () => WD.screens.jobs.openDetails(x.job.id) }, h('div.row-title', x.job.title), h('div.row-sub', fmt.day(x.job.day, 'rel') + ' · ' + q.routeName(x.job.routeId)), x.issues.map(i => h('div.row-sub', { style: 'color:var(--red);font-weight:600' }, i.text))),
+    h('div', { style: 'display:flex;gap:6px;flex:none' }, ui.button(ign ? 'Stop ignoring' : 'Ignore', { kind: 'gray', small: true, block: false, onTap: () => { x.job.qualIgnored = !ign; re(); } }), !ign && ui.button('Open', { kind: 'filled', small: true, block: false, onTap: () => WD.screens.jobs.openDetails(x.job.id) })));
+  const all0 = (xs, text) => xs.length > 1 && ui.row({ title: text, tint: true, center: true, onTap: () => { xs.forEach(x => { x.job.qualIgnored = true; }); re(); } });
+  return ui.list(
+    o.inView && ui.section({ header: (o.label || 'Showing now') + ' · ' + here.length, fold: false }, here.map(x => row(x)), all0(here, 'Ignore all ' + here.length + ' for now'), !here.length && ui.row({ icon: 'checkmark.circle.fill', iconPlain: true, iconColor: 'var(--green)', title: 'Nothing left to review here' })),
+    (rest.length > 0 || !o.inView) && ui.section({ header: o.inView ? 'Other days · ' + rest.length : list.length ? plural(list.length, 'job') + ' in the next 2 weeks' : null, fold: false, showFooter: true, footer: 'Jobs assigned to a driver or truck that doesn’t have the skill, license, clearance or equipment the job needs. Reassign the job, update the person’s record, or (for hard drives) send a crusher. Ignoring only hides the line on the board: it comes back the next time the app is opened, until the job is fixed.' },
+      rest.map(x => row(x)), !o.inView && all0(rest, 'Ignore all ' + rest.length + ' for now'), !rest.length && ui.row({ icon: 'checkmark.circle.fill', iconPlain: true, iconColor: 'var(--green)', title: 'Every job has someone qualified' })),
+    ignored.length > 0 && ui.section({ header: 'Ignored for now', fold: false }, ignored.map(x => row(x, true))));
 } });
 /** What one truck can do and the license it takes to drive it. */
 function capSheet(v, page) { const f = { caps: (v.caps || []).slice(), needs: v.needs || '' };

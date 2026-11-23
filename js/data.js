@@ -142,6 +142,9 @@ WD.ADDRESS_RULES = [{ value: 'address', label: 'Street address' }, { value: 'cit
 WD.addressIssue = j => { if (!j || j.allDay) return null; const rule = data.addressRules[j.type] || 'address', has = String(j.address || '').trim();
   return rule === 'none' || has ? null : rule === 'cityzip' ? (String(j.cityZip || '').trim() ? null : 'No city or ZIP') : 'No address'; };
 /** Upcoming jobs (today onward, still open) missing the location their type needs and not marked ignored. */
+/** Ignoring a review line (missing address, unqualified driver or truck, a late ETA) lasts until the app is next opened.
+    The prototype has no real restart, so signing in again or the panel's “Close and reopen the app” calls this. */
+WD.reopenApp = () => { let n = 0; data.jobs.forEach(j => { ['addrIgnored', 'qualIgnored', 'etaIgnored'].forEach(k => { if (j[k]) { j[k] = k === 'etaIgnored' ? null : false; n++; } }); }); return n; };
 WD.missingAddresses = () => data.jobs.filter(j => j.day >= D.today() && !WD.closed[j.status] && !j.addrIgnored && WD.addressIssue(j)).sort((a, b) => a.day.localeCompare(b.day) || WD.q.order(a, b));
 /* Time clock: overtime rules and location stays (Settings → Time clock and overtime). */
 /* Field workflow (Settings → Field workflow): company-wide choices for how drivers move through a stop. */
@@ -210,8 +213,11 @@ data.routes = [
 /* Map space is 1000 × 1000 (x → east, y → south). The shop sits near the middle. */
 data.depot = { name: 'Shop', address: '400 Industrial Way, Lakemont', x: 505, y: 520 };
 
+/* The towns around Lakemont, by where a place is on the map, so the demo addresses cover more than one town and the month's area plan
+   (r18.js) has something to show: Lakemont in the middle, Corliss and Hartwell to the north, Stockdale west, Eastbrook east, Cedar Falls and Marlow south. */
+WD.townAt = (x, y) => Math.hypot(x - 505, y - 520) < 200 ? 'Lakemont' : y < 400 ? (x < 520 ? 'Corliss' : 'Hartwell') : y > 640 ? (x < 520 ? 'Cedar Falls' : 'Marlow') : x < 505 ? 'Stockdale' : 'Eastbrook';
 const C = (id, name, route, x, y, address, o = {}) => ({ id, name, kind: o.kind || 'company', route, lifecycle: o.lifecycle || 'customer', channel: o.channel || 'Referral', type: o.type || 'regular', freq: o.freq || 'Every 2 weeks',
-  contacts: o.contacts || [], locations: [{ id: id + 'l1', label: o.label || 'Main office', address: address + ', Lakemont', x, y, containers: o.containers || '2 consoles', bizOpen: o.open || '08:00', bizClose: o.close || '17:00', notes: o.notes || '',
+  contacts: o.contacts || [], locations: [{ id: id + 'l1', label: o.label || 'Main office', address: address + ', ' + WD.townAt(x, y), x, y, containers: o.containers || '2 consoles', bizOpen: o.open || '08:00', bizClose: o.close || '17:00', notes: o.notes || '',
     lunchFrom: o.lunch ? o.lunch[0] : '', lunchUntil: o.lunch ? o.lunch[1] : '', closedDays: o.closed || [], callAhead: o.call || 0 }],
   owner: o.owner || 'u3', nextAction: o.next || null, notes: o.cnotes || '', tags: o.tags || [], stats: null,
   custType: o.kind === 'household' ? 'residential' : o.type === 'government' ? 'government' : 'business', cardOnFile: o.type === 'creditCard', billingEmail: o.billing || '', po: o.po || '', contract: o.contract || '', signature: o.sig || (o.type === 'government' ? 'always' : 'optional'), billingMode: o.mode || 'invoice', documents: [], poSchedule: [] });
@@ -328,6 +334,9 @@ function generate() {
     if (n === 2) { const j = data.jobs.find(x => x.day === day && x.routeId === 'r3' && !x.allDay); if (j) { j.status = 'canceled'; j.events.push({ at: +new Date(D.parse(today).setHours(9, 2, 0, 0)), actor: 'Colleen Abbott', text: 'Customer canceled — called the office' }); } }
     if (n === 3) { const j = data.jobs.filter(x => x.day === day && x.routeId === 'r2' && !x.allDay)[1]; if (j) { j.status = 'rescheduled'; j.rescheduledTo = D.add(day, 2); j.events.push({ at: +new Date(D.parse(today).setHours(8, 40, 0, 0)), actor: 'Colleen Abbott', text: 'Customer rescheduled to ' + WD.fmt.day(D.add(day, 2)) }); } }
   }
+  /* A second job saved without an address, on a later day, so the missing-address review has another day to set apart. */
+  { let day = D.add(today, 5); if (D.parse(day).getDay() === 0) day = D.add(day, 1);
+    makeJob({ routeId: 'r4', day, dur: 25, title: 'Hal Brooks — office clean-out', type: 'purge', custType: 'business', phone: '+15125550266', contactName: 'Hal Brooks', items: [{ id: 'box', qty: 18, rate: 8 }], purge: { std: 18 }, notes: 'Moving offices at the end of the month. He will text the new address.', events: [{ at: +new Date(D.parse(today).setHours(9, 55, 0, 0)), actor: 'Colleen Abbott', text: 'Created · saved without an address' }] }); }
   /* Heads-up details shown after job titles: one-off flags on today's and upcoming visits. */
   const flag = (cid, f, days) => data.jobs.filter(j => j.customerId === cid && days.includes(D.diff(j.day, today))).forEach(j => Object.assign(j.flags, f));
   data.jobs.filter(j => j.customerId === 'c1' && [0, 1, 2].includes(D.diff(j.day, today))).forEach(j => j.events.push({ at: +new Date(D.parse(today).setHours(8, 12, 0, 0)), actor: 'Colleen Abbott', text: 'Edited', changes: [{ label: 'Heads-up', from: 'None', to: 'Bring an extra container' }, { label: 'Notes', from: 'Check in at reception.', to: 'Check in at reception. Service elevator is around back.' }] }));

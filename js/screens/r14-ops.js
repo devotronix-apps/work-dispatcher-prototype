@@ -21,7 +21,7 @@ const openJob = id => WD.screens.jobs && WD.screens.jobs.openDetails && WD.scree
 const calendar = () => !!(R14.calendar && R14.calendar());
 const driverOn = (rid, day) => (WD.rc && WD.rc.driverOn ? WD.rc.driverOn(rid, day) : q.driverFor(rid)) || null;
 /* Settings and records of this file, kept with each business's data. */
-const cfg = () => data.ops2 || (data.ops2 = { cap: { near: 85, over: 100, limitMin: 510, override: 'dispatcher' }, help: { on: true, approval: 'office' }, requests: [], taken: [],
+const cfg = () => data.ops2 || (data.ops2 = { cap: { near: 85, over: 100, limitMin: 510, override: 'dispatcher' }, help: { on: true, approval: 'office', exempt: ['u4'] }, requests: [], taken: [],
   guidance: [{ id: 'g1', on: true, text: 'Schedule stops far from the shop midweek (Tue–Thu): Mondays have more holidays and customers leave early on Fridays' }] });
 cfg(); data.capacityNotes = data.capacityNotes || {}; data.routePlans = data.routePlans || [];
 
@@ -225,6 +225,10 @@ O.daySynopsis = r => { const jobs = todayJobs(r.id), order = (a, b) => (fmt.from
 
 /* ================= Shift: no more mapped stops, and helping another route ================= */
 const APPROVERS = { office: ['owner', 'admin', 'dispatcher', 'office'], admin: ['owner', 'admin'], owner: ['owner'] }, APPROVER_LABEL = { none: 'Nobody', office: 'Office', admin: 'Admin', owner: 'Owner' }, approverWord = () => ({ office: 'the office', admin: 'an admin', owner: 'the owner' })[cfg().help.approval] || 'the office';
+/** Does this person have to wait for approval before a stop moves to their route? Not when the company asks for none, and not when
+    they are trusted to take stops on their own (help.exempt, a list of user ids: a lead driver, for example). */
+O.needsApproval = userId => { const H = cfg().help; return H.approval !== 'none' && !(H.exempt || []).includes(userId); };
+const mustAsk = () => O.needsApproval((S.me || {}).id);
 const canApprove = () => (APPROVERS[cfg().help.approval] || APPROVERS.office).includes(role());
 const pending = () => cfg().requests.filter(x => x.status === 'pending' && x.day === D.today());
 /** Where the driver is: the last stop finished today, else where the truck started. */
@@ -266,7 +270,7 @@ O.requestSheet = req => ui.sheet({ title: 'Stop request', trailing: [{ label: 'C
 O.helpSpec = r => { const sel = new Set();
   const take = p => { const H = cfg().help, ids = [...sel]; if (!ids.length) return; p.dismiss();
     const req = { id: 'hr' + Date.now(), by: (S.me || {}).id, byName: meName(), toRoute: r.id, jobIds: ids, day: D.today(), at: +WD.now(), status: 'pending' }; cfg().requests.push(req);
-    if (H.approval === 'none') { req.status = 'approved'; doTake(req, null); }
+    if (!mustAsk()) { req.status = 'approved'; if (H.approval !== 'none') req.answeredBy = 'No approval needed'; doTake(req, null); }
     else { WD.changed(); ui.banner({ title: 'Sent to ' + approverWord(), text: 'You’ll see the answer on your Shift screen. ' + plural(ids.length, 'stop') + ' stay where they are until it’s approved.', icon: 'person.2', color: 'var(--orange)', duration: 7000 }); } };
   return ui.sheet({ title: 'Help another route', leading: [{ label: 'Cancel', onTap: p => p.dismiss() }], trailing: () => [{ label: 'Take', bold: true, disabled: !sel.size, onTap: take }], render: p => {
     const list = candidates(r.id), at = lastSpot(r.id); [...sel].forEach(id => { if (!list.some(x => x.job.id === id)) sel.delete(id); });
@@ -274,7 +278,7 @@ O.helpSpec = r => { const sel = new Set();
     const sub = x => { const j = x.job, b = O.behind(j.routeId), items = WD.itemsLabel && WD.itemsLabel(j.items, j.type === 'purge'); return [x.mi.toFixed(1) + ' mi', items || j.containers, (j.exactAt || j.custFrom || j.custUntil) && 'window ' + winText(j), (x.driver ? first(x.driver.name) + ' · ' : '') + q.routeName(j.routeId) + ' stop ' + x.n, b > 10 ? 'about ' + hm(b) + ' behind' : 'on time'].filter(Boolean).join(' · '); };
     return ui.list(
       WD.miniMap && h('div', { style: 'margin:0 0 10px' }, WD.miniMap({ aspect: 1.5, points: [{ x: at.x, y: at.y, icon: 'truck', cls: 'big', style: { '--c': q.routeColor(r), '--ring': '#fff', '--fg': '#fff' }, title: 'You' }].concat(list.slice(0, 20).map((x, i) => ({ x: x.job.x, y: x.job.y, n: i + 1, cls: sel.has(x.job.id) ? 'big' : '', style: WD.pinStyle ? WD.pinStyle(x.job) : { '--c': q.routeColor(x.job.routeId) }, title: x.job.title }))) })),
-      ui.section({ header: 'Unfinished stops on other routes · nearest first', fold: false, footer: 'Distance is from ' + (at.name ? 'your last stop, ' + at.name : 'where you are') + '. ' + (cfg().help.approval === 'none' ? 'The stops move to your route right away and the other driver is told.' : 'The request goes to ' + approverWord() + ' first. Once approved, the stops move to your route and the other driver is told.') },
+      ui.section({ header: 'Unfinished stops on other routes · nearest first', fold: false, footer: 'Distance is from ' + (at.name ? 'your last stop, ' + at.name : 'where you are') + '. ' + (!mustAsk() ? 'The stops move to your route right away and the other driver is told.' : 'The request goes to ' + approverWord() + ' first. Once approved, the stops move to your route and the other driver is told.') },
         list.slice(0, 20).map((x, i) => ui.row({ leading: h('span.o2-chk' + (sel.has(x.job.id) ? '.on' : ''), sel.has(x.job.id) && icon('checkmark', 14)), title: (i + 1) + ' · ' + x.job.title, subtitle: sub(x), onTap: () => { sel.has(x.job.id) ? sel.delete(x.job.id) : sel.add(x.job.id); p.refresh(); } }))),
       h('div', { style: 'margin-top:14px' }, ui.button(sel.size ? 'Take ' + (sel.size === 1 ? 'this stop' : 'these ' + sel.size + ' stops') : 'Take these stops', { icon: 'person.2', disabled: !sel.size, onTap: () => take(p) })));
   } }); };
@@ -298,8 +302,12 @@ O.helpSettingsSpec = () => ({ title: 'Drivers helping other routes', render: pag
   return ui.list(note('When a driver has no more mapped stops, the Shift screen offers the unfinished stops on other routes, nearest first. The driver who had a stop is told the moment it moves, so two trucks never go to the same place.'),
     ui.section({ fold: false }, ui.toggleRow({ title: 'Drivers can take stops from another route', subtitle: 'Offered on the Shift screen when their own mapped stops are done', value: !!H.on, onChange: v => { H.on = v; re(); } })),
     H.on && ui.section({ header: 'Approval needed from', fold: false, showFooter: true, footer: H.approval === 'none' ? 'The stops move as soon as the driver takes them.' : 'The driver sees “Waiting for ' + approverWord() + ' to approve”. ' + ({ office: 'Owners, admins, dispatchers and office staff', admin: 'Owners and admins', owner: 'The owner' })[H.approval] + ' get a banner and a line on the Dispatch board to approve or deny.' },
-      h('div', { style: 'padding:10px 16px;background:var(--cell)' }, ui.segmented(Object.keys(APPROVER_LABEL).map(k => ({ value: k, label: APPROVER_LABEL[k] })), H.approval, v => { H.approval = v; re(); })))); } });
-R14.addSetting && R14.addSetting('Routes and board', (push, gated) => R14.link(push, gated, 'settings.manage', 'person.2', 'var(--blue)', 'Drivers helping other routes', 'Take stops from another route when their own are done', O.helpSettingsSpec, cfg().help.on ? (cfg().help.approval === 'none' ? 'On' : APPROVER_LABEL[cfg().help.approval] + ' approves') : 'Off'));
+      h('div', { style: 'padding:10px 16px;background:var(--cell)' }, ui.segmented(Object.keys(APPROVER_LABEL).map(k => ({ value: k, label: APPROVER_LABEL[k] })), H.approval, v => { H.approval = v; re(); }))),
+    H.on && H.approval !== 'none' && ui.section({ header: 'Who has to ask', fold: false, showFooter: true, footer: 'Switch approval off for the people you trust to take stops on their own, such as a lead driver. Their stops move at once; the driver who had the stop and the office are still told.' },
+      people().map(u => { const free = (H.exempt || []).includes(u.id); return ui.toggleRow({ title: u.name, subtitle: free ? 'Takes stops without asking' : 'Waits for ' + approverWord(), value: !free, onChange: v => { H.exempt = (H.exempt || []).filter(id => id !== u.id).concat(v ? [] : [u.id]); re(); } }); }))); } });
+/* The people who can be on a route: drivers, and anyone else who has a route of their own. */
+const people = () => data.users.filter(u => u.status === 'active' && (u.role === 'driver' || data.routes.some(r => r.driverId === u.id)));
+R14.addSetting && R14.addSetting('Routes and board', (push, gated) => R14.link(push, gated, 'settings.manage', 'person.2', 'var(--blue)', 'Drivers helping other routes', 'Take stops from another route when their own are done', O.helpSettingsSpec, cfg().help.on ? (cfg().help.approval === 'none' ? 'On' : APPROVER_LABEL[cfg().help.approval] + ' approves' + ((n => n ? ' · ' + n + ' exempt' : '')((cfg().help.exempt || []).filter(id => people().some(u => u.id === id)).length))) : 'Off'));
 
 /* ================= Lines on the Dispatch board ================= */
 const strip = (color, ic, text, act, fn) => h('div.bd-strip', { style: { '--c': color }, onclick: fn }, icon(ic, 16), text, h('span.spacer'), act, icon('chevron.right', 13));

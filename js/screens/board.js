@@ -132,7 +132,11 @@ WD.css(`
 .bd-month { touch-action: none; overflow: hidden; }
 .bd-month.up > .bd-week { animation: bd-mup .26s cubic-bezier(.2,.85,.25,1); } .bd-month.down > .bd-week { animation: bd-mdown .26s cubic-bezier(.2,.85,.25,1); }
 @keyframes bd-mup { from { transform: translateY(60px); opacity: 0; } } @keyframes bd-mdown { from { transform: translateY(-60px); opacity: 0; } }
-.bd-mev.area { font-weight: 600; margin: 2px 1px 0; padding: 1px 3px; border-radius: 4px; }
+.bd-mev.area { font-weight: 600; margin: 2px 1px 0; padding: 1px 3px; border-radius: 4px; border-left: 0; }
+.bd-month.areas .bd-mev.area { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--ln, 1); white-space: normal; overflow-wrap: anywhere; line-height: 14px; }
+.bd-mev.off { margin: 2px 1px 0; padding: 1px 3px; border-radius: 4px; border-left: 0; font-weight: 700; background: var(--label); color: var(--cell); }
+.bd-mev.off.ask { background: none; color: var(--label); outline: 1.5px dashed var(--label2); outline-offset: -1.5px; }
+.bd-mev.wkend { margin: 2px 1px 0; font-weight: 600; background: color-mix(in srgb, var(--ring) 18%, var(--cell)); }
 .bd-mday.sel { background: var(--fill3); }
 .bd-mnum { width: 22px; height: 22px; margin: 0 auto 1px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; letter-spacing: 0; }
 .bd-mday.today .bd-mnum { background: #D70015; color: #fff; font-weight: 600; }
@@ -239,7 +243,7 @@ const boardHome = WD.app.home('board', {
 function topBar() {
   const b = S.board, today = D.today();
   let title = fmt.day(b.day), sub = fmt.day(b.day, 'rel');
-  if (b.mode === 'month') { title = fmt.day(b.day, 'month'); sub = showAreas() ? 'Areas' : ''; }
+  if (b.mode === 'month') { title = fmt.day(b.day, 'month'); sub = showAreas() ? '' : 'All jobs'; }
   else if (b.mode === 'days' && b.dayCount > 1 && !mapOnly()) { title = fmt.day(b.day, 'md') + ' – ' + fmt.day(D.add(b.day, b.dayCount - 1), 'md'); sub = ''; }
   else if (sub === title) sub = '';
   const route = b.mode === 'days' && (b.dayCount > 1 || mapOnly()) && q.route(b.routeId);
@@ -282,7 +286,7 @@ function boardMenu(anchor) {
   m = ui.menu(anchor, [
     seg([{ value: 'routes', label: 'Routes' }, { value: 'days', label: 'Days' }, { value: 'month', label: 'Month' }], b.mode, v => { b.mode = v; if (v === 'month') b.view = 'board'; if (v === 'days' && !b.routeId) b.routeId = (q.visibleRoutes()[0] || q.routes()[0]).id; keep(undefined, 0); refresh(); }),
     /* Month only: what the calendar shows. Jobs, or the area plan (which areas on which days, no jobs). */
-    ...(b.mode === 'month' && WD.areas ? [{ header: 'Show on the calendar' }, seg([{ value: 'jobs', label: 'Jobs' }, { value: 'areas', label: 'Areas' }], showAreas() ? 'areas' : 'jobs', v => { b.monthShow = v; refresh(); })] : []),
+    ...(b.mode === 'month' && WD.areas ? [{ header: 'Show on the calendar' }, seg([{ value: 'areas', label: 'Plan' }, { value: 'jobs', label: 'All jobs' }], showAreas() ? 'areas' : 'jobs', v => { b.monthShow = v; refresh(); })] : []),
     ...(b.mode === 'days' ? [{ header: 'Route' }, ...q.routes().map(r => ({ label: q.routeName(r), checked: r.id === b.routeId, onTap: () => { b.routeId = r.id; refresh(); } })),
         /* A computer has room for a working week, a full week or two weeks; narrow columns scroll sideways. */
         ...(S.desktop ? [{ header: 'Days on screen' }] : []),
@@ -324,8 +328,11 @@ function statusStrip() {
 /** Upcoming jobs saved without the address their type needs: review, fix or ignore them. */
 function addressStrip() {
   const n = WD.missingAddresses().filter(inView).length; if (!n) return null;
-  return h('div.bd-strip', { style: { '--c': 'var(--red)' }, onclick: () => WD.x.missingSheet() }, icon('mappin', 16), n + (n === 1 ? ' job here is' : ' jobs here are') + ' missing an address', h('span.spacer'), 'Review', icon('chevron.right', 13));
+  return h('div.bd-strip', { style: { '--c': 'var(--red)' }, onclick: () => WD.x.missingSheet({ inView, label: viewLabel() }) }, icon('mappin', 16), n + (n === 1 ? ' job here is' : ' jobs here are') + ' missing an address', h('span.spacer'), 'Review', icon('chevron.right', 13));
 }
+/** What the warning lines are about, for the heading of a review list: the day showing, the days showing, or the month. */
+function viewLabel() { const b = S.board; if (b.mode === 'month') return fmt.day(b.day, 'month'); const days = [...new Set(columns().map(c => c.day))].sort();
+  return days.length > 1 ? fmt.day(days[0], 'md') + ' – ' + fmt.day(days[days.length - 1], 'md') : fmt.day(days[0] || b.day, 'long'); }
 /** Approved time off for the driver of a column's route on its day. */
 const offFor = c => WD.offOn(WD.rc && WD.rc.driverOn ? (WD.rc.driverOn(c.routeId, c.day) || {}).id : (q.route(c.routeId) || {}).driverId, c.day);
 /** Warning lines only speak up for what is on screen: the day(s) and route(s) showing, or the month showing. */
@@ -652,10 +659,11 @@ function monthWeeks(dayKey) {
   for (let w = 0; w < 6; w++) { const days = []; for (let d = 0; d < 7; d++) { days.push(k); k = D.add(k, 1); } if (w < 4 || D.parse(days[0]).getMonth() === month) weeks.push(days); }
   return { weeks, month };
 }
-/* Month shows jobs or, switched in the ellipsis menu, the area plan (WD.areas, r18.js): which areas are served on which days, with no jobs.
+/* Month shows the plan (WD.areas, r18.js): time off, weekend jobs such as shred events, and the areas each route is in that day, worked
+   out from its stops and editable. Every job, as before, is a choice in the ellipsis menu (Show on the calendar: Plan | All jobs).
    Swiping up goes to the next month and down to the previous one, as in Google Calendar; a mouse wheel or trackpad does the same. */
 let monthAnim = null, monthSwiped = 0, wheelLock = 0;
-const showAreas = () => S.board.monthShow === 'areas' && !!WD.areas;
+const showAreas = () => S.board.monthShow !== 'jobs' && !!WD.areas;
 function monthSwipe(el) {
   let s = null, acc = 0; const go = n => { monthAnim = n > 0 ? 'up' : 'down'; monthSwiped = Date.now(); step(n); };
   el.addEventListener('pointerdown', e => { s = { x: e.clientX, y: e.clientY }; });
@@ -665,10 +673,14 @@ function monthSwipe(el) {
 }
 function monthView() {
   const b = S.board, { weeks, month } = monthWeeks(b.day), routes = q.visibleRoutes().map(r => r.id), today = D.today(), areas = showAreas();
-  const el = h('div.bd-month' + (areas ? '.areas' : '') + (monthAnim ? '.' + monthAnim : ''), h('div.bd-mhead', ['S', 'M', 'T', 'W', 'T', 'F', 'S'].map(x => h('span', x))), weeks.map(days => h('div.bd-week', days.map(day => {
+  /* An area's towns break after each slash. How many lines one may take depends on how many routes share the day's cell. */
+  const el = h('div.bd-month' + (areas ? '.areas' : '') + (monthAnim ? '.' + monthAnim : ''), { style: areas ? { '--ln': String(Math.max(1, Math.floor(4 / Math.max(1, routes.length)))) } : null }, h('div.bd-mhead', ['S', 'M', 'T', 'W', 'T', 'F', 'S'].map(x => h('span', x))), weeks.map(days => h('div.bd-week', days.map(day => {
     const cls = 'div.bd-mday' + (D.parse(day).getMonth() !== month ? '.other' : '') + (day === today ? '.today' : ''), num = h('div.bd-mnum', D.parse(day).getDate()), swiped = () => Date.now() - monthSwiped < 400;
-    if (areas) { const list = WD.areas.on(day, routes);
-      return h(cls, { onclick: () => { if (!swiped()) WD.areas.openDay(day, refresh); } }, num, list.slice(0, 4).map(a => h('div.bd-mev.area', { style: { background: a.color, color: readableOn(a.color) }, title: a.name }, a.name)), list.length > 4 && h('div.bd-more', '+' + (list.length - 4) + ' more')); }
+    if (areas) { const AR = WD.areas, lines = [
+        ...AR.off(day).map(o => h('div.bd-mev.off' + (o.pending ? '.ask' : ''), { title: o.name + (o.pending ? ' asked for time off' : ' has time off') }, o.name + ' off' + (o.pending ? '?' : ''))),
+        ...AR.specials(day, routes).map(j => h('div.bd-mev.wkend', { style: { '--ring': q.routeColor(j.routeId) }, title: j.title }, j.title)),
+        ...AR.on(day, routes).map(a => h('div.bd-mev.area' + (a.auto ? '' : '.set'), { style: { background: a.color, color: readableOn(a.color) }, title: a.name + ' · ' + q.routeName(a.routeId) }, a.name.replace(/\s*\/\s*/g, '/\u200b')))];
+      return h(cls, { onclick: () => { if (!swiped()) AR.openDay(day, refresh); } }, num, lines.slice(0, 5), lines.length > 5 && h('div.bd-more', '+' + (lines.length - 5) + ' more')); }
     const jobs = q.jobsOn(day).filter(j => routes.includes(j.routeId)).sort(boardSort);
     return h(cls, { onclick: () => { if (swiped()) return; b.day = day; b.mode = 'routes'; keep(null, 0); refresh(); } },
       num, WD.r11 && routes.some(r => WD.r11.noteFor(r, day)) && h('div.bd-mev', { style: { '--c': '#FFD60A', '--ring': '#E0A800', background: '#FFE066', color: '#1C1C1E' }, title: 'Route note' }, 'Note'), jobs.slice(0, 4).map(j => h('div.bd-mev' + (WD.struck[j.status] ? '.struck' : ''), { style: { '--c': j.allDay ? q.routeColor(j.routeId) : WD.cardColor(j), '--ring': q.routeColor(j.routeId) } }, j.title)), jobs.length > 4 && h('div.bd-more', '+' + (jobs.length - 4) + ' more'));
@@ -695,7 +707,7 @@ function render(p) {
   if (!q.route(b.routeId)) { const mine = data.routes.find(r => r.driverId === S.me.id); b.routeId = (mine || q.visibleRoutes()[0] || q.routes()[0]).id; }
   /* While jobs are being selected the bar takes the place of the warning lines, right under the date. */
   /* Under the bar: the month, the live map of the same day and routes, or the board (on a computer optionally with the map beside it). */
-  return [topBar(), selectBar() || strips([statusStrip(), addressStrip(), WD.r11 && WD.r11.boardStrips(inView), WD.rc && WD.rc.assignStrip && WD.rc.assignStrip(b.mode === 'month' ? [] : columns()), offStrip(), markStrip(), WD.eta && b.mode !== 'month' && WD.eta.boardStrip(columns()), ops2().boardStrips && ops2().boardStrips(b.mode === 'month' ? [] : columns())]),
+  return [topBar(), selectBar() || strips([statusStrip(), addressStrip(), WD.r11 && WD.r11.boardStrips(inView, { label: viewLabel() }), WD.rc && WD.rc.assignStrip && WD.rc.assignStrip(b.mode === 'month' ? [] : columns()), offStrip(), markStrip(), WD.eta && b.mode !== 'month' && WD.eta.boardStrip(columns()), ops2().boardStrips && ops2().boardStrips(b.mode === 'month' ? [] : columns())]),
     b.mode === 'month' ? monthView() : h('div.bd-holder' + (WD.r15 && WD.r15.cardClass ? WD.r15.cardClass() : ''), { style: WD.r15 && WD.r15.cardVars ? WD.r15.cardVars() : null }, mapOnly() ? mapPane() : splitView() ? h('div.bd-split', grid(), mapPane()) : grid(), viewPill())];
 }
 WD.screens.board = {

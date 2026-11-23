@@ -31,6 +31,8 @@ WD.css(`
 .jb-win.ok { color: var(--green); } .jb-win.soft { color: var(--orange); } .jb-win.bad { color: var(--red); font-weight: 600; }
 .jb-grip { flex: none; width: 44px; height: 44px; margin: -5px -12px -5px -4px; display: grid; place-items: center; color: var(--label3); cursor: grab; touch-action: none; }
 .jb-ar.jb-dragging { opacity: .35; }
+.jb-ar.hold { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; transition: background .2s, transform .2s; } .jb-ar.hold .jb-grip { touch-action: auto; }
+.jb-ar.jb-arming { background: var(--fill3); transform: scale(.985); }
 .jb-ins { position: absolute; left: 12px; right: 12px; height: 3px; border-radius: 2px; background: var(--tint); z-index: 5; pointer-events: none; }
 .jb-pin { font-size: 12px; font-weight: 700; color: var(--tint); margin-left: 6px; }
 .jb-maps { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 10px 12px 12px; }
@@ -658,6 +660,23 @@ function windowNote(l) {
   if (hasHard) return h('div.jb-win.ok', icon('checkmark', 13), (l.job.custStrict ? 'Required ' : 'Open ') + winLabel(w.hard) + ' ✓' + (l.start > l.arrive + 2 ? ' · waits ' + (l.start - l.arrive) + ' min' : ''));
   return null;
 }
+/* Moving a stop in the proposed order. 'hold' (the default): press and hold a stop until it lifts, then drag, so scrolling the list never
+   moves one by accident. 'drag': the ≡ handle picks a stop up at once. Kept on this device; Settings → Routes and board. */
+const HOLD_MS = 380, MOVE_STYLES = [{ value: 'hold', label: 'Press and hold' }, { value: 'drag', label: 'Drag right away' }];
+const moveStyle = () => { S.prefs = S.prefs || {}; if (!S.prefs.arMove) { let v = null; try { v = localStorage.getItem('wd.armove'); } catch (e) { v = null; } S.prefs.arMove = v === 'drag' ? 'drag' : 'hold'; } return S.prefs.arMove; };
+const setMoveStyle = v => { S.prefs.arMove = v; try { localStorage.setItem('wd.armove', v); } catch (e) { /* private mode */ } WD.changed(); };
+/** Make an accepted order the usual one. Every later day of the same weekday on the route is put in the same order (stops are matched by
+    their repeating series, else by customer), and the order is kept as the route's default for that weekday (data.routeOrder) for days
+    that are not loaded yet. Stops already started, and stops that are not in the order, follow it in the order they had. → days changed */
+function keepOrder(routeId, day, order, by) {
+  const keyOf = j => j.recurring ? j.recurring.seriesId : j.customerId ? 'c:' + j.customerId : null, rank = new Map(); order.forEach(j => { const k = keyOf(j); if (k && !rank.has(k)) rank.set(k, rank.size); });
+  (data.routeOrder = data.routeOrder || {})[routeId + '|' + D.parse(day).getDay()] = { keys: [...rank.keys()], from: day, by };
+  const days = [...new Set(data.jobs.filter(j => j.routeId === routeId && !j.allDay && j.day > day && D.diff(j.day, day) % 7 === 0).map(j => j.day))]; let n = 0;
+  days.forEach(d => { const list = q.stopList(routeId, d), r = j => { const k = keyOf(j); return j.status === 'scheduled' && k && rank.has(k) ? rank.get(k) : Infinity; };
+    const next = list.map((j, i) => ({ j, i, r: r(j) })).sort((a, b) => a.r === b.r ? a.i - b.i : a.r - b.r).map(x => x.j); if (next.every((j, i) => j === list[i])) return;
+    next.forEach((j, i) => { if (j.seq !== i + 1) { j.seq = i + 1; j.events.push({ at: +WD.now(), actor: by, text: 'Usual order changed from AutoRoute on ' + fmt.day(day, 'md') + ': now stop ' + j.seq }); } }); n++; });
+  return n;
+}
 /** o: {day, routes (ids to choose from), stay (don't jump to the board after accepting, e.g. from the map)} */
 async function openAutoRoute(routeId, o = {}) {
   const day = o.day || S.board.day, choices = o.routes ? o.routes.map(q.route).filter(Boolean) : q.visibleRoutes();
@@ -715,9 +734,19 @@ async function openAutoRoute(routeId, o = {}) {
       lines: [{ pts: [f.at, ...order, e.end], color, width: 2.5 }] });
     return h('div.jb-maps', h('div', WD.miniMap({ ...mk(stops), caption: 'Before' }), h('div.cap', fmt.dur(plan.cur.drive) + ' driving')), h('div', WD.miniMap({ ...mk(plan.order), caption: 'After' }), h('div.cap', fmt.dur(plan.sim.drive) + ' driving')));
   }
-  function startDrag(e, i, page) {
-    e.preventDefault(); e.stopPropagation();
-    const cells = e.currentTarget.closest('.cells'), rows = [...cells.querySelectorAll('.jb-ar')], line = h('div.jb-ins'); cells.style.position = 'relative'; cells.appendChild(line); rows[i].classList.add('jb-dragging');
+  /* Press and hold: the stop lifts after HOLD_MS if the finger has stayed put; moving first is a scroll and nothing is picked up. */
+  function armHold(e, i, page) {
+    if (e.button > 0 || e.target.closest('button, a, input')) return; const row = e.currentTarget, sx = e.clientX, sy = e.clientY; let last = e, lifted = false;
+    const block = ev => { if (lifted && ev.cancelable) ev.preventDefault(); };
+    const clear = () => { clearTimeout(timer); row.classList.remove('jb-arming'); document.removeEventListener('pointermove', mv); document.removeEventListener('pointerup', clear); document.removeEventListener('pointercancel', clear); if (!lifted) row.removeEventListener('touchmove', block); };
+    const mv = ev => { last = ev; if (Math.hypot(ev.clientX - sx, ev.clientY - sy) > 8) clear(); };
+    const timer = setTimeout(() => { lifted = true; clear(); if (!row.isConnected) return; if (navigator.vibrate) navigator.vibrate(12); startDrag(last, i, page, row); }, HOLD_MS);
+    row.addEventListener('touchmove', block, { passive: false }); row.classList.add('jb-arming');
+    document.addEventListener('pointermove', mv); document.addEventListener('pointerup', clear); document.addEventListener('pointercancel', clear);
+  }
+  function startDrag(e, i, page, rowEl) {
+    if (e.cancelable !== false) e.preventDefault(); e.stopPropagation();
+    const cells = (rowEl || e.currentTarget).closest('.cells'), rows = [...cells.querySelectorAll('.jb-ar')], line = h('div.jb-ins'); cells.style.position = 'relative'; cells.appendChild(line); rows[i].classList.add('jb-dragging');
     let target = i;
     const move = ev => { const p = ui.localPoint(ev, cells); let t = rows.findIndex(r => p.y < r.offsetTop + r.offsetHeight / 2); if (t < 0) t = rows.length; target = t;
       const y = t < rows.length ? rows[t].offsetTop : rows[rows.length - 1].offsetTop + rows[rows.length - 1].offsetHeight; line.style.top = (y - 1.5) + 'px';
@@ -731,12 +760,18 @@ async function openAutoRoute(routeId, o = {}) {
     trailing: () => plan && plan.order.length ? [{ label: 'Accept', bold: true, onTap: async p => {
       const bad = ignoreWin ? [] : plan.sim.legs.filter(l => l.hardLate), outs = plan.sim.legs.filter(l => l.out).map(l => ({ j: l.job, text: outText(l) })), ign = ignoreWin;
       if (bad.length && !(await ui.actionSheet({ title: bad.length + (bad.length === 1 ? ' stop misses' : ' stops miss') + ' a required time', message: bad.map(l => l.job.title).join(', ') + '. Accept anyway, or keep adjusting the order.', buttons: [{ label: 'Accept anyway', value: true, role: 'destructive' }], cancel: 'Keep adjusting' }))) return;
+      /* Repeating stops: keep this order for the same weekday from now on, or change this one day only. */
+      const repeats = plan.order.filter(j => j.recurring).length, wk = WEEKDAYS[D.parse(day).getDay()]; let future = false;
+      if (repeats) { const v = await ui.actionSheet({ title: 'Use this order from now on?', message: (repeats === plan.order.length ? 'These stops repeat' : repeats + ' of these ' + plan.order.length + ' stops repeat') + '. Keeping the order makes it the usual order for ' + q.routeName(route) + ' on ' + wk + 's, so future ' + wk + 's start out this way.',
+        buttons: [{ label: 'This day and all future ' + wk + 's', value: 'future' }, { label: 'This day only', value: 'day' }], cancel: 'Keep adjusting' }); if (!v) return; future = v === 'future'; }
+      let kept = 0;
       const order = plan.order, give = plan.sim.legs.filter(l => l.job.needsWindow && !l.job.custFrom && !l.job.custUntil).map(l => ({ j: l.job, w: WD.r11 ? WD.r11.winFor(l) : WD.etaWindow(l.start) })), dep = depart && { depart: depart.depart, manual: depart.manual }, me = S.me.name;
       api.op({ kind: 'batch', title: q.routeName(route) + ' · AutoRoute', scope: order.length + ' jobs · all or nothing', jobIds: order.map(j => j.id), apply() { if (AR) AR.commit(order); newList().forEach((j, i) => { j.seq = i + 1; }); order.forEach(j => { j.offWindow = null; j.events.push({ at: +WD.now(), actor: me, text: 'AutoRoute' + (ign ? ' (time windows ignored)' : '') + ': moved to stop ' + j.seq }); });
         outs.forEach(({ j, text }) => { j.offWindow = text; j.events.push({ at: +WD.now(), actor: me, text: 'Flagged: outside its time window (' + text + ')' }); });
         if (dep) data.routeDays[dayKey] = dep;
+        if (future) kept = keepOrder(routeId, day, order, me);
         give.forEach(({ j, w }) => { Object.assign(j, { custFrom: hhmm(w.from), custUntil: hhmm(w.until), windowBy: 'us', custStrict: false, needsWindow: false, windowToSend: true }); j.events.push({ at: +WD.now(), actor: me, text: 'Window set by AutoRoute: ' + winLabel(w) }); }); } });
-      p.dismiss(); ui.toast('Route accepted' + (dep ? ' · leave ' + fmt.time(dep.depart) : '') + (outs.length ? ' · ' + outs.length + ' flagged outside their window' : ''), outs.length ? 'exclamationmark.triangle' : 'checkmark', outs.length ? 3400 : 2200); if (!o.stay) guard('board', 'show', day);
+      p.dismiss(); ui.toast('Route accepted' + (dep ? ' · leave ' + fmt.time(dep.depart) : '') + (future ? ' · now the usual ' + wk + ' order' + (kept ? ' (' + kept + ' future ' + (kept === 1 ? 'day' : 'days') + ' reordered)' : '') : '') + (outs.length ? ' · ' + outs.length + ' flagged outside their window' : ''), outs.length ? 'exclamationmark.triangle' : 'checkmark', outs.length ? 3400 : 2200); if (!o.stay) guard('board', 'show', day);
       if (give.length) setTimeout(async () => { const v = await ui.actionSheet({ title: give.length + (give.length === 1 ? ' customer gets a window' : ' customers get a window'), message: give.map(x => x.j.title + ' · ' + winLabel(x.w)).join('\n'), buttons: [{ label: 'Text them their window now', value: true }], cancel: 'Later' });
         if (v) { give.forEach(x => { x.j.windowToSend = false; }); ui.toast('Texts sent · ' + give.length, 'message'); WD.changed(); } }, 700);
     } }] : [],
@@ -756,12 +791,14 @@ async function openAutoRoute(routeId, o = {}) {
         startSection(page),
         AR && AR.section(page, () => { optimizeAll(); page.refresh(); }),
         ui.section({ header: h('div.cu-sechead', h('span', 'Proposed order'), pinnedAt >= 0 && h('button.cu-link', { onclick: () => { optimizeAll(); page.refresh(); } }, 'Re-optimize all')),
-          footer: 'Drag ≡ to move a stop. Stops before it stay as you placed them and everything after it is re-optimized. Time on site is the median of recorded visits, so one unusually long visit doesn’t skew it; a stop with no history uses the formula in Settings → Time on site. Office hours and required windows are never broken on purpose; preferred windows are met when possible. Accepting reorders every job together or none of them.' },
+          footer: (moveStyle() === 'hold' ? 'Press and hold a stop until it lifts, then drag it. Scrolling never moves a stop. (To drag from ≡ right away instead: Settings → Routes and board → Moving stops in AutoRoute.)' : 'Drag ≡ to move a stop.') + ' Stops before it stay as you placed them and everything after it is re-optimized. Time on site is the median of recorded visits, so one unusually long visit doesn’t skew it; a stop with no history uses the formula in Settings → Time on site. Office hours and required windows are never broken on purpose; preferred windows are met when possible. Accepting reorders every job together or none of them.' },
           plan.sim.legs.map((l, i) => { const j = l.job, n = base + i + 1, was = q.position(j).n, label = WD.itemsLabel(j.items, j.type === 'purge');
-            const row = ui.row({ class: 'jb-ar', leading: h('div.jb-num', { style: WD.pinStyle(j) }, n),
+            const hold = moveStyle() === 'hold';
+            const row = ui.row({ class: 'jb-ar' + (hold ? '.hold' : ''), leading: h('div.jb-num', { style: WD.pinStyle(j) }, n),
               title: h('span', j.title, label && h('span.jb-qty', label), i <= pinnedAt && i === pinnedAt ? h('span.jb-pin', 'MOVED') : null),
               subtitle: h('div', h('div', ['ETA ' + fmt.time(l.start), j.type === 'dump' ? 'added stop' : n !== was ? 'was stop ' + was : 'same place', l.drive + ' min drive', '~' + l.svc + ' min on site (' + (l.sm.source === 'override' ? (j.type === 'dump' ? 'unload time' : 'set on this job') : l.est ? l.est.billable + ' boxes' + (l.est.guess ? ', rough count' : '') : l.sm.source === 'history' ? 'median of ' + l.sm.n : l.sm.counted ? 'formula, no history yet' : 'default, no history yet') + (l.sm.setup ? ', +' + l.sm.setup + ' new setup' : '') + (l.sm.pace !== 1 ? ', truck pace ' + Math.round(l.sm.pace * 100) + '%' : '') + ')'].join(' · ')), windowNote(l), AR && AR.rowExtra(l, page)),
-              trailing: h('span.jb-grip', { 'aria-label': 'Reorder', onpointerdown: ev => startDrag(ev, i, page) }, icon('line.3', 20)) });
+              trailing: h('span.jb-grip', { 'aria-label': hold ? 'Press and hold to reorder' : 'Reorder', onpointerdown: ev => { if (!hold || ev.pointerType === 'mouse') startDrag(ev, i, page); } }, icon('line.3', 20)) });
+            if (hold) { row.addEventListener('pointerdown', ev => armHold(ev, i, page)); row.addEventListener('contextmenu', ev => ev.preventDefault()); }
             return row; })),
         unrouted.length > 0 && ui.section({ header: 'Not routed', footer: 'These move to the end of the list. Stops without a confirmed address never get routing coordinates.' },
           unrouted.map(j => ui.row({ leading: h('span.jb-q', { style: 'font-size:20px;width:26px;text-align:center' }, j.address ? '?' : '–'), title: j.title, subtitle: j.address ? 'Address not found: ' + j.address : 'No address' }))));
@@ -772,7 +809,7 @@ async function openAutoRoute(routeId, o = {}) {
 }
 
 WD.addressSuggestions = addressSuggestions;
-WD.screens.jobs = { recommend, openDetails, openEditor, openReassign, openSearch, openAutoRoute, skipFlow, callOff, copyTo, pickDay };
+WD.screens.jobs = { recommend, openDetails, openEditor, openReassign, openSearch, openAutoRoute, skipFlow, callOff, copyTo, pickDay, moveStyle, setMoveStyle, MOVE_STYLES };
 const firstToday = pred => data.jobs.filter(j => j.day === D.today() && !j.allDay && pred(j)).sort(q.order)[0];
 WD.panel.addJump('Job details', () => { WD.nav.switchTab('board'); const j = firstToday(x => x.status === 'arrived') || firstToday(() => true); if (j) openDetails(j.id); });
 WD.panel.addJump('New job', () => { WD.nav.switchTab('board'); openEditor({ day: D.today(), routeId: 'r1' }); });
