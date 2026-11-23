@@ -137,6 +137,13 @@ WD.css(`
 /* Five lines have to fit a day cell on a phone, so the area plan packs its lines and its day number tighter. */
 .bd-month.areas .bd-mev { margin-top: 1px; } .bd-month.areas .bd-mnum { width: 20px; height: 20px; margin-bottom: 0; }
 .bd-mev.off { margin: 2px 1px 0; padding: 1px 3px; border-radius: 4px; border-left: 0; font-weight: 700; background: var(--label); color: var(--cell); }
+.bd-week { position: relative; }
+/* Time off over several days is one bar across the week. Each day keeps an empty line in the bar's row, so everything under it stays clear. */
+.bd-mev.off.gap { visibility: hidden; }
+.bd-month.areas .bd-mbar { position: absolute; z-index: 1; box-sizing: border-box; margin: 0; pointer-events: none; top: calc(23px + var(--r) * 17px); left: calc(var(--s) / 7 * 100% + 2px); width: calc(var(--n) / 7 * 100% - 4px); }
+.bd-month.areas .bd-mbar.cl { left: calc(var(--s) / 7 * 100%); width: calc(var(--n) / 7 * 100% - 2px); border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.bd-month.areas .bd-mbar.cr { width: calc(var(--n) / 7 * 100% - 2px); border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.bd-month.areas .bd-mbar.cl.cr { width: calc(var(--n) / 7 * 100%); }
 .bd-mev.off.ask { background: none; color: var(--label); outline: 1.5px dashed var(--label2); outline-offset: -1.5px; }
 .bd-mev.wkend { margin: 2px 1px 0; font-weight: 600; background: color-mix(in srgb, var(--ring) 18%, var(--cell)); }
 .bd-mday.sel { background: var(--fill3); }
@@ -674,20 +681,38 @@ function monthSwipe(el) {
   el.addEventListener('pointercancel', () => { s = null; });
   el.addEventListener('wheel', e => { e.preventDefault(); if (Date.now() < wheelLock) return; acc += e.deltaY; if (Math.abs(acc) > 60) { wheelLock = Date.now() + 500; go(acc > 0 ? 1 : -1); } }, { passive: false });
 }
+/** Time off in one week of the month: each person's consecutive days become one run, and runs that overlap get rows of their own.
+    Returns the runs ({s: first column, n: days, r: row, o, cl / cr: goes on into the week before / after}) and, for each day, the rows in use. */
+function offRuns(days) {
+  const AR = WD.areas, per = days.map(day => AR.off(day)), key = o => o.t.userId + (o.pending ? '?' : ''), runs = [], open = {};
+  const has = (day, n, k) => { const d = D.parse(day); d.setDate(d.getDate() + n); return AR.off(D.key(d)).some(o => key(o) === k); };
+  per.forEach((list, i) => { const seen = {}; list.forEach(o => { const k = key(o); if (seen[k]) return; seen[k] = 1; const run = open[k]; if (run && run.s + run.n === i) run.n++; else runs.push(open[k] = { k, o, s: i, n: 1 }); }); });
+  const rows = [];
+  runs.forEach(run => { let r = 0; while ((rows[r] || []).some(x => x.s < run.s + run.n && run.s < x.s + x.n)) r++; (rows[r] = rows[r] || []).push(run); run.r = r;
+    run.cl = run.s === 0 && has(days[0], -1, run.k); run.cr = run.s + run.n === 7 && has(days[6], 1, run.k); });
+  return { runs, at: days.map((d, i) => runs.filter(x => x.s <= i && i < x.s + x.n)) };
+}
 function monthView() {
   const b = S.board, { weeks, month } = monthWeeks(b.day), routes = q.visibleRoutes().map(r => r.id), today = D.today(), areas = showAreas();
   /* An area's towns break after each slash. How many lines one may take depends on how many routes share the day's cell. */
-  const el = h('div.bd-month' + (areas ? '.areas' : '') + (monthAnim ? '.' + monthAnim : ''), { style: areas ? { '--ln': String(Math.max(1, Math.floor(4 / Math.max(1, routes.length)))) } : null }, h('div.bd-mhead', ['S', 'M', 'T', 'W', 'T', 'F', 'S'].map(x => h('span', x))), weeks.map(days => h('div.bd-week', days.map(day => {
+  const el = h('div.bd-month' + (areas ? '.areas' : '') + (monthAnim ? '.' + monthAnim : ''), { style: areas ? { '--ln': String(Math.max(1, Math.floor(4 / Math.max(1, routes.length)))) } : null }, h('div.bd-mhead', ['S', 'M', 'T', 'W', 'T', 'F', 'S'].map(x => h('span', x))), weeks.map(days => { const MAX = 5, off = areas ? offRuns(days) : null, shown = days.map(() => MAX); return h('div.bd-week', days.map((day, di) => {
     const cls = 'div.bd-mday' + (D.parse(day).getMonth() !== month ? '.other' : '') + (day === today ? '.today' : ''), num = h('div.bd-mnum', D.parse(day).getDate()), swiped = () => Date.now() - monthSwiped < 400;
-    if (areas) { const AR = WD.areas, lines = [
-        ...AR.off(day).map(o => h('div.bd-mev.off' + (o.pending ? '.ask' : ''), { title: o.name + (o.pending ? ' asked for time off' : ' has time off') }, o.name + ' off' + (o.pending ? '?' : ''))),
-        ...AR.specials(day, routes).map(j => h('div.bd-mev.wkend', { style: { '--ring': q.routeColor(j.routeId) }, title: j.title }, j.title)),
-        ...AR.on(day, routes).map(a => h('div.bd-mev.area' + (a.auto ? '' : '.set'), { style: { background: a.color, color: readableOn(a.color) }, title: a.name + ' · ' + q.routeName(a.routeId) }, a.name.replace(/\s*\/\s*/g, '/\u200b')))];
-      return h(cls, { onclick: () => { if (!swiped()) AR.openDay(day, refresh); } }, num, lines.slice(0, 5)); }
+    if (areas) { const AR = WD.areas, mine = off.at[di], rows = mine.length ? Math.max(...mine.map(x => x.r)) + 1 : 0;
+      /* One line per time-off row up to the lowest bar crossing this day; the bars themselves are drawn over the week, below. */
+      const lines = [
+        ...Array.from({ length: rows }, (_, r) => { const x = mine.find(m => m.r === r); return { real: !!x, el: h('div.bd-mev.off.gap', x ? { title: x.o.name + (x.o.pending ? ' asked for time off' : ' has time off') } : null, '\u00a0') }; }),
+        ...AR.specials(day, routes).map(j => ({ real: true, el: h('div.bd-mev.wkend', { style: { '--ring': q.routeColor(j.routeId) }, title: j.title }, j.title) })),
+        ...AR.on(day, routes).map(a => ({ real: true, el: h('div.bd-mev.area' + (a.auto ? '' : '.set'), { style: { background: a.color, color: readableOn(a.color) }, title: a.name + ' · ' + q.routeName(a.routeId) }, a.name.replace(/\s*\/\s*/g, '/\u200b')) }))];
+      /* Five lines fit a day cell on a phone. With more, the fifth line says how many are not shown. */
+      const keepN = lines.length > MAX ? MAX - 1 : MAX, more = lines.slice(keepN).filter(x => x.real).length; shown[di] = keepN;
+      return h(cls, { onclick: () => { if (!swiped()) AR.openDay(day, refresh); } }, num, lines.slice(0, keepN).map(x => x.el), more > 0 && h('div.bd-more', '+' + more + ' more')); }
     const jobs = q.jobsOn(day).filter(j => routes.includes(j.routeId)).sort(boardSort);
     return h(cls, { onclick: () => { if (swiped()) return; b.day = day; b.mode = 'routes'; keep(null, 0); refresh(); } },
       num, WD.r11 && routes.some(r => WD.r11.noteFor(r, day)) && h('div.bd-mev', { style: { '--c': '#FFD60A', '--ring': '#E0A800', background: '#FFE066', color: '#1C1C1E' }, title: 'Route note' }, 'Note'), jobs.slice(0, 4).map(j => h('div.bd-mev' + (WD.struck[j.status] ? '.struck' : ''), { style: { '--c': j.allDay ? q.routeColor(j.routeId) : WD.cardColor(j), '--ring': q.routeColor(j.routeId) } }, j.title)), jobs.length > 4 && h('div.bd-more', '+' + (jobs.length - 4) + ' more'));
-  }))));
+  }), off && off.runs.map(x => {
+    /* A bar is drawn over the days where its row is shown; a day that ran out of lines counts it under “+N more” instead. */
+    const segs = []; for (let i = x.s; i < x.s + x.n; i++) { if (x.r >= shown[i]) continue; const g = segs[segs.length - 1]; if (g && g.s + g.n === i) g.n++; else segs.push({ s: i, n: 1 }); }
+    return segs.map(g => h('div.bd-mev.off.bd-mbar' + (x.o.pending ? '.ask' : '') + ((g.s > x.s || x.cl) ? '.cl' : '') + ((g.s + g.n < x.s + x.n || x.cr) ? '.cr' : ''), { style: { '--s': String(g.s), '--n': String(g.n), '--r': String(x.r) } }, x.o.name + ' off' + (x.o.pending ? '?' : ''))); })); }));
   monthAnim = null; monthSwipe(el); return el;
 }
 function pickDate() {

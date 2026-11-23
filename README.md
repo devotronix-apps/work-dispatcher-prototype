@@ -30,6 +30,11 @@ Board and map colors: a job card is neutral (white, dark gray in dark mode) with
 
 Jobs have no scheduled times: each route's day is an ordered list, and stop 1 is done first. Cards leave the address off and show the key facts (containers or boxes, window, time on site); pinch on the board (or ⌘/ctrl-scroll, or Card detail in the board’s ⋯ menu) to switch between less and more detail. Every card carries all three levels and the board’s `lvl0`–`lvl2` class picks one, so pinching never rebuilds the list. AutoRoute recommends when to leave the truck's parking place for a day that hasn't started, which you can accept or replace with your own time, and gives a window to each stop marked **Needs a window**. On the board, drag a job up or down to reorder it or into another column to reassign it, and tap a column's empty space (or **Add stop**) to add a job at the end. Notes for the day sit above the list. The prototype clock starts at 10:24 AM; other drivers' trucks move and complete their stops on their own, faster than real life, so the board and map change while you watch.
 
+## What changed in 6.5
+
+- **Time off as one bar** (`offRuns`, `.bd-mbar` in `board.js`, R21-8): per week, each person's consecutive days off (same `userId` and pending state) are one run, and overlapping runs get rows. Every day under a run keeps an invisible line (`.bd-mev.off.gap`) in that row; the bar is drawn over the week, positioned by `--s` (first column), `--n` (days) and `--r` (row). `.cl` / `.cr` square an end that continues into another week or under a day that ran out of lines.
+- **“+N more” on the area plan** (R21-9): more than five lines shows four and the count of what is hidden.
+
 ## What changed in 6.4
 
 - **Phone service choice** (`PROV` in `r20-phone.js`, R21-4): `device`, `telnyx`, `quo`, `link`. `telnyx` replaces the planned `builtin` and can be chosen; it has `place`, so calls use the in-app call screen instead of `P.handoff`. `api()` is true for `quo` and `telnyx` (connection section and the not-connected and registration warnings). Text credit, contact copying and seats stay Quo only.

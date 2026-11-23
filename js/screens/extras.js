@@ -442,8 +442,8 @@ X.contactSummary = (c, items, describe) => {
 
 /* ================= What's new tutorial ================= */
 const TOUR = [
-  { icon: 'sparkles', title: 'New in ' + WD.version, text: 'Choose the company’s phone service: the phone’s own dialer, Telnyx or Quo. Run this tour again from Menu → Settings → About.' },
-  { tab: 'Menu', icon: 'phone', title: 'Phone service', list: ['Settings → Integrations → Phone → Phone service.', 'Telnyx can now be chosen: calls and texts are made inside RouteClerk on the company’s Telnyx numbers.', '“What works with” lists what the chosen service can do, now with call summaries, voicemail and loading earlier calls and texts.', 'Anything a service can’t do is hidden or turned off.'] },
+  { icon: 'sparkles', title: 'New in ' + WD.version, text: 'On the month view, time off over several days is one bar, and a full day says how many more lines it has. Run this tour again from Menu → Settings → About.' },
+  { tab: 'Dispatch', icon: 'calendar', title: 'Month view', list: ['Someone off for several days in a row shows as one bar across those days.', 'A bar that runs past Saturday carries on in the next week.', 'A day with more lines than fit shows “+N more”. Tap the day to see them all.'] },
 ];
 X.tutorial = () => {
   const screen = document.getElementById('screen'), old = screen.querySelector('.x-tour'); if (old) old.remove();
