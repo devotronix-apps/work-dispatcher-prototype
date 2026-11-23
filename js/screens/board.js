@@ -133,13 +133,15 @@ WD.css(`
 .bd-month.up > .bd-week { animation: bd-mup .26s cubic-bezier(.2,.85,.25,1); } .bd-month.down > .bd-week { animation: bd-mdown .26s cubic-bezier(.2,.85,.25,1); }
 @keyframes bd-mup { from { transform: translateY(60px); opacity: 0; } } @keyframes bd-mdown { from { transform: translateY(-60px); opacity: 0; } }
 .bd-mev.area { font-weight: 600; margin: 2px 1px 0; padding: 1px 3px; border-radius: 4px; border-left: 0; }
-.bd-month.areas .bd-mev.area { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--ln, 1); white-space: normal; overflow-wrap: anywhere; line-height: 14px; }
+.bd-month.areas .bd-mev.area { max-height: calc(var(--ln, 1) * 14px + 2px); white-space: normal; overflow-wrap: anywhere; line-height: 14px; }
+/* Five lines have to fit a day cell on a phone, so the area plan packs its lines and its day number tighter. */
+.bd-month.areas .bd-mev { margin-top: 1px; } .bd-month.areas .bd-mnum { width: 20px; height: 20px; margin-bottom: 0; }
 .bd-mev.off { margin: 2px 1px 0; padding: 1px 3px; border-radius: 4px; border-left: 0; font-weight: 700; background: var(--label); color: var(--cell); }
 .bd-mev.off.ask { background: none; color: var(--label); outline: 1.5px dashed var(--label2); outline-offset: -1.5px; }
 .bd-mev.wkend { margin: 2px 1px 0; font-weight: 600; background: color-mix(in srgb, var(--ring) 18%, var(--cell)); }
 .bd-mday.sel { background: var(--fill3); }
 .bd-mnum { width: 22px; height: 22px; margin: 0 auto 1px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; letter-spacing: 0; }
-.bd-mday.today .bd-mnum { background: #D70015; color: #fff; font-weight: 600; }
+.bd-mday.today .bd-mnum { background: var(--tint); color: #fff; font-weight: 600; }
 /* Month lines use a condensed face so 8 or 9 characters fit a phone's day cell at 12px (the app uses the system font's condensed width). */
 .bd-mev { font-family: 'Avenir Next Condensed', 'Roboto Condensed', 'Arial Narrow', sans-serif-condensed, var(--font, sans-serif); font-stretch: condensed; font-size: 12px; line-height: 14px; letter-spacing: 0; white-space: nowrap; overflow: hidden; border-radius: 3px; padding: 0 1px; margin-top: 1px; color: var(--label); background: var(--fill3); border-left: 2px solid var(--ring); }
 .bd-mev.struck { text-decoration: line-through; background: color-mix(in srgb, var(--gray) 16%, var(--cell)); }
@@ -681,7 +683,7 @@ function monthView() {
         ...AR.off(day).map(o => h('div.bd-mev.off' + (o.pending ? '.ask' : ''), { title: o.name + (o.pending ? ' asked for time off' : ' has time off') }, o.name + ' off' + (o.pending ? '?' : ''))),
         ...AR.specials(day, routes).map(j => h('div.bd-mev.wkend', { style: { '--ring': q.routeColor(j.routeId) }, title: j.title }, j.title)),
         ...AR.on(day, routes).map(a => h('div.bd-mev.area' + (a.auto ? '' : '.set'), { style: { background: a.color, color: readableOn(a.color) }, title: a.name + ' · ' + q.routeName(a.routeId) }, a.name.replace(/\s*\/\s*/g, '/\u200b')))];
-      return h(cls, { onclick: () => { if (!swiped()) AR.openDay(day, refresh); } }, num, lines.slice(0, 5), lines.length > 5 && h('div.bd-more', '+' + (lines.length - 5) + ' more')); }
+      return h(cls, { onclick: () => { if (!swiped()) AR.openDay(day, refresh); } }, num, lines.slice(0, 5)); }
     const jobs = q.jobsOn(day).filter(j => routes.includes(j.routeId)).sort(boardSort);
     return h(cls, { onclick: () => { if (swiped()) return; b.day = day; b.mode = 'routes'; keep(null, 0); refresh(); } },
       num, WD.r11 && routes.some(r => WD.r11.noteFor(r, day)) && h('div.bd-mev', { style: { '--c': '#FFD60A', '--ring': '#E0A800', background: '#FFE066', color: '#1C1C1E' }, title: 'Route note' }, 'Note'), jobs.slice(0, 4).map(j => h('div.bd-mev' + (WD.struck[j.status] ? '.struck' : ''), { style: { '--c': j.allDay ? q.routeColor(j.routeId) : WD.cardColor(j), '--ring': q.routeColor(j.routeId) } }, j.title)), jobs.length > 4 && h('div.bd-more', '+' + (jobs.length - 4) + ' more'));
@@ -708,7 +710,8 @@ function render(p) {
   if (!q.route(b.routeId)) { const mine = data.routes.find(r => r.driverId === S.me.id); b.routeId = (mine || q.visibleRoutes()[0] || q.routes()[0]).id; }
   /* While jobs are being selected the bar takes the place of the warning lines, right under the date. */
   /* Under the bar: the month, the live map of the same day and routes, or the board (on a computer optionally with the map beside it). */
-  return [topBar(), selectBar() || strips([statusStrip(), addressStrip(), WD.r11 && WD.r11.boardStrips(inView, { label: viewLabel() }), WD.rc && WD.rc.assignStrip && WD.rc.assignStrip(b.mode === 'month' ? [] : columns()), offStrip(), markStrip(), WD.eta && b.mode !== 'month' && WD.eta.boardStrip(columns()), ops2().boardStrips && ops2().boardStrips(b.mode === 'month' ? [] : columns())]),
+  /* The month is a plan to read: it shows no issue or review lines, only the offline and syncing status. */
+  return [topBar(), selectBar() || strips(b.mode === 'month' ? [statusStrip()] : [statusStrip(), addressStrip(), WD.r11 && WD.r11.boardStrips(inView, { label: viewLabel() }), WD.rc && WD.rc.assignStrip && WD.rc.assignStrip(b.mode === 'month' ? [] : columns()), offStrip(), markStrip(), WD.eta && b.mode !== 'month' && WD.eta.boardStrip(columns()), ops2().boardStrips && ops2().boardStrips(b.mode === 'month' ? [] : columns())]),
     b.mode === 'month' ? monthView() : h('div.bd-holder' + (WD.r15 && WD.r15.cardClass ? WD.r15.cardClass() : ''), { style: WD.r15 && WD.r15.cardVars ? WD.r15.cardVars() : null }, mapOnly() ? mapPane() : splitView() ? h('div.bd-split', grid(), mapPane()) : grid(), viewPill())];
 }
 WD.screens.board = {

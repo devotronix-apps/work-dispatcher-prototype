@@ -4,9 +4,9 @@
 'use strict';
 const WD = window.WD = { screens: {}, data: {} };
 /** Prototype version (Settings → About). Bump on every publish; the “what’s new” tutorial shows once per version. */
-WD.version = '6.2';
+WD.version = '6.3';
 /** Earlier releases kept on the published site under v/<version>/ (Settings → Older versions). Add the outgoing version on every publish. */
-WD.olderVersions = ['6.1', '6.0', '5.4', '5.3', '5.2', '5.1', '5.0', '4.3', '4.2', '4.1'];
+WD.olderVersions = ['6.2', '6.1', '6.0', '5.4', '5.3', '5.2', '5.1', '5.0', '4.3', '4.2', '4.1'];
 const $ = (s, r) => (r || document).querySelector(s);
 
 /* ================= DOM helper ================= */

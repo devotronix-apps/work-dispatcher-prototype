@@ -442,11 +442,8 @@ X.contactSummary = (c, items, describe) => {
 
 /* ================= What's new tutorial ================= */
 const TOUR = [
-  { icon: 'sparkles', title: 'New in ' + WD.version, text: 'Calls are handed to your phone service, the Inbox is one list, drivers are asked about review requests, and invoices can show a card price and a cash price. Run this tour again from Menu → Settings → About.' },
-  { tab: 'Inbox', icon: 'phone', title: 'Inbox and calls', list: ['Inbox opens on All: calls and texts in one list. Claim one, assign it or mark it handled from the ⋯ on its row.', 'A call button opens Call with Quo: it shows the company number to call from, then opens the Quo app. On a computer it copies the number.', 'A customer who replies STOP can’t be texted again until they reply START.', 'A missed call from a customer makes a Call back task.', 'Settings → Integrations → Phone: the phone service, company numbers and their ad channels, who has a seat.'] },
-  { tab: 'Dispatch', icon: 'calendar', title: 'Dispatch', list: ['Month lines use a narrower typeface, so more of each name shows.', 'Assigning a driver or truck: everyone can be chosen, and the ones not qualified for that day’s jobs are in red with the reason.', 'Changing how often a job repeats now rebuilds its later visits.'] },
-  { tab: 'Shift', icon: 'star', title: 'Review requests', list: ['After a job is completed and billed, the app asks whether to send that customer a Google review request.', 'Settings → Client communications → Reviews and feedback sets how often a customer may be asked.'] },
-  { tab: 'Menu', icon: 'creditcard', title: 'Card price and cash price', list: ['Settings → Company → Invoicing and payments → Card payments.', 'Built into prices: invoices show the card price and a lower price for cash, check or bank transfer.', 'Or a separate card fee line, only on invoices paid by credit card.'] },
+  { icon: 'sparkles', title: 'New in ' + WD.version, text: 'The month view is cleaner: no warning bar, no cut-off dots, and today is marked in blue. Run this tour again from Menu → Settings → About.' },
+  { tab: 'Dispatch', icon: 'calendar', title: 'Month view', list: ['Area and job lines show as much of the name as fits, without “…” at the end.', 'The issues and review bar no longer shows over the month. It is still on the Routes and Days views.', 'Today’s date has a blue circle.'] },
 ];
 X.tutorial = () => {
   const screen = document.getElementById('screen'), old = screen.querySelector('.x-tour'); if (old) old.remove();
