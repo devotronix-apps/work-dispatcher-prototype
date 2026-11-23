@@ -4,7 +4,9 @@
               Quo app with a link that carries the number and the company number to call from (phones only; a computer copies the number).
      link     Another phone app (RingCentral, Dialpad, Aircall, Google Voice): a call is handed over with that app's link. Nothing comes back.
      device   The phone's own dialer and Messages. Nothing comes back, so each call is logged by hand as “not recorded”.
-     builtin  RouteClerk Phone (planned, not offered yet): calling and texting inside the app.
+     telnyx   Telnyx is connected (6.4): numbers, calling and texting run inside RouteClerk on Telnyx's API. Telnyx has no app of its own,
+              no voicemail box and no call summaries, so those lines are off for it.
+   Each service is one module that answers the same questions (P.can); a screen asks the capability and never names a service.
    Also here: the combined inbox (All), claim and assign, opt-outs (STOP), text templates, a Call back task for a missed call, the ad
    channel of each company number, and Settings → Integrations → Phone. Requirements R20-6 to R20-14. */
 (() => {
@@ -17,12 +19,12 @@ const admin = () => WD.can('settings.manage');
 
 /* ---------- The phone services and what each can do ---------- */
 const APPS = { ringcentral: { name: 'RingCentral', call: n => 'rcmobile://call?number=' + enc(n) }, dialpad: { name: 'Dialpad', call: n => 'dialpad:' + n }, aircall: { name: 'Aircall', call: n => 'aircall://call?to=' + enc(n) }, gvoice: { name: 'Google Voice', call: n => 'https://voice.google.com/u/0/calls?a=nc,' + enc(n) } };
-const CAPS = [['events', 'Calls and texts appear here by themselves'], ['recordings', 'Recordings, transcripts and summaries'], ['texts', 'Send and receive texts inside RouteClerk'], ['mms', 'Send pictures by text from RouteClerk'], ['optout', 'STOP replies block further texts'], ['link', 'One tap starts the call in the phone app'], ['from', 'The call goes out from the company number we choose'], ['place', 'Calls are made inside RouteClerk']];
+const CAPS = [['events', 'Calls and texts appear here by themselves'], ['recordings', 'Call recordings and transcripts'], ['summaries', 'Call summaries written by the phone service'], ['voicemail', 'Voicemail messages'], ['history', 'Earlier calls and texts can be loaded'], ['texts', 'Send and receive texts inside RouteClerk'], ['mms', 'Send pictures by text from RouteClerk'], ['optout', 'STOP replies block further texts'], ['link', 'One tap starts the call in the phone app'], ['from', 'The call goes out from the company number we choose'], ['place', 'Calls are made inside RouteClerk']];
 const PROV = {
-  quo: { name: 'Quo', sub: 'Connected with an API key. Calls are handed to the Quo app.', can: { events: 1, recordings: 1, texts: 1, optout: 1, link: 1, from: 1 } },
-  link: { name: 'Another phone app', sub: 'RingCentral, Dialpad, Aircall or Google Voice. A call opens in that app; nothing is logged by itself.', can: { link: 1 } },
-  device: { name: 'This phone’s own dialer', sub: 'Calls and texts use the phone’s own apps and the person’s own number.', can: {} },
-  builtin: { name: 'RouteClerk Phone', sub: 'Numbers, calling and texting from RouteClerk. Planned; not offered yet.', can: { events: 1, recordings: 1, texts: 1, mms: 1, optout: 1, place: 1, from: 1 }, soon: true } };
+  device: { name: 'This phone’s own dialer', sub: 'Calls and texts use the phone’s own apps and the person’s own number. Nothing is logged by itself.', can: {} },
+  telnyx: { name: 'Telnyx', sub: 'Connected with an API key. Calls and texts are made inside RouteClerk on the company’s Telnyx numbers.', can: { events: 1, recordings: 1, texts: 1, mms: 1, optout: 1, from: 1, place: 1 } },
+  quo: { name: 'Quo', sub: 'Connected with an API key. Calls are handed to the Quo app.', can: { events: 1, recordings: 1, summaries: 1, voicemail: 1, history: 1, texts: 1, optout: 1, link: 1, from: 1 } },
+  link: { name: 'Another phone app', sub: 'RingCentral, Dialpad, Aircall or Google Voice. A call opens in that app; nothing is logged by itself.', can: { link: 1 } } };
 const CHANNELS = ['None', 'Google Ads', 'Google Business Profile', 'Yelp', 'Microsoft Ads', 'Apple Maps', 'Website'];
 const guess = label => CHANNELS.find(c => c !== 'None' && c.toLowerCase() === String(label || '').toLowerCase()) || (/bing/i.test(label) ? 'Microsoft Ads' : /google maps/i.test(label) ? 'Google Business Profile' : 'None');
 /** Settings and state for the business in front. Kept in its own data, so each business has its own phone service. */
@@ -31,6 +33,8 @@ const PH = () => { if (!data.phone) { data.phone = { provider: 'quo', app: 'ring
   return data.phone; };
 P.cfg = PH; P.CHANNELS = CHANNELS;
 P.provider = () => PROV[PH().provider] || PROV.quo;
+/** Services reached with an API key, which can stop answering or wait on carrier registration. */
+const api = () => ['quo', 'telnyx'].includes(PH().provider);
 P.can = cap => !!P.provider().can[cap];
 P.name = () => PH().provider === 'link' ? (APPS[PH().app] || APPS.ringcentral).name : PH().provider === 'device' ? 'the phone' : P.provider().name;
 /** Does the signed-in person have a seat in the company's phone service? Without one a call falls back to the phone's own dialer. */
@@ -154,8 +158,8 @@ const row = (r, page) => { const c = C(), st = stateOf(r), k = r.it, call = r.ki
     h('div.ph-meta', h('div', fmt.rel(r.at)), h('div', r.line + ' line'), more)); };
 /** Warnings that stop the phone from working: shown at the top of the inbox and on the settings page. */
 P.warnings = push => { const cfg = PH(), out = [], go = () => push && push(P.settingsSpec());
-  if (cfg.provider === 'quo' && !cfg.connected) out.push(h('div.ph-warn', { onclick: go }, icon('exclamationmark.triangle', 18, 'var(--red)'), h('div', h('b', 'Quo is not connected. '), 'New calls and texts are not arriving, and texts can’t be sent. Tap to reconnect.')));
-  if (cfg.provider === 'quo' && cfg.a2p !== 'approved') out.push(h('div.ph-warn.amber', { onclick: go }, icon('exclamationmark.triangle', 18, 'var(--orange)'), h('div', h('b', 'Text registration is not approved yet. '), 'US carriers block business texts until it is. Check it in Quo.')));
+  if (api() && !cfg.connected) out.push(h('div.ph-warn', { onclick: go }, icon('exclamationmark.triangle', 18, 'var(--red)'), h('div', h('b', P.name() + ' is not connected. '), 'New calls and texts are not arriving, and texts can’t be sent. Tap to reconnect.')));
+  if (api() && cfg.a2p !== 'approved') out.push(h('div.ph-warn.amber', { onclick: go }, icon('exclamationmark.triangle', 18, 'var(--orange)'), h('div', h('b', 'Text registration is not approved yet. '), 'US carriers block business texts until it is. Check it in ' + P.name() + '.')));
   if (lowCredit()) out.push(h('div.ph-warn.amber', { onclick: go }, icon('exclamationmark.triangle', 18, 'var(--orange)'), h('div', h('b', 'Text credit is low: ' + fmt.money(cfg.credits) + '. '), 'Texts sent from RouteClerk cost 1¢ a segment from the Quo balance and stop when it runs out.')));
   return out; };
 const FILTERS = [['open', 'Needs follow-up'], ['unread', 'Unread'], ['missed', 'Missed'], ['mine', 'Mine'], ['all', 'Everything']];
@@ -182,23 +186,24 @@ P.optOutSpec = () => ({ title: 'Opted out of texts', render: page => { const lis
   return ui.list(ui.section({ showFooter: true, footer: 'A number lands here when it replies STOP, or when the phone service refuses a text because the number opted out. No text is sent to these numbers from any company number, whoever presses Send. A customer texts START to come off the list; an admin can remove a number only with the customer’s say-so.' },
     list.length ? list.map(([n, o]) => ui.row({ title: fmt.phone('+1' + n), subtitle: o.how + ' · ' + fmt.rel(o.at), trailing: admin() ? ui.button('Remove', { small: true, kind: 'gray', block: false, onTap: async () => { if (await ui.actionSheet({ title: 'Text ' + fmt.phone('+1' + n) + ' again?', message: 'Only do this if the customer asked to get texts again.', buttons: [{ label: 'They asked, remove', value: true, role: 'destructive' }] })) { P.optIn(n); WD.changed(); page.refresh(); } } }) : null }))
       : ui.row({ title: 'Nobody has opted out' }))); } });
-P.settingsSpec = () => ({ title: 'Phone', render: page => { const cfg = PH(), o = org(), ok = admin(), re = () => { WD.changed(); page.refresh(); }, quo = cfg.provider === 'quo';
+P.settingsSpec = () => ({ title: 'Phone', render: page => { const cfg = PH(), o = org(), ok = admin(), re = () => { WD.changed(); page.refresh(); }, quo = cfg.provider === 'quo', viaApi = api(), name = P.name();
   const dot = on => h('span', { style: { width: '10px', height: '10px', borderRadius: '50%', display: 'inline-block', background: on ? 'var(--green)' : 'var(--red)' } });
   const calls = WD.calls && WD.calls.list ? WD.calls.list() : [], last = calls[0];
   const people = (data.users || []).filter(u => u.status !== 'invited' && ['owner', 'admin', 'dispatcher', 'office', 'driver'].includes(u.role));
   return ui.list(P.warnings(),
-    ui.section({ header: 'Phone service', fold: false, showFooter: true, footer: 'RouteClerk works with the phone service the company already has. What the Inbox and the call buttons can do depends on it.' },
+    ui.section({ header: 'Phone service', fold: false, showFooter: true, footer: 'Choose one. What the Inbox and the call buttons can do depends on the service; anything it can’t do is hidden or turned off, and listed below.' },
       Object.entries(PROV).map(([id, p]) => ui.row({ icon: cfg.provider === id ? 'checkmark.circle.fill' : 'circle', iconPlain: true, iconColor: cfg.provider === id ? 'var(--tint)' : 'var(--label3)', title: p.name, subtitle: p.sub, badge: p.soon ? ui.badge('Planned', 'var(--gray)') : null, disabled: !ok || !!p.soon, onTap: () => { cfg.provider = id; re(); } })),
       cfg.provider === 'link' && ui.pickerRow({ title: 'Which app', value: cfg.app, disabled: !ok, options: Object.entries(APPS).map(([value, a]) => ({ value, label: a.name })), onChange: v => { cfg.app = v; re(); } })),
     ui.section({ header: 'What works with ' + (cfg.provider === 'device' ? 'the phone’s dialer' : P.name()), fold: false }, h('div', { style: 'padding:8px 16px' }, CAPS.map(([cap, text]) => h('div.ph-cap' + (P.can(cap) ? '' : '.no'), icon(P.can(cap) ? 'checkmark.circle.fill' : 'xmark.circle.fill', 18, P.can(cap) ? 'var(--green)' : 'var(--label3)'), text)))),
-    quo && ui.section({ header: 'Quo connection', fold: false, showFooter: true, footer: 'RouteClerk reads calls, recordings, summaries and texts with the API key, and Quo tells it about new ones. The connection is set up for you when the key is saved. Quo has no way for another app to place a call, so calls are handed to the Quo app.' },
-      ui.row({ leading: dot(cfg.connected), title: 'API key', subtitle: 'Workspace ' + o.name + ' · key ending 4f2a', detail: cfg.connected ? 'Connected' : 'Not connected' }),
-      ui.row({ leading: dot(cfg.connected), title: 'Last event from Quo', detail: cfg.connected && last ? fmt.rel(last.at) : 'None arriving' }),
+    viaApi && ui.section({ header: name + ' connection', fold: false, showFooter: true, footer: quo ? 'RouteClerk reads calls, recordings, summaries and texts with the API key, and Quo tells it about new ones. The connection is set up for you when the key is saved. Quo has no way for another app to place a call, so calls are handed to the Quo app.'
+        : 'RouteClerk places and answers calls and sends texts on the company’s Telnyx numbers, and Telnyx tells it what happened. Telnyx has no app, voicemail box or call summaries of its own, and keeps no history to load, so RouteClerk keeps every call and text as it happens. Telnyx bills the company for minutes and texts.' },
+      ui.row({ leading: dot(cfg.connected), title: 'API key', subtitle: (quo ? 'Workspace ' : 'Account ') + o.name + ' · key ending 4f2a', detail: cfg.connected ? 'Connected' : 'Not connected' }),
+      ui.row({ leading: dot(cfg.connected), title: 'Last event from ' + name, detail: cfg.connected && last ? fmt.rel(last.at) : 'None arriving' }),
       ui.row({ leading: dot(cfg.a2p === 'approved'), title: 'Text registration with the carriers', detail: cfg.a2p === 'approved' ? 'Approved' : 'Waiting' }),
-      ui.row({ leading: dot(!lowCredit()), title: 'Text credit', subtitle: 'Texts sent from RouteClerk cost 1¢ a segment from the Quo balance', detail: fmt.money(cfg.credits) }),
-      !cfg.connected && ui.row({ title: 'Reconnect', tint: true, center: true, disabled: !ok, onTap: () => ui.run('Checking the key with Quo…', () => { cfg.connected = true; }, { done: 'Connected · events are arriving' }).then(re) }),
-      ui.row({ title: 'Send a test event', tint: true, center: true, disabled: !ok || !cfg.connected, onTap: () => ui.run('Sending a test event to Quo…', () => {}, { done: 'Quo answered' }) }),
-      ui.toggleRow({ title: 'Copy customers to Quo contacts', subtitle: 'So Quo shows the customer’s name. A contact appears in Quo once it has a call or text.', value: !!cfg.sync, disabled: !ok, onChange: v => { cfg.sync = v; re(); } })),
+      quo && ui.row({ leading: dot(!lowCredit()), title: 'Text credit', subtitle: 'Texts sent from RouteClerk cost 1¢ a segment from the Quo balance', detail: fmt.money(cfg.credits) }),
+      !cfg.connected && ui.row({ title: 'Reconnect', tint: true, center: true, disabled: !ok, onTap: () => ui.run('Checking the key with ' + name + '…', () => { cfg.connected = true; }, { done: 'Connected · events are arriving' }).then(re) }),
+      ui.row({ title: 'Send a test event', tint: true, center: true, disabled: !ok || !cfg.connected, onTap: () => ui.run('Sending a test event to ' + name + '…', () => {}, { done: name + ' answered' }) }),
+      quo && ui.toggleRow({ title: 'Copy customers to Quo contacts', subtitle: 'So Quo shows the customer’s name. A contact appears in Quo once it has a call or text.', value: !!cfg.sync, disabled: !ok, onChange: v => { cfg.sync = v; re(); } })),
     cfg.provider !== 'device' && ui.section({ header: 'Company numbers', fold: false, showFooter: true, footer: 'The ad channel is where the number is advertised. A lead that first called that number is counted for that channel, separately from how they reached us (phone, text, form).' },
       (o.lines || []).map(l => ui.pickerRow({ title: l.label + ' · ' + fmt.phone(l.number), disabled: !ok, value: cfg.channels[l.number] || 'None', options: CHANNELS.map(c => ({ value: c, label: c === 'None' ? 'No ad channel' : c })), onChange: v => { cfg.channels[l.number] = v; re(); } }))),
     quo && ui.section({ header: 'Who has a Quo seat', fold: true, folded: true, showFooter: true, footer: 'Read from Quo. Someone without a seat calls from their own phone’s number; those calls are logged as “not recorded”.' },
