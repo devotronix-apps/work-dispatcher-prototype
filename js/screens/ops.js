@@ -21,7 +21,7 @@ WD.css(`
 
 /* ================= Settings data ================= */
 Object.assign(ST, {
-  holidays: { suggest: true, fullHours: 8, notify: true },   // suggest moves when a holiday is marked; what counts as a full route; offer to text customers their new day
+  holidays: { suggest: true, fullHours: 8, notify: true, federal: true },   // suggest moves when a holiday is marked; what counts as a full route; offer to text customers their new day
   confirm: { mode: 'ask', channel: 'text', pricing: 'none', types: { regular: true, purge: true, government: false, creditCard: true, setup: true, meet: true } },   // off | ask | auto
   comms: { textFrom: 'match', callFrom: 'match', byUser: {}, emailFrom: 'office@discountshred.example', emailName: 'company',
     numbers: [{ id: 'n1', n: '+15125550100', label: 'Main line', areas: ['512'], zips: ['78644'], main: true }, { id: 'n2', n: '+17375550140', label: 'North county', areas: ['737'], zips: ['78641'] },
@@ -79,11 +79,26 @@ const dayLoad = (routeId, day) => loadOf(q.stopList(routeId, day).filter(j => !W
 /** Does this route work that day? Monday to Friday, plus a Saturday that already has stops; never a holiday or a day marked “do not schedule”. */
 const works = (routeId, k, extra) => { const w = dow(k); if (w === 0 || isOff(k, extra)) return false; const m = data.dayMarks[routeId + '|' + k]; if (m && m.kind === 'closed') return false; return w !== 6 || q.stopList(routeId, k).length > 0; };
 const weekStart = k => D.add(k, -((dow(k) + 6) % 7));
-/** Upcoming public holidays to offer when marking one. */
+/* US federal holidays, worked out for any year. `date` is the holiday; `day` is when it is observed (Friday for a Saturday, Monday for a Sunday).
+   They are shown on the calendars and warned about when scheduling; the company is only closed on the ones it marks (data.holidays). */
+const nthDay = (y, m, wday, n) => { const d = new Date(y, m, 1); let c = 0; while (true) { if (d.getDay() === wday && ++c === n) return D.key(d); d.setDate(d.getDate() + 1); } };
+const lastDay = (y, m, wday) => { const d = new Date(y, m + 1, 0); while (d.getDay() !== wday) d.setDate(d.getDate() - 1); return D.key(d); };
+const fedCache = {};
+WD.fedHolidays = y => fedCache[y] || (fedCache[y] = [['New Year’s Day', y + '-01-01'], ['Martin Luther King Jr. Day', nthDay(y, 0, 1, 3)], ['Presidents’ Day', nthDay(y, 1, 1, 3)], ['Memorial Day', lastDay(y, 4, 1)], ['Juneteenth', y + '-06-19'],
+  ['Independence Day', y + '-07-04'], ['Labor Day', nthDay(y, 8, 1, 1)], ['Columbus Day', nthDay(y, 9, 1, 2)], ['Veterans Day', y + '-11-11'], ['Thanksgiving', nthDay(y, 10, 4, 4)], ['Christmas Day', y + '-12-25']]
+  .map(([name, date]) => { const w = dow(date); return { name, date, day: w === 6 ? D.add(date, -1) : w === 0 ? D.add(date, 1) : date }; }));
+WD.fedOn = () => ST.holidays.federal !== false;
+/** The federal holiday on a day or observed on it, if they are shown: { name, label, day, date, observed }. */
+WD.fedHoliday = k => { if (!WD.fedOn() || !k) return null; const y = +k.slice(0, 4);
+  const x = [y - 1, y, y + 1].flatMap(WD.fedHolidays).find(f => f.day === k) || WD.fedHolidays(y).find(f => f.date === k); if (!x) return null;
+  const observed = x.day === k && x.date !== k; return { ...x, observed, label: x.name + (observed ? ' (observed)' : '') }; };
+/** Federal holidays observed in the next year, soonest first. */
+const fedAhead = () => { const y = D.parse(today()).getFullYear(); return [y, y + 1].flatMap(WD.fedHolidays).filter(f => f.day >= today() && D.diff(f.day, today()) < 366).sort((a, b) => a.day.localeCompare(b.day)); };
+/** Upcoming public holidays to offer when marking one: the federal ones on the day they are observed, and the two days companies often add. */
 function upcoming() {
-  const out = [], nth = (y, m, wday, n) => { const d = new Date(y, m, 1); let c = 0; while (true) { if (d.getDay() === wday && ++c === n) return D.key(d); d.setDate(d.getDate() + 1); } }, last = (y, m, wday) => { const d = new Date(y, m + 1, 0); while (d.getDay() !== wday) d.setDate(d.getDate() - 1); return D.key(d); };
-  [0, 1].forEach(i => { const y = D.parse(today()).getFullYear() + i, tg = nth(y, 10, 4, 4);
-    out.push(['New Year’s Day', y + '-01-01'], ['Memorial Day', last(y, 4, 1)], ['Independence Day', y + '-07-04'], ['Labor Day', nth(y, 8, 1, 1)], ['Thanksgiving', tg], ['Day after Thanksgiving', D.add(tg, 1)], ['Christmas Eve', y + '-12-24'], ['Christmas Day', y + '-12-25']); });
+  const out = [];
+  [0, 1].forEach(i => { const y = D.parse(today()).getFullYear() + i; WD.fedHolidays(y).forEach(f => out.push([f.name, f.day]));
+    out.push(['Day after Thanksgiving', D.add(nthDay(y, 10, 4, 4), 1)], ['Christmas Eve', y + '-12-24']); });
   return out.filter(([, k]) => k > today() && D.diff(k, today()) < 366 && !data.holidays.some(x => x.day === k)).sort((a, b) => a[1].localeCompare(b[1]));
 }
 
@@ -226,16 +241,22 @@ function moveSheet(pre = {}) {
 }
 OP.schedSpec = () => ({ title: 'Holidays and schedule changes', render: page => { const o = ST.holidays, can = WD.can('jobs.edit'), marks = Object.entries(data.dayMarks).map(([k, m]) => ({ k, routeId: k.split('|')[0], day: k.split('|')[1], ...m })).filter(m => m.day >= today()).sort((a, b) => a.day.localeCompare(b.day));
   const hol = data.holidays.filter(x => x.day >= today()), left = k => q.routes().reduce((s, r) => s + movable(r.id, k).length, 0);
+  const closeFor = async f => { if (!await ui.actionSheet({ title: f.label || f.name, message: fmt.day(f.day, 'long') + '. Marking it closes the company that day on every route.' + (o.suggest ? ' You then review where its jobs go.' : ''), buttons: [{ label: 'Mark the company closed', value: true }] })) return;
+    data.holidays.push({ day: f.day, name: f.name }); data.holidays.sort((a, b) => a.day.localeCompare(b.day)); WD.changed(); page.refresh(); if (o.suggest && left(f.day)) setTimeout(() => planSheet([f.day], f.name), 450); };
   return ui.list(
     ui.section({ header: 'Holidays', footer: o.suggest ? 'Marking a holiday looks at the week’s schedule and suggests where its jobs should go: pulling the week a day earlier when an earlier day has room, otherwise the next working day. Nothing moves until you approve.' : 'Suggestions are off. A holiday is only marked on the board; move its jobs yourself.' },
       hol.map(x => { const n = left(x.day); return ui.row({ icon: 'calendar', iconColor: 'var(--red)', title: x.name, subtitle: fmt.day(x.day, 'long') + ' · ' + (n ? plural(n, 'job') + ' still scheduled' : 'no jobs scheduled'), badge: n ? ui.badge('Plan', 'var(--orange)') : null, chevron: can,
         onTap: can ? async () => { const v = await ui.actionSheet({ title: x.name + ' · ' + fmt.day(x.day), buttons: [n && { label: 'Suggest where the jobs go', value: 'plan' }, { label: 'Remove the holiday', value: 'del', role: 'destructive' }].filter(Boolean) }); if (v === 'plan') planSheet(hol.filter(y => weekStart(y.day) === weekStart(x.day)).map(y => y.day), x.name); if (v === 'del') { data.holidays.splice(data.holidays.indexOf(x), 1); WD.changed(); page.refresh(); } } : null }); }),
       !hol.length && ui.row({ title: 'No holidays marked', subtitle: 'The next one is ' + (u => u ? u[0] + ', ' + fmt.day(u[1]) : 'a while off')(upcoming()[0]) }),
       can && ui.row({ icon: 'plus.circle.fill', iconPlain: true, iconColor: 'var(--green)', title: 'Mark a holiday', tint: true, onTap: holidaySheet })),
+    WD.fedOn() && ui.section({ header: 'Federal holidays', fold: true, showFooter: true, footer: 'Shown on the calendars, and scheduling a job on one asks first. Government offices and banks are closed on these days. The company stays open unless you mark the day closed.' },
+      fedAhead().map(f => { const closed = data.holidays.some(x => x.day === f.day), n = left(f.day), wk = [0, 6].includes(dow(f.day));
+        return ui.row({ icon: 'flag', iconColor: closed ? 'var(--red)' : 'var(--gray)', title: f.name, subtitle: fmt.day(f.day, 'long') + (f.day !== f.date ? ' · observed' : '') + (closed || wk ? '' : ' · ' + (n ? plural(n, 'job') + ' scheduled' : 'no jobs scheduled')), detail: closed ? 'Closed' : wk ? 'Weekend' : 'Open', chevron: can && !closed, onTap: can && !closed ? () => closeFor(f) : null }); })),
     ui.section({ header: 'One-time changes', footer: 'For a driver’s vacation or a large job: move one day’s jobs to another day, on one route or all of them, this once. The emptied day can be labeled “Do not schedule jobs” or “Large purge jobs only”.' },
       marks.map(m => ui.row({ leading: ui.dot(q.routeColor(m.routeId)), title: q.routeName(m.routeId) + ' · ' + fmt.day(m.day), subtitle: m.label, trailing: can ? ui.button('Remove', { kind: 'gray', small: true, block: false, onTap: () => { delete data.dayMarks[m.k]; WD.changed(); page.refresh(); } }) : null })),
       can && ui.row({ icon: 'arrow.left.arrow.right', iconPlain: true, title: 'Move a route’s jobs to another day…', subtitle: 'All jobs on one route, or every route, in one step', tint: true, onTap: () => moveSheet({ bulk: true }) })),
     admin() && ui.section({ header: 'Settings', footer: 'Not every company wants suggestions, so they can be switched off. “A full route” is how the app judges whether a day has room for another day’s stops.' },
+      ui.toggleRow({ title: 'Show federal holidays', subtitle: 'On the month and the board, and when scheduling a job', value: WD.fedOn(), onChange: v => { o.federal = v; WD.changed(); page.refresh(); } }),
       ui.toggleRow({ title: 'Suggest moves when a holiday is marked', value: o.suggest, onChange: v => { o.suggest = v; WD.changed(); page.refresh(); } }),
       step('A full route is about', 'Stops plus driving', o.fullHours + ' hours', o.fullHours, 4, 14, v => { o.fullHours = v; WD.changed(); page.refresh(); }),
       ui.toggleRow({ title: 'Offer to text customers their new day', value: o.notify, onChange: v => { o.notify = v; WD.changed(); } }), CO.tplRow('moved', page)));

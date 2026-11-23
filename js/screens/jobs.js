@@ -382,6 +382,9 @@ function openEditor(o = {}) {
     /* A day marked as a holiday, “do not schedule” or “large purge jobs only” (Holidays and schedule changes) warns before a job is put on it. */
     const mark = !f.allDay && (isNew || job.day !== f.day || job.routeId !== f.routeId) && WD.dayMark && WD.dayMark(f.routeId, f.day);
     if (mark && !(mark.kind === 'purgeOnly' && f.type === 'purge') && !(await ui.actionSheet({ title: fmt.day(f.day, 'long') + ' is marked “' + mark.label + '”', message: mark.kind === 'holiday' ? 'The company is closed that day.' : mark.kind === 'purgeOnly' ? q.routeName(f.routeId) + ' is being kept for large purge jobs that day.' : q.routeName(f.routeId) + ' is not taking jobs that day.', buttons: [{ label: 'Schedule it anyway', value: true }], cancel: 'Pick another day' }))) return;
+    /* A federal holiday the company has not marked closed asks too: government offices and banks are shut that day. */
+    const fed = !mark && !f.allDay && (isNew || job.day !== f.day) && WD.fedHoliday && WD.fedHoliday(f.day);
+    if (fed && !(await ui.actionSheet({ title: fmt.day(f.day, 'long') + ' is ' + fed.label, message: 'It is a federal holiday. Government offices and banks are closed, and many businesses are too.', buttons: [{ label: 'Schedule it anyway', value: true }], cancel: 'Pick another day' }))) return;
     /* Calendar scheduling: a job needs its start time. */
     if (cal() && !f.allDay && !f.startAt) return ui.alert({ title: 'Start time is required', message: 'This business schedules by time. Choose when the job starts under Schedule.' });
     /* AI Premium: the route is near or over capacity that day. Offers other days and routes with room, or “Schedule anyway” (r14-ops.js). */

@@ -442,8 +442,8 @@ X.contactSummary = (c, items, describe) => {
 
 /* ================= What's new tutorial ================= */
 const TOUR = [
-  { icon: 'sparkles', title: 'New in ' + WD.version, text: 'On the month view, time off over several days is one bar, and a full day says how many more lines it has. Run this tour again from Menu → Settings → About.' },
-  { tab: 'Dispatch', icon: 'calendar', title: 'Month view', list: ['Someone off for several days in a row shows as one bar across those days.', 'A bar that runs past Saturday carries on in the next week.', 'A day with more lines than fit shows “+N more”. Tap the day to see them all.'] },
+  { icon: 'sparkles', title: 'New in ' + WD.version, text: 'US federal holidays are on the calendars and in holiday planning. Run this tour again from Menu → Settings → About.' },
+  { tab: 'Dispatch', icon: 'calendar', title: 'Federal holidays', list: ['The month names each federal holiday in red. A day the company is closed is filled red.', 'On the board, a federal holiday shows a note line above the routes.', '⋯ → Holidays and schedule changes lists the next year’s federal holidays. Tap one to mark the company closed and review where its jobs go.', 'Scheduling a job on a federal holiday asks first.', 'The company stays open on a federal holiday unless you mark it closed. “Show federal holidays” in that screen’s settings turns them off.'] },
 ];
 X.tutorial = () => {
   const screen = document.getElementById('screen'), old = screen.querySelector('.x-tour'); if (old) old.remove();

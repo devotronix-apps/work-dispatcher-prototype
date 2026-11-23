@@ -138,6 +138,9 @@ WD.css(`
 .bd-month.areas .bd-mev { margin-top: 1px; } .bd-month.areas .bd-mnum { width: 20px; height: 20px; margin-bottom: 0; }
 .bd-mev.off { margin: 2px 1px 0; padding: 1px 3px; border-radius: 4px; border-left: 0; font-weight: 700; background: var(--label); color: var(--cell); }
 .bd-week { position: relative; }
+/* A holiday in a month day: a federal holiday is named in red; a day the company is closed is filled red. */
+.bd-mev.hol { background: none; border-left: 0; padding: 0 2px; color: var(--red); font-weight: 700; }
+.bd-mev.hol.closed { background: var(--red); color: #fff; padding: 1px 3px; border-radius: 4px; margin-left: 1px; margin-right: 1px; }
 /* Time off over several days is one bar across the week. Each day keeps an empty line in the bar's row, so everything under it stays clear. */
 .bd-mev.off.gap { visibility: hidden; }
 .bd-month.areas .bd-mbar { position: absolute; z-index: 1; box-sizing: border-box; margin: 0; pointer-events: none; top: calc(23px + var(--r) * 17px); left: calc(var(--s) / 7 * 100% + 2px); width: calc(var(--n) / 7 * 100% - 4px); }
@@ -355,6 +358,15 @@ function markStrip() {
   const cols = S.board.mode === 'month' ? [] : columns(); if (cols.length !== 1 || !WD.dayMark) return null; const m = WD.dayMark(cols[0].routeId, cols[0].day); if (!m) return null;
   return h('div.bd-strip', { style: { '--c': m.kind === 'holiday' ? 'var(--red)' : m.kind === 'purgeOnly' ? 'var(--orange)' : 'var(--gray)' }, onclick: () => WD.ops && WD.ops.openSchedule() }, icon('calendar', 16), m.label + (m.kind === 'holiday' ? ' · holiday' : ''), h('span.spacer'), icon('chevron.right', 13));
 }
+/** A federal holiday on a day showing that the company has not marked closed: a note, so nobody plans the day without knowing. */
+function fedStrip() {
+  if (S.board.mode === 'month' || !WD.fedHoliday) return null; const days = [...new Set(columns().map(c => c.day))].sort();
+  return days.map(day => { const f = WD.fedHoliday(day); if (!f || (data.holidays || []).some(x => x.day === day)) return null;
+    return h('div.bd-strip', { style: { '--c': 'var(--gray)' }, onclick: () => WD.ops && WD.ops.openSchedule() }, icon('flag', 16), (days.length > 1 ? fmt.day(day, 'md') + ' is ' : '') + f.label + ' · federal holiday', h('span.spacer'), icon('chevron.right', 13)); });
+}
+/** The holiday line of a month day: the company is closed, or a federal holiday when those are shown. */
+const holLine = day => { const c = (data.holidays || []).find(x => x.day === day), f = !c && WD.fedHoliday && WD.fedHoliday(day);
+  return c ? h('div.bd-mev.hol.closed', { title: c.name + ' · the company is closed' }, c.name) : f ? h('div.bd-mev.hol', { title: f.label + ' · federal holiday' }, f.name) : null; };
 function offStrip() {
   const cols = S.board.mode === 'month' ? [] : columns(); if (cols.length !== 1) return null; const t = offFor(cols[0]); if (!t) return null;
   return h('div.bd-strip', { style: { '--c': 'var(--red)', cursor: 'default' } }, icon('person', 16), (q.user(t.userId) || { name: 'The driver' }).name + ' has approved time off · ' + WD.timeOffLabel(t));
@@ -701,14 +713,15 @@ function monthView() {
       /* One line per time-off row up to the lowest bar crossing this day; the bars themselves are drawn over the week, below. */
       const lines = [
         ...Array.from({ length: rows }, (_, r) => { const x = mine.find(m => m.r === r); return { real: !!x, el: h('div.bd-mev.off.gap', x ? { title: x.o.name + (x.o.pending ? ' asked for time off' : ' has time off') } : null, '\u00a0') }; }),
+        ...[holLine(day)].filter(Boolean).map(el => ({ real: true, el })),
         ...AR.specials(day, routes).map(j => ({ real: true, el: h('div.bd-mev.wkend', { style: { '--ring': q.routeColor(j.routeId) }, title: j.title }, j.title) })),
         ...AR.on(day, routes).map(a => ({ real: true, el: h('div.bd-mev.area' + (a.auto ? '' : '.set'), { style: { background: a.color, color: readableOn(a.color) }, title: a.name + ' · ' + q.routeName(a.routeId) }, a.name.replace(/\s*\/\s*/g, '/\u200b')) }))];
       /* Five lines fit a day cell on a phone. With more, the fifth line says how many are not shown. */
       const keepN = lines.length > MAX ? MAX - 1 : MAX, more = lines.slice(keepN).filter(x => x.real).length; shown[di] = keepN;
       return h(cls, { onclick: () => { if (!swiped()) AR.openDay(day, refresh); } }, num, lines.slice(0, keepN).map(x => x.el), more > 0 && h('div.bd-more', '+' + more + ' more')); }
-    const jobs = q.jobsOn(day).filter(j => routes.includes(j.routeId)).sort(boardSort);
+    const jobs = q.jobsOn(day).filter(j => routes.includes(j.routeId)).sort(boardSort), hol = holLine(day), fit = hol ? 3 : 4;
     return h(cls, { onclick: () => { if (swiped()) return; b.day = day; b.mode = 'routes'; keep(null, 0); refresh(); } },
-      num, WD.r11 && routes.some(r => WD.r11.noteFor(r, day)) && h('div.bd-mev', { style: { '--c': '#FFD60A', '--ring': '#E0A800', background: '#FFE066', color: '#1C1C1E' }, title: 'Route note' }, 'Note'), jobs.slice(0, 4).map(j => h('div.bd-mev' + (WD.struck[j.status] ? '.struck' : ''), { style: { '--c': j.allDay ? q.routeColor(j.routeId) : WD.cardColor(j), '--ring': q.routeColor(j.routeId) } }, j.title)), jobs.length > 4 && h('div.bd-more', '+' + (jobs.length - 4) + ' more'));
+      num, hol, WD.r11 && routes.some(r => WD.r11.noteFor(r, day)) && h('div.bd-mev', { style: { '--c': '#FFD60A', '--ring': '#E0A800', background: '#FFE066', color: '#1C1C1E' }, title: 'Route note' }, 'Note'), jobs.slice(0, fit).map(j => h('div.bd-mev' + (WD.struck[j.status] ? '.struck' : ''), { style: { '--c': j.allDay ? q.routeColor(j.routeId) : WD.cardColor(j), '--ring': q.routeColor(j.routeId) } }, j.title)), jobs.length > fit && h('div.bd-more', '+' + (jobs.length - fit) + ' more'));
   }), off && off.runs.map(x => {
     /* A bar is drawn over the days where its row is shown; a day that ran out of lines counts it under “+N more” instead. */
     const segs = []; for (let i = x.s; i < x.s + x.n; i++) { if (x.r >= shown[i]) continue; const g = segs[segs.length - 1]; if (g && g.s + g.n === i) g.n++; else segs.push({ s: i, n: 1 }); }
@@ -736,7 +749,7 @@ function render(p) {
   /* While jobs are being selected the bar takes the place of the warning lines, right under the date. */
   /* Under the bar: the month, the live map of the same day and routes, or the board (on a computer optionally with the map beside it). */
   /* The month is a plan to read: it shows no issue or review lines, only the offline and syncing status. */
-  return [topBar(), selectBar() || strips(b.mode === 'month' ? [statusStrip()] : [statusStrip(), addressStrip(), WD.r11 && WD.r11.boardStrips(inView, { label: viewLabel() }), WD.rc && WD.rc.assignStrip && WD.rc.assignStrip(b.mode === 'month' ? [] : columns()), offStrip(), markStrip(), WD.eta && b.mode !== 'month' && WD.eta.boardStrip(columns()), ops2().boardStrips && ops2().boardStrips(b.mode === 'month' ? [] : columns())]),
+  return [topBar(), selectBar() || strips(b.mode === 'month' ? [statusStrip()] : [statusStrip(), addressStrip(), WD.r11 && WD.r11.boardStrips(inView, { label: viewLabel() }), WD.rc && WD.rc.assignStrip && WD.rc.assignStrip(b.mode === 'month' ? [] : columns()), offStrip(), markStrip(), fedStrip(), WD.eta && b.mode !== 'month' && WD.eta.boardStrip(columns()), ops2().boardStrips && ops2().boardStrips(b.mode === 'month' ? [] : columns())]),
     b.mode === 'month' ? monthView() : h('div.bd-holder' + (WD.r15 && WD.r15.cardClass ? WD.r15.cardClass() : ''), { style: WD.r15 && WD.r15.cardVars ? WD.r15.cardVars() : null }, mapOnly() ? mapPane() : splitView() ? h('div.bd-split', grid(), mapPane()) : grid(), viewPill())];
 }
 WD.screens.board = {
