@@ -329,7 +329,7 @@ function openEditor(jobId, o = {}) {
           ui.toggleRow({ title: 'Scan each drive', subtitle: 'Barcode or serial number, for this job', value: f.driveScan, onChange: v => { f.driveScan = job.hddScan = v; p.refresh(); } }),
           f.driveScan && ui.row({ icon: f.drives.length >= hddQty() ? 'checkmark.circle.fill' : 'barcode', iconPlain: true, iconColor: f.drives.length >= hddQty() ? 'var(--green)' : 'var(--orange)', title: 'Scan hard drives', subtitle: f.drives.length + ' of ' + hddQty() + ' scanned', chevron: true, onTap: () => WD.ops.scanDrives(job, f.drives, hddQty(), () => p.refresh()) })),
         sigSec,
-        !note && ui.section({ header: 'Payment', footer: f.pay === 'none' ? 'The invoice is emailed with a pay link.' : 'Marks the invoice paid and emails a receipt. ' + (f.pay === 'card' ? 'Tap to Pay runs through Stripe.' : 'Hand the ' + (f.pay === 'other' ? 'payment' : f.pay) + ' to the office.') },
+        !note && ui.section({ header: 'Payment', showFooter: !!(WD.cardPrice && WD.cardPrice.mode() !== 'off'), footer: (f.pay === 'none' ? 'The invoice is emailed with a pay link.' : 'Marks the invoice paid and emails a receipt. ' + (f.pay === 'card' ? 'Tap to Pay runs through Stripe.' : 'Hand the ' + (f.pay === 'other' ? 'payment' : f.pay) + ' to the office.')) + (WD.cardPrice && WD.cardPrice.mode() !== 'off' ? ' ' + (f.pay === 'none' ? WD.cardPrice.bothText(total(f.lines)) : 'Collect ' + fmt.money(WD.cardPrice.charge(total(f.lines), f.pay === 'card' ? 'card' : 'cash'), true)) + '.' : '') },
           ui.pickerRow({ title: 'Paid on site', value: f.pay, options: [{ value: 'none', label: 'Not paid — send invoice' }, { value: 'cash', label: 'Cash' }, { value: 'check', label: 'Check' }, { value: 'card', label: 'Credit card' }, { value: 'other', label: 'Other' }], onChange: v => { f.pay = v; p.refresh(); } }),
           f.pay === 'check' && ui.inputRow({ label: 'Check #', placeholder: 'Optional', inputmode: 'numeric', value: f.checkNo, onInput: v => { f.checkNo = v; } }),
           f.pay === 'other' && ui.inputRow({ label: 'Paid by', placeholder: 'e.g. ACH, Venmo', value: f.other, onInput: v => { f.other = v; } }),
@@ -414,7 +414,11 @@ const mdy2 = day => { const d = D.parse(day), z = n => String(n).padStart(2, '0'
 const stdProof = () => { const t = biz().proofText; return !t || /per the terms of the service agreement/.test(t) ? 'This certifies that {company} has destroyed all confidential data and products received from the above mentioned company.' : t; };
 /** o: {number, date, terms, billTo, lines, tax, taxLabel, paid, po, serviceDate, revised, pounds, sigs: [{sig, cap}], scans, scanNote, drives, driveNote, destruction} */
 function standardInvoice(o) {
-  const org = S.org || data.orgs[0], lines = o.lines.filter(l => l.qty || l.rate), tax = +o.tax || 0, tot = total(lines) + tax, net = parseInt((String(o.terms || '').match(/\d+/) || [30])[0], 10);
+  /* Card price and cash price (R20-5, WD.cardPrice): in built-in mode every line and the total are shown at the card price, with the cash price under
+     the total; an invoice paid another way shows a Cash discount line. In separate-line mode an invoice paid by credit card gains the fee line. */
+  const CP = WD.cardPrice, cpm = CP ? CP.mode() : 'off', how = o.paid && CP ? CP.kindOf(o.payMethod) : null, built = cpm === 'built' && (!o.paid || how), upR = r => built ? CP.up(r) : +r || 0;
+  const org = S.org || data.orgs[0], lines = o.lines.filter(l => l.qty || l.rate), tax = +o.tax || 0, base = total(lines) + tax, shownTot = built ? lines.reduce((s, l) => s + Math.round((+l.qty || 0) * upR(l.rate) * 100) / 100, 0) + CP.up(tax) : base,
+    disc = built && how === 'cash' ? Math.round((shownTot - base) * 100) / 100 : 0, cardFee = cpm === 'line' && how === 'card' ? CP.fee(base) : 0, tot = shownTot - disc + cardFee, net = parseInt((String(o.terms || '').match(/\d+/) || [30])[0], 10);
   const meta = [['Invoice Number', o.number], ['Invoice Date', mdy2(o.date)], ['Due Date', mdy2(D.add(o.date, net))], o.serviceDate && o.serviceDate !== o.date && ['Service Date', mdy2(o.serviceDate)], o.po && ['PO Number', o.po], o.revised && ['Revised', o.revised]].filter(Boolean);
   /* Settings → Company → Forms and documents: the default invoice layout can rename the title, the column headings and the totals, and hide blocks. */
   const FM = WD.money && WD.money.docLabel ? WD.money : null, L = (k, d) => FM ? FM.docLabel('invoice', k, d) : d, show = k => !FM || FM.docShows('invoice', k), two = t => { const w = String(t).split(' '); return w.length === 2 ? [w[0], h('br'), w[1]] : t; };
@@ -422,14 +426,18 @@ function standardInvoice(o) {
     h('div.bn-top', show('logo') ? logo() : h('div'), show('company') === false ? h('div') : h('div.bn-co', [org.name].concat((org.remit || []).slice(1), org.phone || [], org.fax ? 'Fax ' + org.fax : [], org.email || [], org.website || [], data.tax && data.tax.on && data.tax.regNo ? 'Tax reg. # ' + data.tax.regNo : []).map(x => h('div', x)))),
     h('div.bn-mid', h('div.bn-to', (o.billTo || []).map(x => h('div', x))), h('div', h('div.bn-ttl', FM && FM.docAccent('invoice') ? { style: { color: FM.docAccent('invoice') } } : null, L('title', 'Invoice')), h('div.bn-meta', meta.map(([k, v]) => [h('span', k), h('span', v)])))),
     h('table.bn-tab', h('thead', h('tr', h('th', L('col.item', 'Item')), h('th', L('col.desc', 'Description')), h('th', two(L('col.rate', 'Unit Cost'))), h('th', L('col.qty', 'Quantity')), h('th.r', two(L('col.total', 'Line Total'))))),
-      h('tbody', lines.map(l => { const [item, desc] = itemText(l); return h('tr', h('td', item), h('td', desc), h('td.n', money2(+l.rate || 0)), h('td.n', String(+l.qty || 0)), h('td.r.n', money2((+l.qty || 0) * (+l.rate || 0)))); }))),
+      h('tbody', lines.map(l => { const [item, desc] = itemText(l); return h('tr', h('td', item), h('td', desc), h('td.n', money2(upR(l.rate))), h('td.n', String(+l.qty || 0)), h('td.r.n', money2((+l.qty || 0) * upR(l.rate)))); }),
+        disc > 0 && h('tr', h('td', 'Cash discount'), h('td', 'Paid by ' + String(o.payMethod || 'cash').replace(/\s*·.*$/, '').toLowerCase()), h('td.n', ''), h('td.n', ''), h('td.r.n', '−' + money2(disc))),
+        cardFee > 0 && h('tr', h('td', CP.lineLabel()), h('td', 'Paid by credit card'), h('td.n', ''), h('td.n', ''), h('td.r.n', money2(cardFee))))),
     h('div.bn-bot',
       h('div.bn-sig', (o.stamp || o.paid) && h('div.bn-stamp', o.stamp || 'PAID'), (o.sigs || []).filter(s => s.sig || s.blank).map(s => [h('div.bn-ink', sigView(s.sig)), h('div.bn-cap', s.cap)])),
-      h('div.bn-tot', tax > 0 && ((o.taxes || []).filter(t => t.amount > 0).length > 1 ? o.taxes.filter(t => t.amount > 0).map(t => h('div.x', h('span', t.label || t.name), h('span', money2(t.amount)))) : h('div.x', h('span', o.taxLabel || 'Sales tax'), h('span', money2(tax)))), h('div', h('span', L('total', 'Total')), h('span', money2(tot))), h('div', h('span', L('paid', 'Paid to Date')), h('span', money2(o.paid ? tot : 0))), h('div.due', h('span', L('balance', 'Balance Due')), h('span', money2(o.paid || o.stamp ? 0 : tot))))),
+      h('div.bn-tot', tax > 0 && ((o.taxes || []).filter(t => t.amount > 0).length > 1 ? o.taxes.filter(t => t.amount > 0).map(t => h('div.x', h('span', t.label || t.name), h('span', money2(t.amount)))) : h('div.x', h('span', o.taxLabel || 'Sales tax'), h('span', money2(built ? CP.up(tax) : tax)))), h('div', h('span', L('total', 'Total')), h('span', money2(tot))),
+        built && !o.paid && !o.stamp && h('div.x', { style: 'font-weight:700' }, h('span', 'Cash, check or bank transfer price'), h('span', money2(base) + ' (save ' + money2(shownTot - base) + ')')), h('div', h('span', L('paid', 'Paid to Date')), h('span', money2(o.paid ? tot : 0))), h('div.due', h('span', L('balance', 'Balance Due')), h('span', money2(o.paid || o.stamp ? 0 : tot))))),
     o.pounds && h('div.bi-scan', h('b', 'WEIGHT SHREDDED: '), Number(o.pounds).toLocaleString('en-US') + ' lb'),
     o.scans && o.scans.length > 0 && h('div.bi-scan', h('b', 'CONTAINERS SERVICED (BARCODE SCANS): '), o.scans.map(s => s.code + ' ' + fmt.clock(new Date(s.at))).join(' · ') + (o.scanNote ? ' · Note: ' + o.scanNote : '')),
     o.drives && o.drives.length > 0 && h('div.bi-scan', h('b', 'HARD DRIVES DESTROYED (SERIAL NUMBERS): '), o.drives.map(s => s.code).join(' · ') + (o.driveNote ? ' · Note: ' + o.driveNote : '')),
     FM && FM.docFooter('invoice') && h('div.bi-scan', FM.docFooter('invoice')),
+    cpm !== 'off' && !o.paid && !o.stamp && h('div.bi-scan', CP.wording()),
     h('div.bn-fill'),
     biz().proofOn !== false && h('div.bn-cod', h('b', (biz().proofTitle || 'CERTIFICATE OF DESTRUCTION') + ':'), proofLine(o.destruction, stdProof().replace(/\{company\}/g, org.name))));
 }
@@ -438,7 +446,7 @@ function invoiceDoc(inv, job) {
   const billTo = c ? [c.name].concat(c.attn ? ['Attn: ' + c.attn] : [], c.billAddress || [parts[0], parts.slice(1).join(', ')].filter(Boolean)) : [job.title].concat(parts[0] ? [parts[0], parts.slice(1).join(', ')].filter(Boolean) : []);
   const sigs = [{ sig: inv.custSig, blank: WD.sigPolicy(c) === 'always', cap: 'Customer Signature' + (inv.custName ? ' · ' + inv.custName : '') },
     { sig: inv.repSig, cap: [repTitle() + ' Signature', inv.repName].filter(Boolean).join(' · ') }];
-  return docWrap(standardInvoice({ number: inv.number, date: inv.sentAt ? D.key(new Date(inv.sentAt)) : D.today(), terms: c && c.terms, billTo, lines, tax: inv.tax, taxLabel: inv.taxLabel, taxes: inv.taxes, stamp: WD.invStamp && WD.invStamp(inv), paid: inv.status === 'Paid', po: inv.po,
+  return docWrap(standardInvoice({ number: inv.number, date: inv.sentAt ? D.key(new Date(inv.sentAt)) : D.today(), terms: c && c.terms, billTo, lines, tax: inv.tax, taxLabel: inv.taxLabel, taxes: inv.taxes, stamp: WD.invStamp && WD.invStamp(inv), paid: inv.status === 'Paid', payMethod: inv.paid && inv.paid.method, po: inv.po,
     serviceDate: inv.includeDate !== false ? day : null, revised: inv.revisedAt ? mdy2(D.key(new Date(inv.revisedAt))) : null, pounds: inv.pounds, sigs,
     scans: data.settings && data.settings.barcodes.onInvoice ? inv.scans : null, scanNote: inv.scanNote, drives: inv.drives, driveNote: inv.driveNote,
     /* A draft being previewed for an off-site company shows the “to follow” wording it will be sent with. */
@@ -470,12 +478,12 @@ function openInvoice(jobId) {
   } });
 }
 async function recordPayment(job) {
-  const m = await ui.actionSheet({ title: 'Record payment', message: job.invoice.number + ' · ' + fmt.money(job.invoice.amount, true), buttons: [{ label: 'Cash', value: 'cash' }, { label: 'Check', value: 'check' }, { label: 'Credit card (Tap to Pay)', value: 'card' }] });
+  const m = await ui.actionSheet({ title: 'Record payment', message: job.invoice.number + ' · ' + ((WD.cardPrice && WD.cardPrice.bothText(job.invoice.amount)) || fmt.money(job.invoice.amount, true)), buttons: [{ label: 'Cash', value: 'cash' }, { label: 'Check', value: 'check' }, { label: 'Credit card (Tap to Pay)', value: 'card' }] });
   if (!m) return; const f = { pay: m, checkNo: '' };
   if (m === 'check') { const r = await ui.alert({ title: 'Check number', input: { placeholder: 'Optional' }, buttons: [{ label: 'Cancel', value: null }, { label: 'Save', value: true, bold: true }] }); if (!r || !r.value) return; f.checkNo = r.text; }
   if (m === 'card') { const hud = ui.hud('Hold card near the top of iPhone'); await WD.delay(1500); hud.set('Approved', 'checkmark'); await WD.delay(600); hud.close(); }
   const method = methodLabel(f), me = S.me.name;
-  api.op({ kind: 'edit', title: job.title, scope: 'Payment · ' + method, jobIds: [job.id], apply() { job.invoice.status = 'Paid'; job.invoice.paid = { method, at: +WD.now() }; job.events.push({ at: +WD.now(), actor: me, text: 'Paid · ' + method + ' · ' + fmt.money(job.invoice.amount, true) }); mirror(job); } });
+  api.op({ kind: 'edit', title: job.title, scope: 'Payment · ' + method, jobIds: [job.id], apply() { job.invoice.status = 'Paid'; job.invoice.paid = { method, at: +WD.now() }; job.events.push({ at: +WD.now(), actor: me, text: 'Paid · ' + method + ' · ' + fmt.money(WD.cardPrice ? WD.cardPrice.charge(job.invoice.amount, method) : job.invoice.amount, true) }); mirror(job); } });
   ui.toast('Marked paid · ' + method, 'checkmark');
 }
 

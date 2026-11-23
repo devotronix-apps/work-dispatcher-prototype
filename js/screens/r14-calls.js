@@ -216,7 +216,7 @@ function list(orgId) { const d = dataFor(orgId), cs = callsOf(orgId); let map = 
   return cs.slice().sort((a, b) => b.at - a.at); }
 const byId = id => callsOf().find(c => c.id === id) || null;
 let seq = 0;
-const add = o => { const cs = callsOf(), c = Object.assign({ id: frontId() + 'n' + Date.now().toString(36) + (++seq), at: +WD.now(), customerId: null, contact: null, duration: 0, by: null, summary: '', transcript: [], follow: null, resolved: false, archived: false, flag: null, note: '' }, o); cs.push(c); return c; };
+const add = o => { const cs = callsOf(), c = Object.assign({ id: frontId() + 'n' + Date.now().toString(36) + (++seq), at: +WD.now(), customerId: null, contact: null, duration: 0, by: null, summary: '', transcript: [], follow: null, resolved: false, archived: false, flag: null, note: '' }, o); cs.push(c); WD.phone && WD.phone.onCall && WD.phone.onCall(c); return c; };
 
 const undo = (title, fn) => ui.banner({ title, text: 'Tap to undo.', icon: 'arrow.uturn.left', color: 'var(--gray)', duration: 6000, onTap: () => { fn(); WD.changed(); ui.toast('Undone', 'arrow.uturn.left'); } });
 const canEdit = () => WD.can('crm.edit') || (ui.toast('You can’t change calls with this role', 'lock'), false);
@@ -231,7 +231,7 @@ C.reopen = cs => { cs = [].concat(cs).filter(c => c && (c.resolved || c.archived
   undo(plural(cs.length, 'call') + ' reopened', () => was.forEach(([c, r, a, hw, by, at]) => { c.resolved = r; c.archived = a; c.resolvedHow = hw; c.resolvedBy = by; c.resolvedAt = at; })); };
 /** Open flagged calls of the business in front: drives the Dialer tab's badge. */
 C.reviewCount = () => { try { if (!S.signedIn || !WD.can('crm.view')) return 0; const st = ST(); return callsOf().filter(c => isOpen(c, st)).length; } catch (e) { return 0; } };
-C.list = list; C.why = why; C.isOpen = c => isOpen(c);
+C.list = list; C.why = why; C.isOpen = c => isOpen(c); C.nameOf = c => nameOf(c);
 C.forCustomer = id => list().filter(c => c.customerId === id);
 
 /* ================= Small pieces ================= */
@@ -261,7 +261,7 @@ function pickCustomer(title, done) { let term = '';
       return ui.list(cs.length ? ui.section(null, cs.map(c => ui.row({ leading: h('div', { style: 'margin-right:12px' }, ui.avatar(c.name, { size: 34 })), title: c.name, subtitle: ((c.contacts || [])[0] || {}).name || null, detail: PIPE.includes(c.lifecycle) ? 'Lead' : null, onTap: () => { sheet.close(); setTimeout(() => done(c), 450); } }))) : ui.empty({ icon: 'person.2', title: 'No match', text: 'Try another name.' })); } }, { detent: 'large' }); }
 const addNumberTo = (number, after) => pickCustomer('Add to customer', async cu => { if (!canEdit()) return;
   if (await ui.run('Adding number…', () => { cu.contacts.push({ name: 'Caller ' + fmt.phone(number), role: '', phone: norm(number), email: '' }); }, { done: 'Number added to ' + cu.name })) { WD.changed(); after && after(cu); } });
-const newLead = (number, label) => { const cs = WD.screens.customers; if (!cs || !cs.openNew) return ui.toast('Customers aren’t available', 'lock'); cs.openNew({ phone: number, channel: (K().CHANNELS || []).includes(label) ? label : '' }); };
+const newLead = (number, label, adChannel) => { const cs = WD.screens.customers; if (!cs || !cs.openNew) return ui.toast('Customers aren’t available', 'lock'); cs.openNew({ phone: number, channel: (K().CHANNELS || []).includes(label) ? label : '', adChannel: adChannel || null }); };
 const openRecord = cu => { const lead = PIPE.includes(cu.lifecycle); if (lead && WD.screens.crm && WD.screens.crm.openLead) WD.screens.crm.openLead(cu.id); else if (WD.screens.customers && WD.screens.customers.openDetail) WD.screens.customers.openDetail(cu.id); };
 
 /* ================= Which of our numbers a call goes out from (5.1) ================= */
@@ -281,9 +281,10 @@ C.pickLine = number => { const org = cur(), lines = org.lines || [], n = dg(numb
 /** o: {number, from: one of our lines, to: our number to call from, customerId, contact, back: the flagged call being returned}. Shows the
     in-call sheet; End writes the call to the log, and to the customer's timeline when the number belongs to one. */
 function place(o) {
-  if (!WD.can('crm.view')) return ui.toast('Calling needs customer access', 'lock');
+  const PHN = WD.phone, hand = !!PHN && !PHN.can('place');   // 6.2: the phone service places the call, not this app (r20-phone.js)
+  if (!(PHN ? PHN.mayCall(o) : WD.can('crm.view'))) return ui.toast(S.me && S.me.role === 'driver' ? 'Drivers can call the customers on today’s route' : 'Calling needs customer access', 'lock');
   const num = norm(o.number); if (dg(num).length < 3) return ui.toast('Enter a number first', 'phone');
-  if (S.offline) return ui.toast('You’re offline. Quo calls need a connection.', 'wifi.slash');
+  if (S.offline && !hand) return ui.toast('You’re offline. Calls need a connection.', 'wifi.slash');
   callsOf();
   const org = cur(), lines = org.lines || [], auto = !o.from && !lines.some(l => dg(l.number) === dg(o.to)) ? C.pickLine(num) : null, line = o.from || lines.find(l => dg(l.number) === dg(o.to)) || (auto && auto.line) || lines[0] || { label: 'Main', number: '' };
   const lineWhy = o.from ? 'chosen by you' : auto ? auto.why : 'the number they called us on';
@@ -291,18 +292,19 @@ function place(o) {
   const p = cu ? (hit && hit.c === cu && hit.p) || (cu.contacts || []).find(x => x.phone) || (cu.contacts || [])[0] || null : null;
   const title = cu ? cu.name : o.contact || fmt.phone(num), t0 = Date.now(); let conn = null, ended = false, notes = '', held = false, tones = '';
   const live = h('div.cl-live', 'Calling…'), toneEl = h('div.cl-tones'), R15 = WD.r15 || {};
-  R15.callBegin && R15.callBegin({ dir: 'out', number: num, line, customerId: cu ? cu.id : null, contact: p ? p.name : o.contact || null });
-  const tick = setInterval(() => { if (!conn && Date.now() - t0 > 2400) { conn = Date.now(); live.classList.add('on'); } live.textContent = conn ? (held ? 'On hold · ' : '') + mmss((Date.now() - conn) / 1000) : 'Calling…'; }, 250);
-  const finish = () => { if (ended) return; ended = true; clearInterval(tick); R15.callEnd && R15.callEnd();
-    const dur = conn ? Math.max(1, Math.round((Date.now() - conn) / 1000)) : 0, st = ST(), lead = cu && PIPE.includes(cu.lifecycle), back = o.back, meN = me(), them = p ? p.name : o.contact || 'Caller';
-    const summary = notes.trim() || (!dur ? 'No answer. Hung up before anyone picked up.' : dur < st.threshold ? 'Short call: ended after ' + dur + ' s.'
+  !hand && R15.callBegin && R15.callBegin({ dir: 'out', number: num, line, customerId: cu ? cu.id : null, contact: p ? p.name : o.contact || null });
+  const tick = hand ? 0 : setInterval(() => { if (!conn && Date.now() - t0 > 2400) { conn = Date.now(); live.classList.add('on'); } live.textContent = conn ? (held ? 'On hold · ' : '') + mmss((Date.now() - conn) / 1000) : 'Calling…'; }, 250);
+  const finish = hd => { if (ended) return; ended = true; clearInterval(tick); !hd && R15.callEnd && R15.callEnd();
+    const dur = hd ? hd.dur : conn ? Math.max(1, Math.round((Date.now() - conn) / 1000)) : 0, st = ST(), lead = cu && PIPE.includes(cu.lifecycle), back = o.back, meN = me(), them = p ? p.name : o.contact || 'Caller';
+    const summary = notes.trim() || (hd && hd.unrecorded ? (dur ? 'Called with ' + (hd.via === 'Phone dialer' ? 'the phone’s own dialer' : hd.via) + '. Not recorded, so there is no transcript. Add a note about what was said.' : 'No answer. Called with ' + (hd.via === 'Phone dialer' ? 'the phone’s own dialer' : hd.via) + '; not recorded.') : !dur ? 'No answer. Hung up before anyone picked up.' : dur < st.threshold ? 'Short call: ended after ' + dur + ' s.'
       : back ? 'Called back about the ' + (back.status === 'voicemail' ? 'voicemail' : back.status === 'missed' ? 'missed call' : 'earlier call') + ' from ' + when(back.at) + '. Sorted out on the call; nothing else to do.'
       : lead ? 'Followed up on the request. They want to start next month; send the service agreement.' : cu ? 'Confirmed the next pickup and the container count. No changes.' : 'Spoke with the caller. Quo adds the full transcript when the recording is ready.');
-    const transcript = dur >= st.threshold ? [[meN, 'Hi' + (p ? ' ' + first(p.name) : '') + ', it’s ' + first(meN) + ' from ' + org.name + '.'], [them, back ? 'Thanks for calling back so quickly.' : 'Hi, thanks for the call.'], [meN, 'Happy to help. I’ll note this on your account.']] : [];
+    const transcript = dur >= st.threshold && !(hd && hd.unrecorded) ? [[meN, 'Hi' + (p ? ' ' + first(p.name) : '') + ', it’s ' + first(meN) + ' from ' + org.name + '.'], [them, back ? 'Thanks for calling back so quickly.' : 'Hi, thanks for the call.'], [meN, 'Happy to help. I’ll note this on your account.']] : [];
     let src = null;
     if (cu && K().addI) { src = K().addI({ customerId: cu.id, type: 'call', dir: 'out', at: +WD.now(), duration: dur, contact: them, number: num, line: { number: line.number, channel: line.label }, by: meN, summary, transcript }); (data.callSeen || (data.callSeen = {}))[src.id] = 1; }
     const c = add({ dir: 'out', number: num, to: line.number, lineLabel: line.label, customerId: cu ? cu.id : null, contact: p ? p.name : o.contact || null, duration: dur, status: dur ? 'answered' : 'missed', by: meN, summary, transcript, note: notes.trim() });
     if (src) { c.src = src; c.iid = src.id; c.at = src.at; }
+    if (hd) { c.via = hd.via; c.unrecorded = !!hd.unrecorded; c.seen = true; }
     if (cu && cu.lifecycle === 'lead' && dur >= st.threshold) cu.lifecycle = 'contacted';
     const cleared = autoResolve(data, c); WD.changed();
     setTimeout(() => {
@@ -312,6 +314,7 @@ function place(o) {
       else ui.toast(cu ? 'Call logged to ' + cu.name : 'Call logged', 'checkmark');
     }, 500);
   };
+  if (hand) return PHN.handoff({ num, line, lineWhy, cu, p, title }, finish);
   const tog = (ic, label, fn) => { const b = h('button.cl-cbtn', { 'aria-label': label, onclick: () => { const on = b.classList.toggle('on'); fn && fn(on, b); } }, h('span', icon(ic, 26)), h('small', label)); return b; };
   const notesBox = h('textarea.cl-notes', { placeholder: 'Notes for this call. They become the call’s summary.', style: 'display:none', oninput: e => { notes = e.target.value; } });
   const mini = h('div', { style: 'display:none' }, toneEl, pad(k => { tones += k; toneEl.textContent = tones; }, true), h('div', { style: 'height:14px' }));
@@ -375,13 +378,18 @@ C.detailSpec = id => ({ title: 'Call', render: page => {
     ai && h('div.cl-aiwrap', WD.aip.card({ title: 'AI call review', text: aiSentence(ai) })),
     ui.section({ header: 'Summary', fold: false, footer: c.status === 'missed' ? null : 'Written by Quo from the recording.' }, h('div.cl-line', c.summary || 'No summary.')),
     c.note && ui.section({ header: 'Note', fold: false }, h('div.cl-line', c.note)),
-    c.status !== 'missed' && c.duration > 0 && ui.section({ header: c.status === 'voicemail' ? 'Voicemail' : 'Recording', fold: false, footer: 'Kept by Quo. The prototype has no audio.' }, h('div.cl-rec', play, h('div.cl-track', track), h('span.footnote.secondary', mmss(c.duration)))),
-    (c.transcript || []).length ? ui.section({ header: 'Transcript', fold: false }, c.transcript.map(([who, text]) => h('div.cl-line', h('b', who), text))) : null,
+    c.unrecorded && ui.section({ header: 'Recording', fold: false }, h('div.cl-line', 'Not recorded: this call was made with ' + (c.via === 'Phone dialer' ? 'the phone’s own dialer' : c.via || 'another app') + '.')),
+    !WD.can('calls.recordings') && !c.unrecorded && c.status !== 'missed' && c.duration > 0 && ui.section({ header: 'Recording and transcript', fold: false }, h('div.cl-line', 'Your role can’t open call recordings or transcripts. The summary above is still shown.')),
+    WD.can('calls.recordings') && !c.unrecorded && c.status !== 'missed' && c.duration > 0 && ui.section({ header: c.status === 'voicemail' ? 'Voicemail' : 'Recording', fold: false, footer: 'Kept by Quo. The prototype has no audio.' }, h('div.cl-rec', play, h('div.cl-track', track), h('span.footnote.secondary', mmss(c.duration)))),
+    (c.transcript || []).length && WD.can('calls.recordings') ? ui.section({ header: 'Transcript', fold: false }, c.transcript.map(([who, text]) => h('div.cl-line', h('b', who), text))) : null,
     ui.section({ header: 'Details', fold: false },
       ui.row({ title: 'When', detail: when(c.at) }), ui.row({ title: 'Direction', detail: c.dir === 'in' ? 'Inbound' : 'Outbound' }), ui.row({ title: 'Length', detail: durLabel(c) }),
       ui.row({ title: 'Our number', detail: c.lineLabel + ' · ' + fmt.phone(c.to) }), c.by && ui.row({ title: c.dir === 'in' ? 'Answered by' : 'Called by', detail: c.by }),
       c.texted && ui.row({ title: 'Texted', detail: when(c.texted) }),
       c.resolved && ui.row({ title: 'Resolved', subtitle: c.resolvedHow || null, detail: [c.resolvedBy && first(c.resolvedBy), c.resolvedAt && when(c.resolvedAt)].filter(Boolean).join(' · ') || 'Yes' })),
+    cu && edit && ui.section({ header: 'From this call', fold: false },
+      WD.can('jobs.edit') && ui.row({ icon: 'plus.circle', iconPlain: true, title: 'Create job', tint: true, onTap: () => WD.screens.jobs && WD.screens.jobs.openEditor({ customerId: cu.id, notes: c.summary ? 'From the call ' + when(c.at) + ': ' + c.summary : '' }) }),
+      ui.row({ icon: 'pencil', iconPlain: true, title: c.note ? 'Change the note' : 'Add a note', tint: true, onTap: async () => { const v = await ui.alert({ title: 'Note on this call', input: { value: c.note || '', placeholder: 'What was said' }, buttons: [{ label: 'Cancel', role: 'cancel' }, { label: 'Save', bold: true, value: true }] }); if (v && v.value === true) { c.note = v.text.trim(); re(); } } })),
     !cu && edit && ui.section({ footer: 'The call and any later ones from this number then show under that customer.' }, ui.row({ icon: 'person.2', iconPlain: true, title: 'Add to an existing customer', tint: true, onTap: () => addNumberTo(c.number, () => page.refresh()) })),
     edit && ui.section({ footer: 'Resolved calls leave the default log. Archived calls are hidden everywhere unless “Archived” is switched on in the log.' },
       c.resolved ? ui.row({ icon: 'arrow.uturn.left', iconPlain: true, title: 'Reopen', tint: true, onTap: () => { C.reopen(c); page.refresh(); } }) : ui.row({ icon: 'checkmark.circle', iconPlain: true, title: 'Resolve', subtitle: 'Handled. Nothing more to do.', tint: true, onTap: () => { C.resolve(c); page.refresh(); } }),
@@ -391,7 +399,7 @@ C.detailSpec = id => ({ title: 'Call', render: page => {
 } });
 
 /* ================= Dialer tab ================= */
-const UI = { seg: 'calls', typed: '', from: {}, sel: null };
+const UI = { seg: 'all', typed: '', from: {}, sel: null };
 function keypadView(page, o = {}) {
   const org = cur(), lines = org.lines || [], sel = UI.from[org.id], isAuto = sel == null || sel === 'auto', idx = isAuto ? -1 : Math.min(sel, Math.max(0, lines.length - 1)), from = isAuto ? null : lines[idx] || { label: 'Main', number: '' };
   const fromB = h('b', isAuto ? 'Automatic · local number' : from.label + ' · ' + fmt.phone(from.number));
@@ -475,12 +483,14 @@ function root() { return { title: 'Inbox', trailing: page => { const X = TS() &&
     return [X && X.compose && WD.can('crm.edit') && { icon: 'square.and.pencil', label: 'New text', onTap: () => X.compose() }]; }, render: page => {
   if (!WD.can('crm.view')) return ui.empty({ icon: 'lock', title: 'The inbox needs customer access', text: 'Ask an admin to change your role.' });
   const n = C.actCount(), T = TS(), X = T && WD.texts, tn = X ? X.reviewCount() : 0; if (UI.seg === 'recent' || UI.seg === 'review') { if (T) T.ui.callBox = UI.seg === 'review' ? 'inbox' : 'all'; UI.seg = 'calls'; }
-  if (!['calls', 'texts', 'team'].includes(UI.seg) || (!T && UI.seg !== 'calls')) UI.seg = 'calls';
+  const PHN = T && WD.phone && WD.phone.allView ? WD.phone : null;   // 6.2: All = calls and texts in one list (r20-phone.js)
+  if (!['all', 'calls', 'texts', 'team'].includes(UI.seg) || (!T && UI.seg !== 'calls') || (UI.seg === 'all' && !PHN)) UI.seg = PHN ? 'all' : 'calls';
   wideNow = isWide(page) && UI.seg !== 'team'; logFab(page, wideNow);
-  if (wideNow) { const st = ST(), kind = UI.seg === 'texts' ? 'text' : 'call', has = UI.sel && UI.sel.kind === kind && (kind === 'text' ? X.list().some(t => t.id === UI.sel.id) : !!byId(UI.sel.id));
+  if (wideNow && UI.seg === 'all') { if (!PHN.has(UI.sel)) UI.sel = PHN.firstOpen(); }
+  else if (wideNow) { const st = ST(), kind = UI.seg === 'texts' ? 'text' : 'call', has = UI.sel && UI.sel.kind === kind && (kind === 'text' ? X.list().some(t => t.id === UI.sel.id) : !!byId(UI.sel.id));
     if (!has) { const f = kind === 'text' ? X.list().find(X.waiting) : list().find(c => isOpen(c, st) && agentOK(c)); UI.sel = f ? { kind, id: f.id } : null; } }
-  const segs = h('div.cl-dial', ui.segmented([{ value: 'calls', label: 'Calls', badge: n }].concat(T ? [{ value: 'texts', label: 'Texts', badge: tn }, { value: 'team', label: 'Team' }] : []), UI.seg, v => { UI.seg = v; page.refresh(); }));
-  const body = UI.seg === 'calls' ? callsView(page) : UI.seg === 'texts' ? T.textsView(page) : T.teamView(page);
+  const segs = h('div.cl-dial', ui.segmented((PHN ? [{ value: 'all', label: 'All', badge: PHN.openCount() }] : []).concat([{ value: 'calls', label: 'Calls', badge: n }]).concat(T ? [{ value: 'texts', label: 'Texts', badge: tn }, { value: 'team', label: 'Team' }] : []), UI.seg, v => { UI.seg = v; page.refresh(); }));
+  const body = UI.seg === 'all' ? PHN.allView(page) : UI.seg === 'calls' ? callsView(page) : UI.seg === 'texts' ? T.textsView(page) : T.teamView(page);
   if (!wideNow) return ui.list(segs, body);
   const old = page.body && page.body.querySelector('.cl-split'), keep = old ? [old.querySelector('.cl-left').scrollTop, (old.querySelector('.cl-conv') || {}).scrollTop || 0, selSpec.key] : null;
   const logs = X && X.logSpec && UI.seg === 'texts', left = h('div.cl-left', h('div.cl-tools', ui.button('Keypad', { small: true, kind: 'tinted', icon: 'circle.grid.3x3', onTap: () => C.openKeypad() }), ui.button(logs ? 'Text log' : 'Call log', { small: true, kind: 'gray', icon: 'list.bullet', onTap: () => page.push(logs ? X.logSpec() : C.logSpec()) })), ui.list(segs, body));
@@ -488,7 +498,7 @@ function root() { return { title: 'Inbox', trailing: page => { const X = TS() &&
   if (keep) requestAnimationFrame(() => { left.scrollTop = keep[0]; const cv = el.querySelector('.cl-conv'); if (cv && keep[2] === selSpec.key) cv.scrollTop = keep[1]; });
   return el; } }; }
 C.ui = UI;
-WD.screens.dialer = { root, onTabTap: () => { UI.seg = 'calls'; } };
+WD.screens.dialer = { root, onTabTap: () => { UI.seg = 'all'; } };
 
 /* ================= Call log ================= */
 /** Every call, in and out, on every number, with filters. preset: any of {dir, status, line, by, who, range, dur, flagged, text, resolved,
@@ -621,7 +631,7 @@ function callerCard(o) {
   const sheet = ui.sheet({ title: 'Incoming call', live: false, trailing: [{ label: 'End', bold: true, onTap: pg => pg.dismiss() }], onClose: end, render: () => { timerEl = h('span.cl-oncall', 'On call · ' + mmss((Date.now() - t0) / 1000));
     return [h('div.cl-caller', ui.avatar('#', { size: 52 }), h('div', h('div.title3', fmt.phone(number)), h('div.footnote', 'Unknown caller · ' + line.label + ' line' + (multi() ? ' · ' + org.name : '')), timerEl)),
       ui.list(ui.section({ showFooter: true, footer: o.by === 'area' ? 'Nobody in ' + (multi() ? 'either business' : 'the business') + ' has this number. ' + org.name + ' opened because of the ' + dg(number).slice(0, 3) + ' area code.' : 'No customer, contact or lead matches this number. It rang the ' + line.label + ' line of ' + org.name + '.' },
-          ui.row({ icon: 'person.badge.plus', iconPlain: true, title: 'Create lead', tint: true, disabled: !edit, onTap: () => leave(() => newLead(number, line.label)) }),
+          ui.row({ icon: 'person.badge.plus', iconPlain: true, title: 'Create lead', subtitle: WD.phone && WD.phone.channelFor(line.number) ? 'Ad channel: ' + WD.phone.channelFor(line.number) + ', from the number they called' : null, tint: true, disabled: !edit, onTap: () => leave(() => newLead(number, line.label, WD.phone && WD.phone.channelFor(line.number))) }),
           ui.row({ icon: 'person.2', iconPlain: true, title: 'Add to existing customer', tint: true, disabled: !edit, onTap: () => addNumberTo(number, cu => leave(() => openRecord(cu))) })),
         ui.section(null, ui.inputRow({ label: 'Notes', multiline: true, placeholder: 'What they need', value: notes, onInput: v => { notes = v; } })))]; } }, { detent: 'medium' });
 }
@@ -655,7 +665,7 @@ C.simulateMissed = kind => { if (!WD.can('crm.view')) return ui.toast('Calls nee
   return c; };
 
 /* ================= Settings: Phone and calls ================= */
-C.settingsSpec = () => ({ title: 'Phone and calls', render: page => {
+C.settingsSpec = () => ({ title: 'Ring order and review rules', render: page => {
   const st = ST(), org = cur(), admin = WD.can('settings.manage'), re = () => { WD.changed(); page.refresh(); }, cs = list(), last = f => { const c = cs.find(f); return c ? fmt.rel(c.at) : 'No events yet'; };
   const txt = (data.interactions || []).filter(i => i.type === 'text').reduce((m, i) => Math.max(m, i.at || 0), 0), dot = on => h('span.cl-dot', { style: { background: on ? 'var(--green)' : 'var(--red)' } });
   const hooks = [['call.ringing', 'Shows the incoming-call banner and opens the right business', last(c => c.dir === 'in')], ['call.completed', 'Adds the call to the log and flags it for review', last(() => true)],
@@ -680,7 +690,7 @@ C.settingsSpec = () => ({ title: 'Phone and calls', render: page => {
       ui.row({ icon: 'list.bullet', iconColor: 'var(--blue)', title: 'Call log', subtitle: plural(cs.length, 'call') + ' on ' + plural((org.lines || []).length, 'number'), chevron: true, onTap: () => page.push(C.logSpec()) })));
 } });
 if (WD.r14 && WD.r14.addSetting) {
-  WD.r14.addSetting('Company', (push, gated) => WD.r14.link(push, gated, 'settings.manage', 'phone.fill', 'var(--green)', 'Phone and calls', 'Quo connection, who each number rings, and which calls are flagged for review', C.settingsSpec, 'Connected'));
+  WD.r14.addSetting('Company', (push, gated) => WD.r14.link(push, gated, 'settings.manage', 'phone.fill', 'var(--green)', 'Phone', 'The phone service, company numbers, who can call, opt-outs and review rules', () => (WD.phone ? WD.phone.settingsSpec() : C.settingsSpec()), 'Connected'));
   WD.r14.addSetting('AI Premium', (push, gated) => WD.r14.link(push, gated, null, 'phone.fill', 'var(--purple)', 'AI call review', 'Who to get back to, from every Quo number', C.reviewSpec));
 }
 

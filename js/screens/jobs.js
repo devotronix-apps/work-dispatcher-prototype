@@ -116,8 +116,8 @@ function details(job, p) {
     !job.address && job.cityZip && ui.section('Location', ui.row({ title: job.cityZip, subtitle: 'Where the customer is coming from', icon: 'mappin', iconPlain: true, iconColor: 'var(--label2)' })),
     cust && ui.section('Customer',
       ui.row({ leading: ui.avatar(cust.name, { size: 36, icon: cust.kind === 'household' ? 'house' : 'building' }), title: cust.name, subtitle: contact ? contact.name + (contact.role ? ' · ' + contact.role : '') + ' · ' + fmt.phone(contact.phone, contact.ext) : null, onTap: WD.can('crm.view') ? () => guard('customers', 'openDetail', cust.id) : null,
-        trailing: contact && h('span.row-acts', ui.iconBtn('phone', 'Call ' + contact.name, () => ui.toast('Calling ' + contact.name + ' via Quo…', 'phone')), ui.iconBtn('message', 'Send a text', () => ui.toast('Opening a text to ' + contact.name + '…', 'message'))) })),
-    !cust && job.phone && ui.section('Contact', ui.row({ title: fmt.phone(job.phone, job.ext), subtitle: job.contactName || null, icon: 'phone', iconPlain: true, tint: true, onTap: () => ui.toast('Calling via Quo…', 'phone') })),
+        trailing: contact && h('span.row-acts', ui.iconBtn('phone', 'Call ' + contact.name, () => WD.phone ? WD.phone.call(contact.phone, { customerId: cust.id, contact: contact.name }) : ui.toast('Calling ' + contact.name + '…', 'phone')), ui.iconBtn('message', 'Send a text', () => WD.texts && WD.texts.compose ? WD.texts.compose({ number: contact.phone }) : ui.toast('Opening a text to ' + contact.name + '…', 'message'))) })),
+    !cust && job.phone && ui.section('Contact', ui.row({ title: fmt.phone(job.phone, job.ext), subtitle: job.contactName || null, icon: 'phone', iconPlain: true, tint: true, onTap: () => WD.phone ? WD.phone.call(job.phone, { contact: job.contactName || job.title }) : ui.toast('Calling…', 'phone') })),
     !job.allDay && WD.eta && WD.eta.detailSection(job, p),
     job.notes && ui.section('Notes', h('div.jb-notes', job.notes)),
     (job.products || []).length > 0 && ui.section('Products', job.products.map(x => { const pd = (data.products || []).find(y => y.id === x.id) || { name: 'Product' }; return ui.row({ icon: 'shippingbox', iconPlain: true, title: pd.name, detail: x.qty + ' × ' + fmt.money(x.rate) }); })),
@@ -292,6 +292,7 @@ function openEditor(o = {}) {
   if (f.type === 'purge' && !f.purge) { const b = (f.items.find(i => i.id === 'box') || {}).qty || 0; f.purge = { std: b, stairs: 'none', haul: false }; }
   let customCall = ![0, 15, 30, 60].includes(f.callAhead);
   const wasRecurring = f.repeat !== 'none';
+  const was0 = { repeat: f.repeat, interval: f.interval };
   let page = null, matchBox = null, suggestBox = null, recBox = null, timer = null, dirty = false;
   const fill = c => { const l = c.locations[0], p = c.contacts[0] || {}; Object.assign(f, { customerId: c.id, title: c.name, address: l.address, notes: l.notes, type: WD.jobTypeFor(c), items: WD.copyItems(l.items), bizOpen: l.bizOpen, bizClose: l.bizClose, located: l.located !== false, x: l.x, y: l.y, po: WD.workflow.poFor(c, f.day).po, contract: c.contract || '', sig: WD.sigPolicy(c), lunchFrom: l.lunchFrom || '', lunchUntil: l.lunchUntil || '', closedDays: (l.closedDays || []).slice(), callAhead: l.callAhead || 0, contact: p.name || '', phone: p.phone ? fmt.phone(p.phone) : '', ext: p.ext || '', email: p.email || '', billingEmail: c.billingEmail || '', custType: c.custType || 'business' }); dirty = true; };
   if (isNew && o.customerId && q.customer(o.customerId)) fill(q.customer(o.customerId));
@@ -393,7 +394,8 @@ function openEditor(o = {}) {
       const box = f.items.find(i => i.id === 'box');
       f.items = f.items.filter(i => !WD.PURGE_IDS.includes(i.id)).concat(WD.purgeItems(f.purge, e, box ? box.rate : null)); }
     let scope = 'This job';
-    if (job && job.recurring) { scope = await ui.actionSheet({ title: 'Save changes to a recurring job', message: 'Changing “this and following” ends the old series and starts a new one in a single step.', buttons: SCOPES.map(l => ({ label: l })) }); if (!scope) return; }
+    if (job && job.recurring) { const resched = f.repeat !== was0.repeat || f.interval !== was0.interval || f.ends !== 'never';   // how often it repeats can't change for one visit alone
+      scope = await ui.actionSheet({ title: 'Save changes to a recurring job', message: resched ? 'You changed how often this repeats, so the later visits are rebuilt on the new schedule starting from this one. Visits already done are kept.' : 'Changing “this and following” ends the old series and starts a new one in a single step.', buttons: SCOPES.filter(l => !resched || l !== 'This job').map(l => ({ label: l })) }); if (!scope) return; }
     if (!f.address.trim()) f.located = false; else if (f.x == null) { f.located = /\d/.test(f.address); if (f.located) { f.x = 150 + Math.random() * 700; f.y = 150 + Math.random() * 700; } }
     const purge = f.type === 'purge', containers = WD.itemsLabel(f.items, purge), phone = fmt.phoneValid(f.phone) ? '+1' + fmt.phoneDigits(f.phone) : '', ext = phone ? f.ext : '';
     let newCustomer = null;
@@ -409,7 +411,7 @@ function openEditor(o = {}) {
     const byTime = (rid, day) => { if (cal() && ops2().sortByTime) ops2().sortByTime(rid, day); };
     const series = job ? seriesJobs(job, scope) : [], me = S.me.name, changes = job ? WD.x.diffJob(job, fields) : [];
     if (job && !job.allDay && !fields.allDay && job.routeId === fields.routeId && job.day === fields.day) { const cur = q.position(job), to = f.pos || cur.of; if (to !== cur.n) changes.push({ label: 'Stop', from: String(cur.n), to: String(to) }); }
-    let firstMade = null;
+    let firstMade = null, rebuilt = null; const oldSeries = job && job.recurring ? job.recurring.seriesId : null, schedChanged = !!(job && job.recurring) && (f.repeat !== was0.repeat || f.interval !== was0.interval || f.ends !== 'never');
     api.op({ kind: isNew ? 'create' : 'edit', title: fields.title, scope: isNew ? (f.repeat === 'none' ? 'New job' : 'New recurring job') : scope, jobIds: job ? [job.id, ...series.map(j => j.id)] : [], apply() {
       const recurring = f.repeat === 'none' ? null : { rule: ruleLabel(f), seriesId: job && job.recurring && scope === 'All jobs' ? job.recurring.seriesId : 's-' + Date.now() };
       if (job) {
@@ -417,12 +419,26 @@ function openEditor(o = {}) {
         if (fields.allDay) { job.routeId = fields.routeId; job.day = fields.day; job.seq = 0; WD.renumber(from.routeId, from.day); } else WD.placeJob(job, fields.routeId, fields.day, f.pos ? f.pos - 1 : Infinity); job.events.push({ at: +WD.now(), actor: me, text: 'Edited' + (scope !== 'This job' ? ' (' + scope.toLowerCase() + ')' : ''), changes }); if (fields.address || fields.cityZip) job.addrIgnored = false;
         byTime(from.routeId, from.day); byTime(job.routeId, job.day);
         series.forEach(j => Object.assign(j, { title: fields.title, address: fields.address, notes: fields.notes, dur: fields.dur, allDay: fields.allDay, type: fields.type, containers: fields.containers, items: WD.copyItems(fields.items), purge: fields.purge, needsWindow: fields.needsWindow, po: fields.po, contract: fields.contract, recurring: recurring || j.recurring })); series.forEach(j => { if (j.routeId !== fields.routeId) WD.placeJob(j, fields.routeId, j.day, Infinity); });
+        /* How often it repeats changed (or it now repeats, or no longer does): the later visits are rebuilt on the new schedule.
+           “This job” leaves the series alone. Visits already started, done or called off are kept. */
+        const rebuild = wasRecurring ? scope !== 'This job' && (schedChanged || f.repeat === 'none') : f.repeat !== 'none';
+        if (rebuild) {
+          const gone = data.jobs.filter(j => j !== job && j.status === 'scheduled' && j.day > job.day && j.recurring && [oldSeries, recurring && recurring.seriesId].includes(j.recurring.seriesId));
+          gone.forEach(j => { data.jobs.splice(data.jobs.indexOf(j), 1); WD.renumber(j.routeId, j.day); });
+          if (!recurring) job.recurring = null;
+          else { let made = 0; const stepDays = { daily: 1, weekly: 7, monthly: 28 }[f.repeat] * f.interval, max = f.ends === 'count' ? f.count : 60;
+            for (let i = 1; i < max && i * stepDays <= 548; i++) { const day = D.add(job.day, i * stepDays); if (f.ends === 'until' && day > f.until) break;
+              const j = WD.makeJob({ ...fields, items: WD.copyItems(fields.items), routeId: job.routeId, day, recurring, seq: fields.allDay ? 0 : null, attachments: [], events: [{ at: +WD.now(), actor: me, text: 'Created · schedule changed to ' + recurring.rule }] }); byTime(j.routeId, day); made++; }
+            rebuilt = { gone: gone.length, made }; }
+          if (!recurring) rebuilt = { gone: gone.length, made: 0 };
+        }
       } else {
         const make = (day, pos) => { const j = WD.makeJob({ ...fields, items: WD.copyItems(fields.items), day, recurring, seq: fields.allDay ? 0 : null, attachments: f.attachments.slice(), events: [{ at: +WD.now(), actor: me, text: 'Created' + (noAddr ? ' · saved without ' + (noAddr === 'No address' ? 'an address' : 'a city or ZIP') : '') }] }); firstMade = firstMade || j; if (pos && !j.allDay) WD.placeJob(j, j.routeId, day, pos - 1); byTime(j.routeId, day); }; make(f.day, f.pos);
         if (recurring) { const stepDays = { daily: 1, weekly: 7, monthly: 28 }[f.repeat] * f.interval, max = f.ends === 'count' ? f.count : 60; for (let i = 1; i < max && i * stepDays <= 548; i++) { const day = D.add(f.day, i * stepDays); if (f.ends === 'until' && day > f.until) break; make(day); } }
       }
     } });
     p.dismiss();
+    if (rebuilt) setTimeout(() => ui.toast(rebuilt.made ? 'Later visits rebuilt: ' + rebuilt.made + ' on the new schedule' + (rebuilt.gone ? ', ' + rebuilt.gone + ' old ones removed' : '') : rebuilt.gone + ' later visit' + (rebuilt.gone === 1 ? '' : 's') + ' removed', 'repeat', 3200), 600);
     if (newCustomer) setTimeout(() => ui.toast('New customer created: ' + newCustomer.name, 'person.badge.plus', 2600), 500);
     guard('board', 'show', f.day, job ? job.id : (firstMade || data.jobs[data.jobs.length - 1] || {}).id);
     /* A new job can confirm itself to the customer by text or email (Settings → Job confirmations). */
@@ -528,7 +544,7 @@ function openEditor(o = {}) {
           !f.allDay && calOn && f.startAt && ops2().overlapRow && ops2().overlapRow({ routeId: f.routeId, day: f.day, startAt: f.startAt, dur: planMin(), job }),
           !f.allDay && !calOn && positionRow()),
         (asks('freq') || f.repeat !== 'none') && ui.section({ header: 'Frequency of service', footer: f.repeat === 'none' ? null : ruleLabel(f) + '. Each visit is created ahead of time for the next 18 months.' },
-          ui.pickerRow({ title: 'Repeat', value: f.repeat, options: REPEATS, onChange: v => set('repeat', v, true) }),
+          ui.pickerRow({ title: 'Repeat', value: f.repeat, options: REPEATS, onChange: v => { if (v !== f.repeat) f.interval = 1; set('repeat', v, true); } }),
           f.repeat !== 'none' && (row => { row.dataset.k = 'every'; return row; })(ui.row({ title: 'Every', detail: f.interval + ' ' + unit + (f.interval > 1 ? 's' : ''), trailing: ui.stepper(f.interval, 1, 12, v => { f.interval = v; dirty = true; stay('every'); }) })),
           f.repeat !== 'none' && ui.pickerRow({ title: 'Ends', value: f.ends, options: [{ value: 'never', label: 'Never' }, { value: 'count', label: 'After a number of visits' }, { value: 'until', label: 'On a date' }], onChange: v => set('ends', v, true) }),
           f.repeat !== 'none' && f.ends === 'count' && (row => { row.dataset.k = 'visits'; return row; })(ui.row({ title: 'Visits', detail: f.count, trailing: ui.stepper(f.count, 1, 60, v => { f.count = v; dirty = true; stay('visits'); }) })),

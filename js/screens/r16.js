@@ -75,7 +75,7 @@ function seedTexts() { const cs = (data.customers || []).filter(c => !c.archived
     return { id: o.id + 't' + (k + 1), number: p ? p.phone : '+15125550142', customerId: c ? c.id : null, contact: p ? p.name : null, line, messages: msgs, resolved: !!done, resolvedHow: done || null, resolvedBy: done ? names[1 % Math.max(1, names.length)] : null, resolvedAt: done ? last + 6e5 : null, flag: false, flagBy: null }; }); }
 const threads = () => { if (!data.textThreads || data.textsOrg !== org().id) data.textThreads = seedTexts(); return data.textThreads; };
 const lastOf = t => t.messages[t.messages.length - 1], nameOfT = t => { const c = t.customerId && q.customer(t.customerId); return c ? c.name : t.contact || fmt.phone(t.number); };
-X.list = () => threads().slice().sort((a, b) => lastOf(b).at - lastOf(a).at);
+X.list = () => threads().slice().sort((a, b) => lastOf(b).at - lastOf(a).at); X.nameOf = t => nameOfT(t);
 X.agents = t => [...new Set(t.messages.filter(m => m.by).map(m => m.by))];
 /** Why a thread needs a second look: flagged by hand, or the customer has waited longer than the setting. */
 X.why = t => { const l = lastOf(t); if (t.flag) return 'Flagged by ' + first(t.flagBy || 'staff'); if (l && l.dir === 'in') { const m = (now() - l.at) / 60000; if (m >= cst().textWait) return 'No reply for ' + span(m); } return null; };
@@ -93,11 +93,14 @@ const textRow = (t, page, inbox) => { const l = lastOf(t), y = X.why(t), ag = X.
     subtitle: [h('div.tx-snip', (l.dir === 'out' ? first(l.by) + ': ' : '') + l.text), h('div', { style: 'display:flex;gap:6px;flex-wrap:wrap;margin-top:4px' }, y && !t.resolved ? ui.badge(y, 'var(--red)') : X.waiting(t) ? ui.badge('Waiting for a reply', 'var(--orange)') : null, t.resolved && ui.badge('Resolved', 'var(--gray)'), ag.length ? ui.badge(ag.map(first).join(', '), 'var(--blue)') : ui.badge('Nobody yet', 'var(--gray)'))],
     trailing: h('div.tx-meta', h('div', fmt.rel(l.at)), h('div', t.line + ' line')), onTap: () => inbox && C && C.pick ? C.pick('text', t.id, page) : page.push(X.threadSpec(t.id)) }); };
 X.threadSpec = id => { let draft = ''; return { title: 'Text', render: page => { const t = threads().find(x => x.id === id); if (!t) return ui.empty({ icon: 'message', title: 'Conversation not found' });
+  const PHN = WD.phone, out = !!PHN && PHN.optedOut(t.number); t.seen = true;   // 6.2: opt-outs, ready-made texts, photos (r20-phone.js)
   const y = X.why(t), edit = canEdit(), c = t.customerId && q.customer(t.customerId), ta = h('textarea', { rows: 1, placeholder: 'Text message', oninput: e => { draft = e.target.value; } }); ta.value = draft;
   return ui.list(h('div', { style: 'text-align:center;padding:4px 0 10px' }, h('div.headline', nameOfT(t)), h('div.footnote.secondary', [t.contact, fmt.phone(t.number), t.line + ' line'].filter(Boolean).join(' · '))),
     y && !t.resolved && h('div.tm-q', { style: 'margin:0 0 10px' }, h('b', 'Needs review: ' + y + '. '), 'It stays in the inbox until someone replies or resolves it.'),
     h('div.tx-th', t.messages.map(m => [h('div.tx-b' + (m.dir === 'out' ? '.out' : ''), m.text), h('div.tx-by' + (m.dir === 'out' ? '.out' : ''), (m.dir === 'out' ? 'Sent by ' + (m.by || 'the office') : t.contact || 'Customer') + ' · ' + fmt.rel(m.at))])),
-    edit && h('div.tx-send', ta, ui.button('Send', { block: false, small: true, onTap: () => { const v = draft.trim(); if (!v) return ui.toast('Write a message first', 'message'); draft = ''; X.send(t, v); page.refresh(); ui.toast('Sent · logged as ' + first(me()), 'checkmark'); } })),
+    PHN && PHN.threadTop(t, v => { draft = v; ta.value = v; ta.focus(); }),
+    edit && !out && h('div.tx-send', ta, ui.button('Send', { block: false, small: true, onTap: () => { const v = draft.trim(); if (!v) return ui.toast('Write a message first', 'message'); if (X.send(t, v) === false) return; draft = ''; page.refresh(); ui.toast('Sent · logged as ' + first(me()), 'checkmark'); } })),
+    PHN && PHN.threadExtras(t),
     ui.section({ header: 'Who handled it', fold: false, footer: 'Every message we send keeps the name of the person who sent it.' },
       X.agents(t).length ? X.agents(t).map(a => ui.row({ leading: ui.avatar(a, { size: 30 }), title: a, detail: plural(t.messages.filter(m => m.by === a).length, 'message') })) : ui.row({ title: 'Nobody has replied yet' }),
       t.resolved && ui.row({ title: 'Resolved', subtitle: [t.resolvedHow, t.resolvedBy, t.resolvedAt && fmt.rel(t.resolvedAt)].filter(Boolean).join(' · ') })),
@@ -126,7 +129,7 @@ X.compose = (preset = {}) => { if (!canEdit()) return ui.toast('You can’t send
   const lines = org().lines || [], d = { to: preset.number ? fmt.phoneTyping(dg(preset.number)) : '', pick: null, text: preset.text || '', line: (lines[0] || { label: 'Main' }).label };
   { const m = d.to && findPeople(d.to).find(x => dg(x.p.phone) === dg(d.to)); if (m) d.pick = m; }
   const number = () => d.pick ? d.pick.p.phone : d.to;
-  const send = page => { const n = dg(number()), v = d.text.trim(); if (n.length < 7) return ui.toast(/\d/.test(d.to) ? 'That number is too short' : 'Choose a person or enter a number', 'message'); if (!v) return ui.toast('Write a message first', 'message');
+  const send = page => { const n = dg(number()), v = d.text.trim(); if (WD.phone && WD.phone.optedOut(n) && n.length >= 7) return void WD.phone.optOutSpec && ui.alert({ title: 'This number opted out of texts', message: 'It replied STOP, so no text can be sent to it. Call or email instead.' }); if (n.length < 7) return ui.toast(/\d/.test(d.to) ? 'That number is too short' : 'Choose a person or enter a number', 'message'); if (!v) return ui.toast('Write a message first', 'message');
     const t = X.sendTo(number(), v, { line: d.line }); page.dismiss(); if (preset.onSent) { preset.onSent(t); return ui.toast('Text sent · logged as ' + first(me()), 'checkmark'); } WD.nav.switchTab('dialer'); WD.nav.push(X.threadSpec(t.id)); ui.toast('Sent · logged as ' + first(me()), 'checkmark'); };
   return ui.sheet({ title: 'New text', leading: [{ label: 'Cancel', onTap: p => p.dismiss() }], trailing: page => [{ label: 'Send', bold: true, onTap: () => send(page) }], render: page => {
     const hits = h('div'), ta = h('textarea', { rows: 4, placeholder: 'Text message', 'aria-label': 'Message', oninput: e => { d.text = e.target.value; } }); ta.value = d.text;

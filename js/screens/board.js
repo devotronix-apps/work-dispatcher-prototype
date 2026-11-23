@@ -140,7 +140,8 @@ WD.css(`
 .bd-mday.sel { background: var(--fill3); }
 .bd-mnum { width: 22px; height: 22px; margin: 0 auto 1px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; letter-spacing: 0; }
 .bd-mday.today .bd-mnum { background: #D70015; color: #fff; font-weight: 600; }
-.bd-mev { font-size: 12px; line-height: 14px; letter-spacing: -.2px; white-space: nowrap; overflow: hidden; border-radius: 3px; padding: 0 2px; margin-top: 1px; color: var(--label); background: var(--fill3); border-left: 3px solid var(--ring); }
+/* Month lines use a condensed face so 8 or 9 characters fit a phone's day cell at 12px (the app uses the system font's condensed width). */
+.bd-mev { font-family: 'Avenir Next Condensed', 'Roboto Condensed', 'Arial Narrow', sans-serif-condensed, var(--font, sans-serif); font-stretch: condensed; font-size: 12px; line-height: 14px; letter-spacing: 0; white-space: nowrap; overflow: hidden; border-radius: 3px; padding: 0 1px; margin-top: 1px; color: var(--label); background: var(--fill3); border-left: 2px solid var(--ring); }
 .bd-mev.struck { text-decoration: line-through; background: color-mix(in srgb, var(--gray) 16%, var(--cell)); }
 .bd-more { font-size: 12px; line-height: 14px; color: var(--label2); padding-left: 3px; letter-spacing: -.2px; white-space: nowrap; overflow: hidden; }
 .menu.compact .menu-item .mi-sub { display: none; }

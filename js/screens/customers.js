@@ -693,6 +693,7 @@ const formPage = i => ({ title: i.type === 'form' ? 'Website form' : 'Leads shee
 const CALL_SUMMARIES = { lead: 'Followed up on the request. They want to start next month; send the service agreement.', customer: 'Confirmed the next pickup and the container count. No changes.' };
 function startCall(c, p) {
   if (!p || !p.phone) return;
+  if (WD.phone) return WD.phone.call(p.phone, { customerId: c.id, contact: p.name });   // 6.2: every call button goes through the phone service
   ui.toast('Calling ' + first(p.name) + ' via Quo…', 'phone');
   setTimeout(() => {
     const lead = PIPE.includes(c.lifecycle);
@@ -788,7 +789,7 @@ function openNew(prefill = {}) {
 }
 function create(f) {
   const id = 'c' + (100 + data.customers.length + Math.floor(Math.random() * 900)), house = f.custType === 'residential', ch = f.channel || 'Other';
-  const c = { id, name: f.name.trim(), kind: house ? 'household' : 'company', custType: f.custType, changes: [], route: null, lifecycle: 'lead', channel: ch, type: f.type, freq: f.type === 'purge' ? 'One time' : 'Every 4 weeks',
+  const c = { id, name: f.name.trim(), kind: house ? 'household' : 'company', custType: f.custType, changes: [], route: null, lifecycle: 'lead', channel: ch, adChannel: prefill.adChannel || null, type: f.type, freq: f.type === 'purge' ? 'One time' : 'Every 4 weeks',
     contacts: [{ name: f.contact.trim() || f.name.trim(), role: '', phone: e164(f.phone), ext: f.ext, email: f.email.trim().toLowerCase() }],
     billingEmail: f.billingEmail.trim(), po: f.po.trim(), contract: f.contract.trim(), signature: f.sig, billingMode: f.mode, documents: f.documents.slice(), poSchedule: f.poSchedule.slice(),
     locations: [{ id: id + 'l1', items: WD.parseItems(f.containers), label: house ? 'Home' : 'Main office', address: f.address.trim() || 'Address not set', x: f.x != null ? f.x : 300 + Math.round(Math.random() * 400), y: f.y != null ? f.y : 300 + Math.round(Math.random() * 400), containers: f.containers.trim(), bizOpen: '08:00', bizClose: '17:00', notes: '', located: !!f.address.trim() }],

@@ -30,6 +30,24 @@ Board and map colors: a job card is neutral (white, dark gray in dark mode) with
 
 Jobs have no scheduled times: each route's day is an ordered list, and stop 1 is done first. Cards leave the address off and show the key facts (containers or boxes, window, time on site); pinch on the board (or ⌘/ctrl-scroll, or Card detail in the board’s ⋯ menu) to switch between less and more detail. Every card carries all three levels and the board’s `lvl0`–`lvl2` class picks one, so pinching never rebuilds the list. AutoRoute recommends when to leave the truck's parking place for a day that hasn't started, which you can accept or replace with your own time, and gives a window to each stop marked **Needs a window**. On the board, drag a job up or down to reorder it or into another column to reassign it, and tap a column's empty space (or **Add stop**) to add a job at the end. Notes for the day sit above the list. The prototype clock starts at 10:24 AM; other drivers' trucks move and complete their stops on their own, faster than real life, so the board and map change while you watch.
 
+## What changed in 6.2
+
+From the owner's notes of Nov 23, 2026 and the check of every outside service (`R20-1` to `R20-14` in `../Docs/FunctionalSpec.md`, `../MIGRATION.md` §23). Where this section disagrees with an older one below, this one is right.
+
+- **Phone service as a connector** (`WD.phone`, `r20-phone.js`; `data.phone` per business): `provider` is `quo`, `link` (another phone app, `app`), `device` (the phone's dialer) or `builtin` (planned, not selectable). `P.can(cap)` answers what the service can do (`events recordings texts mms optout link from place`); screens ask it instead of naming Quo. Settings → Integrations → Phone and Settings → Company → Phone both open `P.settingsSpec()`; the old page is now **Ring order and review rules** (`C.settingsSpec`).
+- **Calls are handed off** (`P.handoff`, called from `place()` in `r14-calls.js` when `!P.can('place')`): the sheet shows the call-from number and the link `openphone://dial?number=…&from=…&action=call`; on the desktop website it copies the number. The call then arrives as if Quo reported it. Without a seat (`data.phone.noSeat`) or with the phone's dialer the call is logged with `unrecorded: true`, `via`. `WD.phone.call(number, {customerId, contact})` is the one call button: job details, the lists in `r14-ops.js` and `startCall` in `customers.js` use it. The simulated in-call sheet is kept only for a service that can place calls.
+- **Inbox → All** (`P.allView`): calls and texts in one list with the filters Needs follow-up, Unread, Missed, Mine, Everything and a company-number menu (`P.ui`). Rows carry `seen` and `owner`; the ⋯ menu claims, assigns, marks handled. `UI.seg` in `r14-calls.js` starts on `'all'`.
+- **Opt-outs and templates**: `WD.texts.send`, `sendTo` and `receive` are wrapped. A received STOP calls `P.optOut(number)`; `P.optedOut(number)` blocks every send. `P.threadTop` (opt-out notice or template chips) and `P.threadExtras` (Send a photo in Quo) are drawn by `X.threadSpec` in `r16.js`.
+- **Missed call → task** (`P.onCall`, called from `add` in `r14-calls.js`): `call.taskId` ↔ `task.callId`, kept in step by `syncTasks`.
+- **Ad channel per number** (`data.phone.channels[number]`, `P.channelFor`): a lead created from the caller card gets `customer.adChannel`.
+- **Permissions** (`core.js`): `calls.recordings`; `P.driverMay(o)` lets a driver call customers on today's route.
+- **Review request** (`company.js`: `CO.reviewDue`, `CO.askReview`, `CO.sendReviewRequest`; `afterBilling` in `workflow.js`): asked once the job is billed; template `rvreq`; `settings.reviews.ask = {on, days}`; `customer.reviewAskedAt`.
+- **Card price and cash price** (`WD.cardPrice`, `r20-money.js`; `data.cardPay = {mode: 'off' | 'built' | 'line', pct, words, label}`): `up(amount)`, `fee(amount)`, `split(amount, method)` → `{base, charged, discount, fee}`. Used by `standardInvoice` in `billing.js`, the paid flows in `workflow.js` and `billing.js`, and the portal and email preview in `r14-money.js`. `WD.r11.portalFee` is wrapped so the card fee comes from here. The master-invoice layout, statements and paid-no-invoice amounts still show our price.
+- **Month lines** (`.bd-mev` in `board.js`): a condensed face at 12px.
+- **Assignment sheet** (`RC.assignSheet`, `WD.r11.fitFor(routeId, day, driver, truck)`): unqualified drivers and trucks in red with the reason.
+- **Repeat schedule** (`openEditor` in `jobs.js`): a change of unit or interval rebuilds the later visits; the scope sheet leaves out “This job”.
+- **Panel**: Customer replies STOP to a text, Quo connection breaks, Text credit runs low; Jump to → Phone settings.
+
 ## What changed in 6.1
 
 From the owner's UI notes of Nov 22, 2026 (`R19-1` to `R19-10` in `../Docs/FunctionalSpec.md`). Where this section disagrees with an older one below, this one is right.
@@ -115,6 +133,8 @@ Changes made from the UI review of 5.4 (`RouteClerk-UI-Review.pdf`, Nov 20, 2026
 | `js/screens/r17.js` | The default view of each tab for the Home button (`WD.app.home` registrations) |
 | `js/screens/r17-eta.js` | `WD.eta`: live ETAs, late warnings, the driver's on-site estimate, time on site per customer, Products on jobs setting |
 | `js/screens/r18.js` | `WD.areas`: the area plan shown on Dispatch → Month → Areas |
+| `js/screens/r20-phone.js` | `WD.phone`: the phone connector, call hand-off, the combined inbox, opt-outs, text templates, Call back tasks, Settings → Phone |
+| `js/screens/r20-money.js` | `WD.cardPrice`: card price and cash price, the card fee line, its settings |
 
 ## What changed in 5.1
 

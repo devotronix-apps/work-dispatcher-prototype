@@ -112,7 +112,7 @@ const needText = n => { const s = skill(n.id); return s ? s.name + (n.covers ? '
 /** Everything wrong with a job on a route and day: [{level: 'bad' | 'warn', who: 'driver' | 'truck' (which of the two falls short), short (for the card), text}]. o.vehicle adds the truck's own license. */
 X.issues = (job, routeId, day, o = {}) => {
   if (!job || job.allDay || job.type === 'dump') return []; routeId = routeId || job.routeId; day = day || job.day;
-  const out = [], v = vehicleFor(routeId, day), d = driverOf(routeId, day), who = d ? d.name.split(' ')[0] : 'No driver';
+  const out = [], v = o.truck || vehicleFor(routeId, day), d = 'driver' in o ? o.driver : driverOf(routeId, day), who = d ? d.name.split(' ')[0] : 'No driver';
   if (hddQty(job) > 0 && !job.crusher && !(v && (v.caps || []).includes('hdd'))) out.push({ level: 'bad', who: 'truck', short: 'Needs HD truck or crusher', text: (v ? v.name : 'This route’s truck') + ' can’t shred hard drives. Send a truck that can, or send a hard drive crusher with the driver.' });
   if (job.material && job.handling === 'onsite' && !(v && (v.caps || []).includes('nonpaper'))) out.push({ level: 'warn', who: 'truck', short: 'Non-paper truck', text: (v ? v.name : 'This route’s truck') + ' isn’t marked for non-paper materials. Pick the material up to shred offsite, or send a truck that can.' });
   if (C.skills.on) {
@@ -137,6 +137,11 @@ X.checkAssign = async (jobs, routeId, day) => {
 /** Is the driver or the truck of a route unqualified for any open job that day? → {driver, truck, why: [text]}. The board shows that name in bold red. */
 X.routeFault = (routeId, day) => { const out = { driver: false, truck: false, why: [] };
   q.jobsFor(routeId, day).filter(j => !j.allDay && !WD.closed[j.status]).forEach(j => X.issues(j, routeId, day, { vehicle: true }).forEach(i => { if (i.who === 'driver' && i.level === 'bad') out.driver = true; else if (i.who === 'truck') out.truck = true; else return; if (!out.why.includes(i.text)) out.why.push(i.text); }));
+  return out; };
+/** Would this driver and truck qualify for the route's open jobs that day? → {driver: [why], truck: [why]}. The assignment sheet lists
+    the ones that don't in red, so nobody has to guess; they can still be chosen. Either may be null (no driver, the route's own truck). */
+X.fitFor = (routeId, day, driver, truck) => { const out = { driver: [], truck: [] };
+  q.jobsFor(routeId, day).filter(j => !j.allDay && !WD.closed[j.status]).forEach(j => X.issues(j, routeId, day, { vehicle: true, driver: driver || null, ...(truck ? { truck } : {}) }).forEach(i => { const list = i.who === 'driver' && i.level === 'bad' ? out.driver : i.who === 'truck' ? out.truck : null; if (list && !list.includes(i.text)) list.push(i.text); }));
   return out; };
 /** Flagged assignments still to review: the ones nobody has ignored (job.qualIgnored; cleared when the app is next opened, WD.reopenApp). */
 X.toReview = () => X.flagged().filter(x => !x.job.qualIgnored);
@@ -443,8 +448,7 @@ X.moneySpec = () => ({ title: 'Pricing and Agreements', render: page => { if (!a
     ui.section({ header: 'Price-change letters', fold: false, footer: 'How much notice a price change gives by default, and how the letter goes out. Either can be changed on the change itself.' },
       ui.pickerRow({ title: 'Notice', value: C.letters.days, options: [0, 15, 30, 45, 60, 90].map(n => ({ value: n, label: n ? n + ' days out' : 'Starts right away' })), onChange: v => { C.letters.days = v; re(); } }),
       ui.pickerRow({ title: 'Send letters by', value: C.letters.method, options: [{ value: 'email', label: 'Email' }, { value: 'print', label: 'Print and mail' }, { value: 'both', label: 'Email, and print and mail' }], onChange: v => { C.letters.method = v; re(); } })),
-    ui.section({ header: 'Fees for paying in the portal · card', fold: false, showFooter: true, footer: 'On a ' + fmt.money(ex, true) + ' invoice the customer pays ' + fmt.money(ex + X.portalFee(ex, 'card'), true) + ' by card (' + worked('card') + ').' },
-      feeIn('cardPct', 'Card fee, percent', 'Any percentage, for example 2.9 or 3.49', '%', 15), feeIn('cardFixed', 'Card fee, fixed', 'Added to every card payment, for example 0.30', '$', 25)),
+    WD.cardPrice && ui.section({ header: 'Card payments', fold: false, showFooter: true, footer: 'The card fee that was here is now the card price and cash price setting (R20-5).' }, ui.row({ icon: 'creditcard', iconColor: 'var(--indigo)', title: 'Card price and cash price', detail: WD.cardPrice.mode() === 'off' ? 'Off' : WD.cardPrice.pct() + '%', chevron: true, onTap: () => page.push(WD.cardPrice.settingsSpec()) })),
     ui.section({ header: 'Fees for paying in the portal · bank (ACH)', fold: false, showFooter: true, footer: 'On a ' + fmt.money(ex, true) + ' invoice the customer pays ' + fmt.money(ex + X.portalFee(ex, 'ach'), true) + ' from a bank account (' + worked('ach') + ').' + (P.achCap && P.achPct ? ' The percentage part never goes over ' + fmt.money(P.achCap, true) + '.' : '') },
       feeIn('achPct', 'ACH fee, percent', 'For example 0.8 or 1', '%', 15), feeIn('achFixed', 'ACH fee, fixed', 'Added to every bank payment', '$', 25), feeIn('achCap', 'ACH fee, at most', 'The most the percentage can come to · 0 for no cap', '$', 500)),
     ui.section({ fold: false, showFooter: true, footer: 'Paid by check or cash the invoice stays ' + fmt.money(ex, true) + '. Check your state’s rules on card surcharges.' }, ui.row({ icon: 'doc.text', iconColor: 'var(--indigo)', title: 'What the agreement and the portal say', subtitle: feeText() })),

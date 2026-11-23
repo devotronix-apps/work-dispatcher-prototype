@@ -4,9 +4,9 @@
 'use strict';
 const WD = window.WD = { screens: {}, data: {} };
 /** Prototype version (Settings → About). Bump on every publish; the “what’s new” tutorial shows once per version. */
-WD.version = '6.1';
+WD.version = '6.2';
 /** Earlier releases kept on the published site under v/<version>/ (Settings → Older versions). Add the outgoing version on every publish. */
-WD.olderVersions = ['6.0', '5.4', '5.3', '5.2', '5.1', '5.0', '4.3', '4.2', '4.1'];
+WD.olderVersions = ['6.1', '6.0', '5.4', '5.3', '5.2', '5.1', '5.0', '4.3', '4.2', '4.1'];
 const $ = (s, r) => (r || document).querySelector(s);
 
 /* ================= DOM helper ================= */
@@ -200,11 +200,11 @@ WD.textOn = hex => { if (WD.readableOn) return WD.readableOn(hex);   // board.js
   const m = /^#?([0-9a-f]{6})$/i.exec(hex || ''); if (!m) return '#fff'; const n = parseInt(m[1], 16), c = [n >> 16, n >> 8 & 255, n & 255].map(v => { v /= 255; return v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); }); return .2126 * c[0] + .7152 * c[1] + .0722 * c[2] > .4 ? '#1C1C1E' : '#fff'; };
 
 /* ================= State and permissions ================= */
-const ALL = ['analytics.view', 'tracking.view_live', 'team.locations', 'crm.view', 'crm.edit', 'billing.view', 'billing.field', 'billing.manage', 'jobs.edit', 'users.manage', 'hr.manage', 'settings.manage', 'contracts.manage', 'comms.view', 'leads.view', 'leads.all', 'maintenance.view'];
+const ALL = ['analytics.view', 'tracking.view_live', 'team.locations', 'crm.view', 'crm.edit', 'billing.view', 'billing.field', 'billing.manage', 'jobs.edit', 'users.manage', 'hr.manage', 'settings.manage', 'contracts.manage', 'comms.view', 'calls.recordings', 'leads.view', 'leads.all', 'maintenance.view'];
 WD.roles = {
   owner: { title: 'Owner', perms: ALL }, admin: { title: 'Admin', perms: ALL },
   dispatcher: { title: 'Dispatcher', perms: ['jobs.edit', 'tracking.view_live', 'team.locations', 'crm.view', 'crm.edit', 'analytics.view', 'billing.field', 'comms.view', 'leads.view'] },
-  office: { title: 'Office', perms: ['jobs.edit', 'team.locations', 'crm.view', 'crm.edit', 'billing.view', 'billing.field', 'billing.manage', 'contracts.manage', 'comms.view', 'leads.view', 'leads.all'] },
+  office: { title: 'Office', perms: ['jobs.edit', 'team.locations', 'crm.view', 'crm.edit', 'billing.view', 'billing.field', 'billing.manage', 'contracts.manage', 'comms.view', 'calls.recordings', 'leads.view', 'leads.all'] },
   driver: { title: 'Driver', perms: ['billing.field'] },
   staff: { title: 'Staff', perms: [] },
 };
@@ -214,7 +214,7 @@ WD.permissionList = [
   ['crm.view', 'View customers', 'Customer records and history'], ['crm.edit', 'Edit customers', 'Change customers, notes and follow-ups'],
   ['analytics.view', 'Analytics', 'Driver, stop and route reports'], ['billing.view', 'View billing', 'Invoices and payments'],
   ['billing.field', 'Field invoicing', 'Edit job charges, collect signatures and payment on site'], ['billing.manage', 'Manage billing', 'Create invoices and charge cards'], ['users.manage', 'Manage team', 'Invite people and change roles'], ['hr.manage', 'HR authority', 'Approve time off; see everyone’s hours, overtime, federal overtime, time cards and reports for any dates; fix clock-in/out times and add missed shifts. Owners and admins have it; it can be granted to anyone'], ['settings.manage', 'Company settings', 'Integrations and the Google mirror'],
-  ['contracts.manage', 'Service agreements', 'Create, send and track service agreements to signature'], ['comms.view', 'Call and message history', 'Call transcripts and summaries of past calls, texts and emails when a customer calls'],
+  ['contracts.manage', 'Service agreements', 'Create, send and track service agreements to signature'], ['comms.view', 'Call and message history', 'Summaries of past calls, texts and emails when a customer calls'], ['calls.recordings', 'Call recordings', 'Listen to call recordings and voicemails and read transcripts. Owners, admins and office staff have it'],
   ['maintenance.view', 'Maintenance', 'The Maintenance section: trucks, pre-trip inspection reports, GPS readings, engine codes, repairs and service due. Owners and admins have it; it can be granted to anyone'],
   ['leads.view', 'CRM: leads and pipeline', 'The CRM tab: leads, follow-ups, quotes, referrals and customer feedback'], ['leads.all', 'CRM: all territories', 'See every lead. Off = only leads in the regions, ZIP codes or area codes assigned to this person'],
 ];

@@ -48,7 +48,7 @@ const ST = data.settings = {
   onMyWay: { mode: 'off', byJob: {}, byCust: {} },            // off | text | call | ask | auto; overrides by job type and customer type
   barcodes: { on: false, require: false, onInvoice: true, hddDefault: false },
   books: { provider: 'ninja', autoPaid: true, everyMin: 15, lastCheck: +WD.now() - 11 * 60000 },
-  reviews: { on: true, when: 'first', nth: 4, delayHours: 2, positiveFrom: 4,
+  reviews: { on: true, when: 'first', nth: 4, delayHours: 2, positiveFrom: 4, ask: { on: true, days: 90 },   // ask: the driver is asked after a completed job whether to send a Google review request (R20-4)
     sites: [{ id: 'google', name: 'Google Maps', url: 'https://g.page/r/discount-shred/review', on: true }, { id: 'yelp', name: 'Yelp', url: 'https://www.yelp.com/writeareview/biz/discount-shred-lakemont', on: true },
       { id: 'apple', name: 'Apple Maps', url: 'https://maps.apple.com/place?id=discount-shred', on: false }, { id: 'chatgpt', name: 'ChatGPT business reviews', url: '', on: false }],
     qr: { url: 'https://g.page/r/discount-shred/review', caption: 'Scan to leave a review', image: null } },
@@ -65,7 +65,7 @@ const CHANNELS = [{ value: 'text', label: 'Text message' }, { value: 'email', la
 const CH_ICON = { text: ['message', 'var(--green)'], email: ['envelope', 'var(--blue)'], letter: ['doc.text', 'var(--indigo)'], app: ['bell', 'var(--orange)'] };
 const FIELDS = [['{first}', 'Contact’s first name'], ['{contact}', 'Contact’s full name'], ['{customer}', 'Customer name'], ['{company}', 'Your company'], ['{phone}', 'Your phone number'], ['{sender}', 'Whoever sends it'], ['{owner}', 'The owner'],
   ['{driver}', 'The driver'], ['{date}', 'Service date'], ['{window}', 'Arrival window'], ['{eta}', 'Estimated arrival'], ['{invoice}', 'Invoice number'], ['{amount}', 'Amount'], ['{effective}', 'Date a change starts'], ['{changes}', 'Table of price or service changes'],
-  ['{olddate}', 'The day a visit was moved from'], ['{reason}', 'Why a visit was moved'], ['{link}', 'Signing or quote link'], ['{portal}', 'Customer payment portal'], ['{remit}', 'Where to mail a check'], ['{review_links}', 'Links to your review sites'], ['{employee}', 'Employee’s first name']];
+  ['{olddate}', 'The day a visit was moved from'], ['{reason}', 'Why a visit was moved'], ['{link}', 'Signing or quote link'], ['{portal}', 'Customer payment portal'], ['{remit}', 'Where to mail a check'], ['{review_link}', 'Your Google review link'], ['{employee}', 'Employee’s first name']];
 const G = { svc: 'Service messages', bill: 'Billing and price changes', rev: 'Reviews and feedback', lead: 'Leads and follow-ups', team: 'Team' };
 const T = (id, group, name, channel, subject, body) => ({ id, group, name, channel, subject, body, builtin: true, def: { name, channel, subject, body } });
 data.templates = [
@@ -76,7 +76,8 @@ data.templates = [
   T('price', G.bill, 'Price or service change', 'letter', 'A change to your service', 'Dear {contact},\n\nThank you for trusting {company} with your document destruction. This letter is to let you know about a change to your service, beginning with your service on {effective}.\n\n{changes}\n\nServices before that date are billed at your current rate. Nothing else about your service changes, and there is nothing you need to do.\n\nIf you have any questions, call us at {phone} or reply to this email.\n\nSincerely,\n{owner}\n{company}'),
   T('payrem', G.bill, 'Payment reminder', 'email', 'Payment reminder — {invoice}', 'Hi {first},\n\nA friendly reminder that invoice {invoice} for {amount} is still open.\n\nThe quickest way to pay is online in your customer portal, where you can also add a card or bank account so future invoices are paid automatically:\n{portal}\n\nPrefer to mail a check? Make it payable to {company}, write {invoice} on it, and send it to:\n{remit}\n\nThank you,\n{company}'),
   T('rvask', G.rev, 'Follow-up after service', 'text', '', 'Hi {first}, this is {company}. {driver} serviced your location today. How did {driver} and the service do? Reply with a number from 1 (poor) to 5 (great), and anything you’d like us to know.'),
-  T('rvpos', G.rev, 'Positive reply — ask for a review', 'text', '', 'Thank you, {first}! We’ll pass that on to {driver}. If you have a minute, a public review really helps {driver} and our small team get found by new customers:\n{review_links}'),
+  T('rvpos', G.rev, 'Positive reply — thank you', 'text', '', 'Thank you, {first}! We’ll pass that on to {driver}.'),
+  T('rvreq', G.rev, 'Google review request', 'text', 'A quick favor from {company}', 'Hi {first}, this is {driver} with {company}. Thank you for your business today. If you have a minute, a Google review really helps our small team:\n{review_link}'),
   T('rvneg', G.rev, 'Negative reply — apology', 'text', '', '{first}, I’m sorry we let you down. Thank you for telling us. We appreciate your feedback and take it seriously, and {owner} will call you to make it right.'),
   T('lead1', G.lead, 'New lead — first reply', 'text', '', 'Hi {first}, this is {sender} with {company}. Thanks for reaching out about shredding. When is a good time for a quick call so I can get you a price?'),
   T('lead2', G.lead, 'No response — a few days', 'text', '', 'Hi {first}, {sender} at {company} again. I didn’t want your shredding request to slip through. Would you rather I email a quote?'),
@@ -88,11 +89,12 @@ data.templates = [
 ];
 const tpl = CO.tpl = id => data.templates.find(t => t.id === id) || { name: id, body: '', subject: '', channel: 'text' };
 const fill = CO.fill = (text, ctx) => String(text || '').replace(/\{(\w+)\}/g, (m, k) => ctx[k] != null ? ctx[k] : m);
-const reviewLinks = () => ST.reviews.sites.filter(s => s.on && s.url).map(s => s.name + ': ' + s.url).join('\n') || '(turn on a review site in Settings)';
+/* Only Google's link is ever sent in a request: Yelp does not allow asking for reviews, and the same request goes to every customer (no sending only to happy ones). */
+const googleSite = () => ST.reviews.sites.find(s => s.id === 'google') || { url: '' }, reviewLink = () => googleSite().url || '(add your Google review link in Settings)';
 /** Values for the merge fields, for one customer plus whatever the caller knows (driver, eta, invoice…). */
 const ctxFor = CO.ctxFor = (c, extra = {}) => { const p = (c && c.contacts[0]) || {}, o = org();
   return { first: first(p.name) || 'there', contact: p.name || 'Customer', customer: c ? c.name : 'your company', company: o.name, phone: o.phone || '', sender: first(me()), owner: (q.user('u1') || {}).name || o.name,
-    portal: 'https://pay.discountshred.example/portal', remit: [o.name, o.street, o.cityLine].filter(Boolean).join('\n') || o.name, link: 'https://go.discountshred.example/s/7Kq2', review_links: reviewLinks(), employee: first(me()), ...extra }; };
+    portal: 'https://pay.discountshred.example/portal', remit: [o.name, o.street, o.cityLine].filter(Boolean).join('\n') || o.name, link: 'https://go.discountshred.example/s/7Kq2', review_link: reviewLink(), employee: first(me()), ...extra }; };
 const sampleCtx = () => ctxFor(q.customer('c1') || data.customers[0], { driver: 'Marcus', date: fmt.day(D.add(today(), 1), 'long'), window: '9:00 – 11:00 AM', eta: '10:45 AM', invoice: 'INV-2417', amount: '$130.00', effective: longDay(D.add(today(), 30)), changes: '[table of changes]', employee: 'Sam' });
 const edited = t => t.builtin && (t.body !== t.def.body || t.subject !== t.def.subject || t.channel !== t.def.channel || t.name !== t.def.name);
 
@@ -362,7 +364,7 @@ data.feedback = [];
 /** Record a customer's answer to the follow-up text (or a rating given in person) and send the right reply. */
 CO.addFeedback = o => { const c = q.customer(o.customerId), drv = o.driverName || 'the driver', pos = o.rating >= RV.positiveFrom, ctx = ctxFor(c, { driver: first(drv) });
   const fb = { id: uid('fb'), customerId: o.customerId, jobId: o.jobId || null, driverName: drv, at: o.at || +WD.now(), rating: o.rating, comment: o.comment || '', via: o.via || 'text', asked: fill(tpl('rvask').body, ctx),
-    reply: fill(tpl(pos ? 'rvpos' : 'rvneg').body, ctx), sites: pos ? RV.sites.filter(s => s.on && s.url).map(s => s.name) : [], status: pos ? 'thanked' : 'open', handledBy: null, handledAt: null, handledNote: '' };
+    reply: fill(tpl(pos ? 'rvpos' : 'rvneg').body, ctx), sites: [], status: pos ? 'thanked' : 'open', handledBy: null, handledAt: null, handledNote: '' };
   data.feedback.push(fb); return fb; };
 (function seed() {
   const done = data.jobs.filter(j => j.status === 'completed' && j.customerId && j.day <= today() && q.driverFor(j.routeId)).sort((a, b) => b.day.localeCompare(a.day) || b.seq - a.seq), seen = new Set();
@@ -372,6 +374,20 @@ CO.addFeedback = o => { const c = q.customer(o.customerId), drv = o.driverName |
       if (rating === 3) Object.assign(fb, { status: 'handled', handledBy: 'Colleen Abbott', handledAt: fb.at + 5 * 36e5, handledNote: 'Called and apologized. Reminded the driver to check the lock.' }); });
   data.feedback.forEach(fb => { if (fb.at > +WD.now()) fb.at = +WD.now() - 40 * 60000; });
 })();
+/** After a job is completed and billed: ask whoever completed it whether to send this customer the Google review request (R20-4).
+    Resolves when answered, so the next-customer step follows it. Skipped when the setting is off, there is no way to reach the customer,
+    the customer was asked within the last RV.ask.days days, or the job is a note, a meeting or an unload stop. */
+CO.reviewDue = job => { const c = job && job.customerId && q.customer(job.customerId); if (!RV.ask || !RV.ask.on || !c || job.allDay || job.type === 'meet' || job.type === 'dump' || job.reviewAsked) return null;
+  if (c.reviewAskedAt && +WD.now() - c.reviewAskedAt < RV.ask.days * 864e5) return null;
+  const optedOut = n => !!(c.textOptOut || c.noTexts || (WD.phone && WD.phone.optedOut && WD.phone.optedOut(n))), p = c.contacts.find(x => x.phone && !optedOut(x.phone)), e = c.contacts.find(x => x.email);
+  return p ? { c, p, by: 'text', to: p.phone } : e ? { c, p: e, by: 'email', to: e.email } : c.billingEmail ? { c, p: c.contacts[0] || { name: c.name }, by: 'email', to: c.billingEmail } : null; };
+CO.sendReviewRequest = (job, due) => { due = due || CO.reviewDue(job); if (!due) return false; const { c, p, by, to } = due, drv = (q.driverFor(job.routeId) || {}).name || me(), t = tpl('rvreq'), ctx = ctxFor(c, { driver: first(drv), first: first(p.name) }), body = fill(t.body, ctx), k = (WD.screens.customers || {}).crm;
+  if (by === 'text' && WD.texts && WD.texts.sendTo) WD.texts.sendTo(to, body); else if (k && k.addI) k.addI(by === 'text' ? { customerId: c.id, type: 'text', at: +WD.now(), contact: p.name, number: to, messages: [{ dir: 'out', text: body, at: +WD.now(), by: me(), state: 'delivered' }] } : { customerId: c.id, type: 'email', dir: 'out', at: +WD.now(), subject: fill(t.subject || 'A quick favor', ctx), snippet: body, from: 'office@discountshred.example', to });
+  if (by === 'text' && k && k.addI) k.addI({ customerId: c.id, type: 'note', at: +WD.now(), by: me(), text: 'Google review request sent by text to ' + p.name + '.' });
+  c.reviewAskedAt = +WD.now(); job.reviewAsked = true; job.events.push({ at: +WD.now(), actor: me(), text: 'Google review request sent by ' + by + ' to ' + p.name }); WD.changed(); return true; };
+CO.askReview = async job => { const due = CO.reviewDue(job); if (!due) return; job.reviewAsked = true;   // asked once per job, whatever the answer
+  const yes = await ui.actionSheet({ title: 'Send ' + due.c.name + ' a Google review request?', message: (due.by === 'text' ? 'A text to ' + due.p.name + ' at ' + fmt.phone(due.to) : 'An email to ' + due.to) + ' with your Google review link.', buttons: [{ label: 'Send', value: true }, { label: 'Not this time', value: false }] });
+  if (yes) { job.reviewAsked = false; if (CO.sendReviewRequest(job, due)) ui.toast('Review request sent to ' + first(due.p.name), 'star.fill', 2400); job.reviewAsked = true; } };
 CO.feedbackOpen = () => data.feedback.filter(f => f.status === 'open').length;
 const fbState = { filter: 'all' };
 function feedbackDetail(fb) {
@@ -380,7 +396,7 @@ function feedbackDetail(fb) {
       h('div.footnote', { style: 'padding:2px 16px 4px' }, (p.name || 'Customer') + ' · service by ' + fb.driverName + ' · ' + fmt.rel(fb.at).toLowerCase() + (fb.via === 'qr' ? ' · from the QR code' : ' · reply to the follow-up text')),
       fb.via !== 'qr' && h('div.co-bubble', fb.asked), h('div.co-bubble.in', fb.rating + (fb.comment ? ' — ' + fb.comment : '')), h('div.co-bubble', fb.reply),
       ui.list(
-        ui.section({ header: pos ? 'Review request sent' : 'Needs a personal follow-up', footer: pos ? 'Sent automatically with links to: ' + (fb.sites.join(', ') || 'no review sites are switched on') + '.' : 'The apology above went out automatically. Call the customer, then mark this handled with a note about what was done.' },
+        ui.section({ header: pos ? 'Thanked' : 'Needs a personal follow-up', footer: pos ? 'The thank-you above went out automatically. A reply here never decides who is asked for a public review: the driver is asked after every completed job.' : 'The apology above went out automatically. Call the customer, then mark this handled with a note about what was done.' },
           !pos && fb.status === 'open' && ui.row({ icon: 'phone.fill', iconPlain: true, title: 'Call ' + (p.name || 'the customer'), subtitle: p.phone ? fmt.phone(p.phone) : 'No phone on file', tint: true, onTap: () => ui.toast('Calling ' + first(p.name) + '…', 'phone.fill') }),
           !pos && fb.status === 'open' && ui.row({ icon: 'checkmark.circle', iconPlain: true, title: 'Mark handled…', tint: true, onTap: async () => { const r = await ui.alert({ title: 'What was done?', input: { placeholder: 'e.g. Called and credited the visit' }, buttons: [{ label: 'Cancel', value: null }, { label: 'Save', value: true, bold: true }] });
             if (r && r.value) { Object.assign(fb, { status: 'handled', handledBy: me(), handledAt: +WD.now(), handledNote: r.text.trim() }); WD.changed(); page.refresh(); ui.toast('Marked handled', 'checkmark'); } } }),
@@ -397,7 +413,7 @@ CO.feedbackView = page => {
   return ui.list(
     ui.section(null, h('div.co-tiles', h('div', h('b', n ? avg.toFixed(1) : '—'), h('span', 'Average')), h('div', h('b', String(n)), h('span', 'Replies')), h('div', h('b', n ? Math.round(all.filter(positive).length / n * 100) + '%' : '—'), h('span', 'Positive')), h('div', h('b', { style: open.length ? 'color:var(--red)' : null }, String(open.length)), h('span', 'To follow up')))),
     h('div', { style: 'padding:14px 16px 0' }, ui.segmented([{ value: 'all', label: 'All' }, { value: 'open', label: 'To follow up' }, { value: 'pos', label: 'Positive' }, { value: 'neg', label: 'Negative' }], fbState.filter, v => { fbState.filter = v; page.refresh(); })),
-    ui.section({ header: list.length + (list.length === 1 ? ' reply' : ' replies'), footer: RV.on ? 'Replies to the follow-up text sent after service, and ratings left from the QR code. ' + RV.positiveFrom + ' stars and up get the review request; anything lower gets the apology and waits here for a call.' : 'The follow-up text is switched off in Settings → Reviews and feedback.' },
+    ui.section({ header: list.length + (list.length === 1 ? ' reply' : ' replies'), footer: RV.on ? 'Replies to the follow-up text sent after service, and ratings left from the QR code. ' + RV.positiveFrom + ' stars and up get a thank-you; anything lower gets the apology and waits here for a call.' : 'The follow-up text is switched off in Settings → Reviews and feedback.' },
       list.map(f => { const c = q.customer(f.customerId); return ui.row({ title: h('span', { style: 'display:flex;align-items:center;gap:8px' }, h('span', { style: 'min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, c ? c.name : 'Customer'), stars(f.rating)),
         subtitle: [f.comment ? '“' + f.comment + '”' : 'No comment', first(f.driverName) + ' · ' + fmt.rel(f.at).toLowerCase()].map(x => h('div', x)), badge: f.status === 'open' ? ui.badge('Call', 'var(--red)') : f.status === 'handled' ? ui.badge('Handled', 'var(--green)') : null, chevron: true, onTap: () => WD.nav.push(feedbackDetail(f)) }); }),
       !list.length && ui.row({ title: 'Nothing here' })),
@@ -422,7 +438,7 @@ CO.qrSection = () => RV.on ? ui.section({ header: 'Reviews', footer: 'Hold the i
 function editSite(site, page) {
   const f = site ? { name: site.name, url: site.url } : { name: '', url: '' };
   ui.sheet({ title: site ? 'Review site' : 'Add a review site', leading: [{ label: 'Cancel', onTap: p => p.dismiss() }], trailing: [{ label: 'Save', bold: true, onTap: p => { if (!f.name.trim()) return ui.toast('Add a name', 'note'); if (site) Object.assign(site, { name: f.name.trim(), url: f.url.trim() }); else RV.sites.push({ id: uid('rs'), name: f.name.trim(), url: f.url.trim(), on: !!f.url.trim() }); WD.changed(); p.dismiss(); page.refresh(); } }],
-    render: p => ui.list(ui.section({ footer: 'Paste the link that opens your “write a review” page on that site. It is added to the text sent after a positive reply.' }, ui.inputRow({ label: 'Name', placeholder: 'e.g. Facebook, BBB, Nextdoor', value: f.name, onInput: v => { f.name = v; } }), ui.inputRow({ label: 'Link', type: 'url', caps: 'off', placeholder: 'https://…', value: f.url, onInput: v => { f.url = v; } })),
+    render: p => ui.list(ui.section({ footer: site && site.id === 'google' ? 'Paste the link that opens your “write a review” page on Google. This is the link sent in review requests.' : 'Paste the link that opens your “write a review” page on that site. It can be used for the QR code; it is never sent in a review request.' }, ui.inputRow({ label: 'Name', placeholder: 'e.g. Facebook, BBB, Nextdoor', value: f.name, onInput: v => { f.name = v; } }), ui.inputRow({ label: 'Link', type: 'url', caps: 'off', placeholder: 'https://…', value: f.url, onInput: v => { f.url = v; } })),
       site && ui.section(null, ui.row({ title: 'Remove this site', destructive: true, onTap: () => { RV.sites = ST.reviews.sites = RV.sites.filter(x => x !== site); WD.changed(); p.dismiss(); page.refresh(); } }))) }, { detent: 'medium' });
 }
 CO.reviewsSpec = () => ({ title: 'Reviews and feedback', render: page => { if (!admin()) return locked();
@@ -434,9 +450,14 @@ CO.reviewsSpec = () => ({ title: 'Reviews and feedback', render: page => { if (!
       RV.on && RV.when === 'nth' && ui.row({ title: 'Every', detail: RV.nth + ' services', trailing: ui.stepper(RV.nth, 2, 26, v => { RV.nth = v; page.refresh(); }) }),
       RV.on && ui.row({ title: 'How long after the visit', detail: RV.delayHours ? RV.delayHours + (RV.delayHours === 1 ? ' hour' : ' hours') : 'Right away', trailing: ui.stepper(RV.delayHours, 0, 48, v => { RV.delayHours = v; page.refresh(); }) }),
       RV.on && tplRow('rvask', page)),
-    RV.on && ui.section({ header: 'When the customer replies', footer: 'A reply of ' + RV.positiveFrom + ' or higher is positive: the customer is thanked and asked for a public review. Anything lower gets the apology, and the reply waits under Customer feedback for a call.' },
+    RV.on && ui.section({ header: 'When the customer replies', footer: 'A reply of ' + RV.positiveFrom + ' or higher is positive and gets a thank-you. Anything lower gets the apology, and the reply waits under Customer feedback for a call. A reply never decides who is asked for a public review; Google does not allow asking only happy customers.', showFooter: true },
       ui.row({ title: 'Positive means', detail: RV.positiveFrom + ' stars or more', trailing: ui.stepper(RV.positiveFrom, 3, 5, v => { RV.positiveFrom = v; page.refresh(); }) }), tplRow('rvpos', page), tplRow('rvneg', page)),
-    ui.section({ header: 'Review sites', footer: 'Sites that are switched on and have a link are included in the review request.' },
+    ui.section({ header: 'Google review request', footer: RV.ask.on ? 'When a job is completed and billed, the driver is asked “Send a Google review request?” The same request goes to any customer the driver says yes for, by text, or by email when there is no mobile number or they have opted out of texts.' : 'Nobody is asked to send review requests.', showFooter: true },
+      ui.toggleRow({ icon: 'star', iconColor: 'var(--orange)', title: 'Ask the driver after each completed job', value: RV.ask.on, onChange: v => { RV.ask.on = v; WD.changed(); page.refresh(); } }),
+      RV.ask.on && ui.pickerRow({ title: 'Don’t ask the same customer again for', value: RV.ask.days, options: [[0, 'Ask every time'], [30, '30 days'], [60, '60 days'], [90, '90 days'], [180, '6 months'], [365, 'A year']].map(([value, label]) => ({ value, label })), onChange: v => { RV.ask.days = +v; page.refresh(); } }),
+      ui.inputRow({ label: 'Google review link', type: 'url', caps: 'off', placeholder: 'https://g.page/r/…/review', value: googleSite().url, onInput: v => { const g = RV.sites.find(x => x.id === 'google'); if (g) g.url = v.trim(); else RV.sites.unshift({ id: 'google', name: 'Google Maps', url: v.trim(), on: true }); } }),
+      RV.ask.on && tplRow('rvreq', page)),
+    ui.section({ header: 'Other review sites', footer: 'Kept for the QR code and your own records. Only the Google link is sent in a request. Yelp does not allow businesses to ask for reviews, so its link is never sent.', showFooter: true },
       RV.sites.map(s => ui.row({ title: s.name, subtitle: s.url || 'No link yet — tap to add', trailing: ui.toggle(s.on, v => { if (v && !s.url) { ui.toast('Add the link first', 'link'); editSite(s, page); return false; } s.on = v; WD.changed(); }), onTap: () => editSite(s, page) })),
       ui.row({ icon: 'plus.circle.fill', iconPlain: true, iconColor: 'var(--green)', title: 'Add a review site', tint: true, onTap: () => editSite(null, page) })),
     ui.section({ header: 'QR code for reviews in person', footer: 'Make the QR code in any free QR program, pointing at the link below, and attach the image here. Drivers show it from the Shift tab.' },
@@ -521,7 +542,7 @@ WD.panel.addJump('Customer feedback', () => { WD.nav.switchTab(WD.can('leads.vie
 WD.panel.addJump('Review QR code', () => { WD.nav.switchTab('shift'); WD.nav.push(CO.qrSpec()); });
 const lastVisit = () => data.jobs.filter(j => j.status === 'completed' && j.customerId && j.day === today() && q.driverFor(j.routeId)).sort((a, b) => (b.departedAt || 0) - (a.departedAt || 0)).find(j => !data.feedback.some(f => f.jobId === j.id)) || data.jobs.find(j => j.status === 'completed' && j.customerId && q.driverFor(j.routeId));
 const reply = (rating, comment) => { const j = lastVisit(); if (!j) return ui.toast('No completed visit to reply about', 'info.circle'); const drv = q.driverFor(j.routeId).name, fb = CO.addFeedback({ customerId: j.customerId, jobId: j.id, driverName: drv, rating, comment: comment.replace('{driver}', first(drv)) }), c = q.customer(j.customerId); WD.changed();
-  ui.banner({ title: (rating >= RV.positiveFrom ? 'Positive feedback · ' : 'Negative feedback · ') + rating + ' of 5', text: c.name + ': ' + (fb.comment || 'no comment') + (rating >= RV.positiveFrom ? ' Review request sent.' : ' Apology sent. Needs a call.'), icon: 'star.fill', color: rating >= RV.positiveFrom ? 'var(--green)' : 'var(--red)', duration: 7000, onTap: () => { WD.nav.switchTab(WD.can('leads.view') ? 'crm' : 'settings'); WD.nav.push(feedbackDetail(fb)); } }); };
+  ui.banner({ title: (rating >= RV.positiveFrom ? 'Positive feedback · ' : 'Negative feedback · ') + rating + ' of 5', text: c.name + ': ' + (fb.comment || 'no comment') + (rating >= RV.positiveFrom ? ' Thank-you sent.' : ' Apology sent. Needs a call.'), icon: 'star.fill', color: rating >= RV.positiveFrom ? 'var(--green)' : 'var(--red)', duration: 7000, onTap: () => { WD.nav.switchTab(WD.can('leads.view') ? 'crm' : 'settings'); WD.nav.push(feedbackDetail(fb)); } }); };
 WD.panel.addAction('Customer replies to the follow-up text: 5', () => reply(5, '{driver} was friendly and fast. Thank you!'));
 WD.panel.addAction('Customer replies to the follow-up text: 2', () => reply(2, 'The truck blocked our loading dock for half an hour.'));
 WD.panel.addAction('Customer pays in the bookkeeping program', () => { const r = unpaidRecs().find(x => !x.ext); if (!r) return ui.toast('No open invoices', 'info.circle'); if (!CO.hasBooks()) return ui.toast('No bookkeeping program is connected', 'info.circle');

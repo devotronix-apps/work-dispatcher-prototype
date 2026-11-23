@@ -19,6 +19,7 @@ WD.css(`
 .rc-drv { font-size: 12px; font-weight: 500; color: var(--label2); letter-spacing: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .rc-drv.ovr { color: var(--orange); font-weight: 600; }
 .rc-unq { color: var(--red); font-weight: 800; }
+.rc-unq-why { display: block; color: var(--red); font-weight: 600; white-space: normal; }
 .rc-gauge { height: 8px; width: 84px; border-radius: 4px; background: var(--fill2); overflow: hidden; } .rc-gauge i { display: block; height: 100%; border-radius: 4px; background: var(--green); }
 .rc-gauge.low i { background: var(--red); } .rc-gauge.mid i { background: var(--orange); }
 .rc-signed { padding: 12px 16px; background: var(--cell); } .rc-signed .ink { height: 70px; display: grid; place-items: center; border-bottom: 1px solid var(--label3); margin-bottom: 5px; } .rc-signed .ink svg, .rc-signed .ink img { max-height: 66px; max-width: 100%; }
@@ -536,12 +537,17 @@ RC.assignSheet = (rid, day) => {
   };
   ui.sheet({ title: 'Driver and truck', leading: [{ label: 'Cancel', onTap: p => p.dismiss() }], trailing: [{ label: 'Assign', bold: true, onTap: save }],
     render: p => { const pickRow = (on, title, sub, tap, warn) => ui.row({ icon: on ? 'checkmark.circle.fill' : 'circle', iconPlain: true, iconColor: on ? 'var(--tint)' : 'var(--label3)', title, subtitle: sub, badge: warn ? ui.badge(warn, 'var(--red)') : null, onTap: () => { tap(); p.refresh(); } });
+      /* Everyone and every truck stays choosable. The ones that don't qualify for a job on this route that day are named in red with the reason (R20-2). */
+      const fit = (u, v) => WD.r11 && WD.r11.fitFor ? WD.r11.fitFor(rid, day, u, v) : { driver: [], truck: [] }, selV = () => f.vehicleId ? q.vehicle(f.vehicleId) : null;
+      const bad = (name, why) => why.length ? h('b.rc-unq', { 'aria-label': name + ', not qualified' }, name) : name, sub = (text, why) => why.length ? h('span', text, h('span.rc-unq-why', why[0] + (why.length > 1 ? ' (+' + (why.length - 1) + ' more)' : ''))) : text;
+      const anyBad = drivers.some(u => fit(u, selV()).driver.length) || trucks.some(v => fit(null, v).truck.length);
       return ui.list(note(q.routeName(r) + ' · ' + fmt.day(day, 'long') + '. This changes that one day; the route’s usual driver and truck stay as they are.'),
-        ui.section({ header: 'Driver', fold: false }, drivers.map(u => { const on = RC.routeOf(u.id, day), off = WD.offOn && WD.offOn(u.id, day);
-            return pickRow(f.driverId === u.id, u.name, on ? (on.id === rid ? 'On this route' : 'On ' + q.routeName(on)) : 'Not on a route that day', () => { f.driverId = u.id; }, off ? 'Time off' : null); }),
+        ui.section({ header: 'Driver', fold: false, footer: anyBad ? 'Red: not qualified for a job on this route that day. You can still choose them.' : null, showFooter: true }, drivers.map(u => { const on = RC.routeOf(u.id, day), off = WD.offOn && WD.offOn(u.id, day), why = fit(u, selV()).driver;
+            return pickRow(f.driverId === u.id, bad(u.name, why), sub(on ? (on.id === rid ? 'On this route' : 'On ' + q.routeName(on)) : 'Not on a route that day', why), () => { f.driverId = u.id; }, off ? 'Time off' : null); }),
           pickRow(!f.driverId, 'No driver', 'Leave the route unassigned', () => { f.driverId = null; })),
         ui.section({ header: 'Truck', fold: false }, trucks.map(v => { const on = q.routes().find(x => (RC.vehicleOn(x.id, day) || {}).id === v.id);
-          return pickRow(f.vehicleId === v.id, v.name, (v.kind || '') + (on ? ' · ' + (on.id === rid ? 'on this route' : 'on ' + q.routeName(on)) : ' · free that day'), () => { f.vehicleId = v.id; }, v.shop ? 'In the shop' : null); })),
+          const why = fit(null, v).truck;
+          return pickRow(f.vehicleId === v.id, bad(v.name, why), sub((v.kind || '') + (on ? ' · ' + (on.id === rid ? 'on this route' : 'on ' + q.routeName(on)) : ' · free that day'), why), () => { f.vehicleId = v.id; }, v.shop ? 'In the shop' : null); })),
         changed(rid, day) && ui.section(null, ui.row({ title: 'Back to the usual driver and truck', destructive: true, onTap: () => { delete RA[rid + '|' + day]; WD.changed(); p.dismiss(); ui.toast('Back to the usual assignment', 'checkmark'); } }))); } }, { detent: 'large' });
 };
 

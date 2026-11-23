@@ -198,7 +198,7 @@ function openInvoiceRec(rec) { if (!rec) return; const page = guard('customers',
 /** Record a payment received another way: card, check, cash or other. */
 async function markPaid(rec, job) {
   job = job || (rec && rec.jobId && q.job(rec.jobId)); const amount = rec ? rec.amount : job.invoice.amount, number = rec ? rec.number : job.invoice.number;
-  const m = await ui.actionSheet({ title: 'Mark ' + number + ' paid', message: fmt.money(amount, true) + ' · how was it paid?', buttons: [{ label: 'Card', value: 'Card' }, { label: 'Check', value: 'Check' }, { label: 'Cash', value: 'Cash' }, { label: 'Other…', value: 'Other' }] });
+  const m = await ui.actionSheet({ title: 'Mark ' + number + ' paid', message: ((WD.cardPrice && WD.cardPrice.bothText(amount)) || fmt.money(amount, true)) + ' · how was it paid?', buttons: [{ label: 'Card', value: 'Card' }, { label: 'Check', value: 'Check' }, { label: 'Cash', value: 'Cash' }, { label: 'Other…', value: 'Other' }] });
   if (!m) return false; let method = m;
   if (m === 'Check') { const r = await ui.alert({ title: 'Check number', message: 'Optional — helps match the deposit.', input: { placeholder: 'e.g. 4417' }, buttons: [{ label: 'Cancel', value: null }, { label: 'Save', value: true, bold: true }] }); if (!r || !r.value) return false; if (r.text.trim()) method = 'Check #' + r.text.trim(); }
   if (m === 'Other') { const r = await ui.alert({ title: 'Paid how?', input: { placeholder: 'e.g. ACH, Venmo, money order' }, buttons: [{ label: 'Cancel', value: null }, { label: 'Save', value: true, bold: true }] }); if (!r || !r.value) return false; method = r.text.trim() || 'Other'; }
@@ -206,10 +206,12 @@ async function markPaid(rec, job) {
 }
 function applyPaid(rec, job, method, amount, when) {
   const me = when ? (WD.co ? WD.co.booksName() : 'Bookkeeping') : S.me.name, at = when || +WD.now();
+  /* amount is our price. What was collected depends on how it was paid (R20-5): the card price or our price plus the card fee line by credit card, our price otherwise. */
+  const cp = WD.cardPrice && !when ? WD.cardPrice.split(amount, method) : { base: amount, fee: 0, discount: 0, charged: amount };
   const apply = () => {
     if (rec && rec.status !== 'Paid') { const c = q.customer(rec.customerId); if (c && c.stats) { if (rec.status === 'Overdue') c.stats.balance = Math.max(0, c.stats.balance - amount); c.stats.paid += amount; }
-      rec.status = 'Paid'; if (data.payments) { const pay = { id: 'pay-m' + Date.now(), invoiceId: rec.id, customerId: rec.customerId, at, amount, method }; data.payments.push(pay); rec.payments.push(pay.id); } }
-    if (job && job.invoice) { job.invoice.status = 'Paid'; job.invoice.paid = { method, at }; job.events.push({ at, actor: me, text: 'Marked paid · ' + method + ' · ' + fmt.money(amount, true) }); }
+      rec.status = 'Paid'; if (data.payments) { const pay = { id: 'pay-m' + Date.now(), invoiceId: rec.id, customerId: rec.customerId, at, amount: cp.base, method, ...(cp.fee ? { fee: cp.fee } : {}), ...(cp.discount ? { discount: cp.discount } : {}) }; data.payments.push(pay); rec.payments.push(pay.id); } }
+    if (job && job.invoice) { job.invoice.status = 'Paid'; job.invoice.paid = { method, at }; job.events.push({ at, actor: me, text: 'Marked paid · ' + method + ' · ' + fmt.money(cp.charged, true) + (cp.fee ? ' (includes ' + fmt.money(cp.fee, true) + ' card fee)' : cp.discount ? ' (cash price)' : '') }); }
   };
   if (job) api.op({ kind: 'edit', title: job.title, scope: 'Payment · ' + method, jobIds: [job.id], apply }); else { apply(); WD.changed(); }
 }
@@ -310,12 +312,13 @@ async function completeStop(job) {
   if (mode === 'ask') { mode = await ui.actionSheet({ title: 'Complete ' + job.title + '?', buttons: [{ label: 'Complete and bill', value: 'billing' }, { label: 'Just complete', value: 'complete' }] }); if (!mode) return; }
   if (job.status !== 'completed') { const inferred = job.arrivedAt == null && W.arrival !== 'button'; api.setStatus(job.id, 'completed', inferred ? 'arrival time from GPS' : null); WD.emit('stopCompleted', job.id); }
   const auto = WD.cardJob(job);
-  if (mode === 'complete' || !canInvoice() || auto || job.type === 'meet') { ui.toast(auto ? 'Completed · card on file is charged automatically' : 'Stop completed', 'checkmark', 2200); if (mode !== 'complete' || auto) afterBilling(job); return; }
+  if (mode === 'complete' || !canInvoice() || auto || job.type === 'meet') { ui.toast(auto ? 'Completed · card on file is charged automatically' : 'Stop completed', 'checkmark', 2200); if (mode !== 'complete' || auto) afterBilling(job); else if (WD.co && WD.co.askReview && job.type !== 'meet') setTimeout(() => WD.co.askReview(job), 500); return; }
   /* Open the billing details from the job as it is now (looked up again by id), and say so if they can't be opened, rather than leaving the driver on the list. */
   setTimeout(() => { try { if (!q.job(job.id)) throw new Error('job'); billing().openEditor(job.id, { flow: true, onDone: () => afterBilling(job) }); } catch (e) { console.error(e); ui.alert({ title: 'Billing details didn’t open', message: 'The stop is marked complete. Open it from the “completed stop isn’t billed” line on the Shift tab to create the invoice.' }); } }, 250);
 }
 /** After billing: show the next customer, and optionally start directions there (not when it's at the same address). */
-function afterBilling(job) {
+function afterBilling(job) { const ask = WD.co && WD.co.askReview ? WD.co.askReview(job) : null; return Promise.resolve(ask).catch(() => {}).then(() => showNext(job)); }   // the driver is asked about a Google review request first (R20-4)
+function showNext(job) {
   if (W.afterBilling === 'stay') return;
   const next = nextStop(job);
   setTimeout(() => {
