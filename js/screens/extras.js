@@ -442,8 +442,8 @@ X.contactSummary = (c, items, describe) => {
 
 /* ================= What's new tutorial ================= */
 const TOUR = [
-  { icon: 'sparkles', title: 'New in ' + WD.version, text: 'US federal holidays are on the calendars and in holiday planning. Run this tour again from Menu → Settings → About.' },
-  { tab: 'Dispatch', icon: 'calendar', title: 'Federal holidays', list: ['The month names each federal holiday in red. A day the company is closed is filled red.', 'On the board, a federal holiday shows a note line above the routes.', '⋯ → Holidays and schedule changes lists the next year’s federal holidays. Tap one to mark the company closed and review where its jobs go.', 'Scheduling a job on a federal holiday asks first.', 'The company stays open on a federal holiday unless you mark it closed. “Show federal holidays” in that screen’s settings turns them off.'] },
+  { icon: 'sparkles', title: 'New in ' + WD.version, text: 'Dispatch has a Home button on every view and one button that switches between Days, Routes and Month. Run this tour again from Menu → Settings → About.' },
+  { tab: 'Dispatch', icon: 'house', title: 'Home and the view button', list: ['Home, right of the date, is on every Dispatch view. One tap is today on the Routes board.', 'The button beside it steps through Days, Routes and Month. Its icon is the view showing now.', 'To go to today without leaving the view, tap the date and then Today.', 'On a Samsung Galaxy, a job tapped on the board now stays open.'] },
 ];
 X.tutorial = () => {
   const screen = document.getElementById('screen'), old = screen.querySelector('.x-tour'); if (old) old.remove();

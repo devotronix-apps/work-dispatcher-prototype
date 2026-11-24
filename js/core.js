@@ -4,9 +4,9 @@
 'use strict';
 const WD = window.WD = { screens: {}, data: {} };
 /** Prototype version (Settings → About). Bump on every publish; the “what’s new” tutorial shows once per version. */
-WD.version = '6.6';
+WD.version = '6.7';
 /** Earlier releases kept on the published site under v/<version>/ (Settings → Older versions). Add the outgoing version on every publish. */
-WD.olderVersions = ['6.5', '6.4', '6.3', '6.2', '6.1', '6.0', '5.4', '5.3', '5.2', '5.1', '5.0', '4.3', '4.2', '4.1'];
+WD.olderVersions = ['6.6', '6.5', '6.4', '6.3', '6.2', '6.1', '6.0', '5.4', '5.3', '5.2', '5.1', '5.0', '4.3', '4.2', '4.1'];
 const $ = (s, r) => (r || document).querySelector(s);
 
 /* ================= DOM helper ================= */
@@ -154,6 +154,10 @@ const I = WD.icons = {
   'list.bullet': '<path d="M9 6.500h11M9 12h11M9 17.500h11"/><circle cx="4.500" cy="6.500" r="1" fill="currentColor"/><circle cx="4.500" cy="12" r="1" fill="currentColor"/><circle cx="4.500" cy="17.500" r="1" fill="currentColor"/>',
   checklist: '<path d="M3.500 6.500l1.500 1.500 3-3M3.500 12.500L5 14l3-3M3.500 18.500L5 20l3-3M11.500 7h9M11.500 13h9M11.500 19h9"/>',
   columns: '<rect x="3" y="5" width="18" height="14" rx="2.500"/><path d="M9 5v14M15 5v14"/>',
+  /* Dispatch's view button: Days (a week strip with one day marked), Routes (route lanes with stops), Month (a calendar grid). */
+  'view.days': '<rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/><rect x="7" y="12.75" width="4.5" height="4.5" rx="1.2" fill="currentColor"/>',
+  'view.routes': '<rect x="3" y="4" width="4.5" height="16" rx="1.6"/><rect x="9.75" y="4" width="4.5" height="16" rx="1.6"/><rect x="16.5" y="4" width="4.5" height="16" rx="1.6"/>',
+  'view.month': '<rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4M9.2 10v10.5M14.8 10v10.5M3.5 15.25h17"/>',
   'arrow.expand': '<path d="M14 4h6v6M20 4l-7 7M10 20H4v-6M4 20l7-7"/>', 'arrow.shrink': '<path d="M19 11h-6V5M13 11l7-7M5 13h6v6M11 13l-7 7"/>', 'sidebar.thin': '<rect x="3" y="5" width="18" height="14" rx="2.500"/><path d="M8 5v14M16 10l-3 2 3 2"/>',
   'square.grid': '<rect x="3.500" y="3.500" width="7" height="7" rx="1.500"/><rect x="13.500" y="3.500" width="7" height="7" rx="1.500"/><rect x="3.500" y="13.500" width="7" height="7" rx="1.500"/><rect x="13.500" y="13.500" width="7" height="7" rx="1.500"/>',
   ellipsis: '<circle cx="5" cy="12" r="1.600" fill="currentColor"/><circle cx="12" cy="12" r="1.600" fill="currentColor"/><circle cx="19" cy="12" r="1.600" fill="currentColor"/>',
@@ -559,6 +563,11 @@ ui.sheet = (spec, o = {}) => {
     if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
     resolve(result); WD.changed();
   };
+  /* A sheet opened as the finger lifts (a job on the board) is on screen before the browser sends that tap's click. Some Android browsers
+     (Samsung Internet on a Galaxy) aim that click at whatever is under the finger now, which is this sheet's backdrop or one of its rows, and
+     the sheet closed as soon as it opened. A click only counts here once a press has started on the sheet itself, or it has been up a moment. */
+  { const born = Date.now(); let pressed = false; const guard = e => { if (e.type === 'pointerdown') pressed = true; else if (!pressed && Date.now() - born < 700) { e.stopPropagation(); e.preventDefault(); } };
+    [backdrop, el].forEach(x => { x.addEventListener('pointerdown', guard, true); x.addEventListener('click', guard, true); }); }
   backdrop.onclick = () => { if (o.dismissable !== false) sheet.close(); };
   sheets.push(sheet); add(overlays(), [backdrop, el]); stack.push(spec, false); openSoon(backdrop, el); syncPushedBack();
   return sheet;

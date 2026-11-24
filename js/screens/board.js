@@ -17,7 +17,6 @@ WD.css(`
 .bd-date .t small.today { color: var(--tint); font-weight: 600; }
 /* Tap targets: every button in the bar is 44 × 44; the icons keep their size. */
 .bd-top .nav-btn, .bd-date .nav-btn { min-width: 44px; padding: 0; flex: none; }
-.bd-today { width: 24px; height: 24px; border: 1.7px solid currentColor; border-radius: 5px; font-size: 12px; font-weight: 700; display: grid; place-items: center; letter-spacing: 0; }
 /* Warning lines: black or white text on a tinted bar, with the color carried by the icon and the left edge. */
 .bd-strip { flex: none; position: relative; box-sizing: border-box; display: flex; align-items: center; gap: 6px; min-height: 38px; padding: 5px 14px 5px 10px; font-size: 13px; line-height: 16px; font-weight: 500; letter-spacing: -.08px; cursor: pointer; background: color-mix(in srgb, var(--c) 14%, var(--cell)); color: var(--label); border-top: .5px solid var(--sep); border-left: 4px solid var(--c); }
 .bd-strip > .ic:first-child { color: var(--c); flex: none; } .bd-strip > .ic { flex: none; }
@@ -252,29 +251,43 @@ const boardHome = WD.app.home('board', {
     return b.day === D.today() && b.mode === 'routes' && b.view === 'board' && !b.split && !b.select && b.detail === 1 && (S.desktop || b.cols === 3) && b.dayCount === (S.desktop ? 7 : 3) && q.routes().every(r => !!r.visible === startVisible(r)); },
   reset: () => { const b = S.board; q.routes().forEach(r => { r.visible = startVisible(r); }); Object.assign(b, { day: D.today(), mode: 'routes', view: 'board', split: false, select: null, detail: 1, cols: 3, dayCount: S.desktop ? 7 : 3 }); { const mine = WD.app.driverRoute && WD.app.driverRoute(D.today()); if (mine) Object.assign(b, { mode: 'days', routeId: mine.id, dayCount: 1 }); } keep(null, 0); refresh(); WD.changed(); },
 });
+/* The three Dispatch views, in the order the view button steps through them. */
+const VIEW_ORDER = ['days', 'routes', 'month'], VIEW_NAME = { days: 'Days', routes: 'Routes', month: 'Month' }, VIEW_ICON = { days: 'view.days', routes: 'view.routes', month: 'view.month' };
+const nextMode = () => VIEW_ORDER[(VIEW_ORDER.indexOf(S.board.mode) + 1) % VIEW_ORDER.length];
+function setMode(v) { const b = S.board; b.mode = v; if (v === 'month') b.view = 'board'; if (v === 'days' && !b.routeId) b.routeId = (q.visibleRoutes()[0] || q.routes()[0]).id; keep(undefined, 0); refresh(); }
 /* ---------- Header rows ---------- */
 function topBar() {
   const b = S.board, today = D.today();
   let title = fmt.day(b.day), sub = fmt.day(b.day, 'rel');
-  if (b.mode === 'month') { title = fmt.day(b.day, 'month'); sub = showAreas() ? '' : 'All jobs'; }
+  /* On an iPhone the month view has five buttons beside the date, so the month is abbreviated (“Nov 2026”); a computer has room for the full name. */
+  if (b.mode === 'month') { title = S.desktop ? fmt.day(b.day, 'month') : fmt.day(b.day, 'md').split(' ')[0] + ' ' + D.parse(b.day).getFullYear(); sub = showAreas() ? '' : 'All jobs'; }
   else if (b.mode === 'days' && b.dayCount > 1 && !mapOnly()) { title = fmt.day(b.day, 'md') + ' – ' + fmt.day(D.add(b.day, b.dayCount - 1), 'md'); sub = ''; }
   else if (sub === title) sub = '';
   const route = b.mode === 'days' && (b.dayCount > 1 || mapOnly()) && q.route(b.routeId);
   const btn = (ic, label, fn, extra) => h('button.nav-btn', { 'aria-label': label, onclick: e => fn(e.currentTarget) }, extra || icon(ic, 23));
   const unit = b.mode === 'month' ? 'month' : 'day';
   /* Six 44-point buttons and the date do not fit across an iPhone, so AutoRoute is the first tool in the menu (and in each route heading's menu). */
-  return h('div.bd-top',
+  const bar = h('div.bd-top',
     h('div.bd-date', btn('chevron.left', 'Previous ' + unit, () => step(-1), icon('chevron.left', 20)),
       h('button.t' + (title.length > 11 ? '.long' : ''), { 'aria-label': 'Go to date, showing ' + title, onclick: pickDate }, h('b', title), route ? h('small.rt', ui.dot(q.routeColor(route)), q.routeName(route)) : sub && h('small' + (b.day === today && b.mode !== 'month' ? '.today' : ''), sub)),
       btn('chevron.right', 'Next ' + unit, () => step(1), icon('chevron.right', 20))),
     /* Board ↔ Map (5.1): one button that names the view a tap goes to. On a computer it sits here in the bar; on an iPhone it floats over the
        bottom of the board (viewPill), where there is room for a label, and the date gets the width back. */
-    !boardHome.atHome() && btn('house', 'Home: back to the default board', () => { boardHome.reset(); ui.toast('Default board', 'house', 1200); }),
+    /* Home is on every Dispatch view (Routes, Days, Month, the map): one tap is today on the Routes board. */
+    btn('house', 'Home: today on the Routes board', () => { const was = boardHome.atHome(); boardHome.reset(); if (!was) ui.toast('Today · Routes', 'house', 1200); }),
     S.desktop && canMap() && viewBtn(),
     (S.desktop || b.mode === 'month') && btn('magnifyingglass', 'Search', () => jobsScreen().openSearch && jobsScreen().openSearch()),
-    btn(null, 'Today', () => { b.day = today; keep(null); refresh(); }, h('span.bd-today', D.parse(today).getDate())),
+    /* One button steps through the three views, Days → Routes → Month, and its icon is the view showing now. */
+    btn(VIEW_ICON[b.mode], VIEW_NAME[b.mode] + ' view. Switch to ' + VIEW_NAME[nextMode()], () => { const v = nextMode(); setMode(v); ui.toast(VIEW_NAME[v], VIEW_ICON[v], 1000); }),
     WD.can('jobs.edit') && btn('plus', 'New job', () => jobsScreen().openEditor && jobsScreen().openEditor({ day: b.day, routeId: b.mode === 'days' ? b.routeId : (q.visibleRoutes()[0] || q.routes()[0]).id })),
-    btn('ellipsis.circle', 'View, routes and more · ' + ({ routes: 'Routes', days: 'Days', month: 'Month' })[b.mode] + ' view', el => boardMenu(el)));
+    btn('ellipsis.circle', 'View, routes and more · ' + VIEW_NAME[b.mode] + ' view', el => boardMenu(el)));
+  /* If the title still does not fit (large text, a narrow phone, a long date range), the type steps down until it does rather than ending in “…”. */
+  /* Measured in fractions of a pixel (scrollWidth rounds, and a title half a pixel too wide still drew “…”), and again whenever the bar is laid out or resized. */
+  { const t = bar.querySelector('.bd-date .t b'), fit = () => { if (!t.isConnected || !t.clientWidth) return; t.style.fontSize = t.style.letterSpacing = ''; const rg = document.createRange(); rg.selectNodeContents(t);
+      const over = () => rg.getBoundingClientRect().width > t.getBoundingClientRect().width + 0.05; let px = parseFloat(getComputedStyle(t).fontSize);
+      if (over()) t.style.letterSpacing = '-.3px'; while (over() && px > 10) { px -= 0.5; t.style.fontSize = px + 'px'; } };
+    requestAnimationFrame(fit); if (window.ResizeObserver) new ResizeObserver(fit).observe(bar); if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit); }
+  return bar;
 }
 /* The day's tools. The menu shows the ones used most and ends in “More…”, which opens the rest as its own menu, so nothing is hidden below a scroll. */
 const mainItems = anchor => [!S.desktop && S.board.mode !== 'month' && { label: 'Search jobs…', icon: 'magnifyingglass', onTap: () => jobsScreen().openSearch && jobsScreen().openSearch() },
@@ -297,7 +310,7 @@ function boardMenu(anchor) {
   const b = S.board; let m;
   const seg = (opts, val, fn) => ({ node: h('div.bd-mseg', ui.segmented(opts, val, v => { fn(v); m && m.close(); })) });
   m = ui.menu(anchor, [
-    seg([{ value: 'routes', label: 'Routes' }, { value: 'days', label: 'Days' }, { value: 'month', label: 'Month' }], b.mode, v => { b.mode = v; if (v === 'month') b.view = 'board'; if (v === 'days' && !b.routeId) b.routeId = (q.visibleRoutes()[0] || q.routes()[0]).id; keep(undefined, 0); refresh(); }),
+    seg([{ value: 'routes', label: 'Routes' }, { value: 'days', label: 'Days' }, { value: 'month', label: 'Month' }], b.mode, setMode),
     /* Month only: what the calendar shows. Jobs, or the area plan (which areas on which days, no jobs). */
     ...(b.mode === 'month' && WD.areas ? [{ header: 'Show on the calendar' }, seg([{ value: 'areas', label: 'Plan' }, { value: 'jobs', label: 'All jobs' }], showAreas() ? 'areas' : 'jobs', v => { b.monthShow = v; refresh(); })] : []),
     ...(b.mode === 'days' ? [{ header: 'Route' }, ...q.routes().map(r => ({ label: q.routeName(r), checked: r.id === b.routeId, onTap: () => { b.routeId = r.id; refresh(); } })),
