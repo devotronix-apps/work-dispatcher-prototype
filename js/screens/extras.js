@@ -442,8 +442,8 @@ X.contactSummary = (c, items, describe) => {
 
 /* ================= What's new tutorial ================= */
 const TOUR = [
-  { icon: 'sparkles', title: 'New in ' + WD.version, text: 'Dispatch has a Home button on every view and one button that switches between Days, Routes and Month. Run this tour again from Menu → Settings → About.' },
-  { tab: 'Dispatch', icon: 'house', title: 'Home and the view button', list: ['Home, right of the date, is on every Dispatch view. One tap is today on the Routes board.', 'The button beside it steps through Days, Routes and Month. Its icon is the view showing now.', 'To go to today without leaving the view, tap the date and then Today.', 'On a Samsung Galaxy, a job tapped on the board now stays open.'] },
+  { icon: 'sparkles', title: 'New in ' + WD.version, text: 'A returning customer’s job no longer has to be typed in again: duplicate their last one and set the date. Run this tour again from Menu → Settings → About.' },
+  { tab: 'Dispatch', icon: 'square.on.square', title: 'Duplicate a job', list: ['Search for the customer (try “Whitmore”) and tap the copy button on their last job, or open the job and choose Duplicate job.', 'A new job opens with everything copied and today’s date. Set the date and tap Add.', 'Starting a new job for a customer instead? The editor offers “Use the last job’s details”.', 'The customer’s page has Duplicate the last job too.'] },
 ];
 X.tutorial = () => {
   const screen = document.getElementById('screen'), old = screen.querySelector('.x-tour'); if (old) old.remove();

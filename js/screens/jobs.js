@@ -4,6 +4,7 @@
 const { h, ui, icon, state: S, data, q, fmt, date: D, api } = WD;
 const { SCOPES, seriesJobs } = WD.boardHelpers;
 const guard = (mod, fn, ...args) => WD.screens[mod] && WD.screens[mod][fn] && WD.screens[mod][fn](...args);
+WD.addIcons({ 'square.on.square': '<rect x="8.5" y="8.5" width="12" height="12" rx="2.5"/><path d="M15.5 5.5v-.5a2 2 0 0 0-2-2H5.5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2H6"/>' });
 
 WD.css(`
 .jb-head { padding: 14px 16px 13px; }
@@ -146,6 +147,7 @@ function details(job, p) {
       job.events.slice().reverse().map(e => ui.row({ leading: ui.avatar(e.actor, { size: 28 }), title: e.text + (e.changes && e.changes.length ? ' · ' + e.changes.length + (e.changes.length === 1 ? ' change' : ' changes') : ''), subtitle: e.actor + ' · ' + fmt.rel(e.at) + (e.changes && e.changes.length ? ' · ' + e.changes.map(c => c.label).slice(0, 3).join(', ') : ''), chevron: !!(e.changes && e.changes.length), onTap: e.changes && e.changes.length ? () => WD.x.showChanges(e) : null }))),
     canEdit && ui.section({ header: 'Change this job', footer: job.pending ? 'This job is waiting to sync. You can change it again once that finishes.' : null, fold: false },
       ui.row({ title: 'Edit job', icon: 'pencil', iconPlain: true, tint: true, disabled: !idle, onTap: idle ? () => openEditor({ jobId: job.id }) : null }),
+      canDuplicate(job) && ui.row({ title: 'Duplicate job', subtitle: 'A new job with these details, dated today', icon: 'square.on.square', iconPlain: true, tint: true, onTap: () => duplicate(job.id) }),
       ui.row({ title: 'Reassign', icon: 'arrow.left.arrow.right', iconPlain: true, tint: true, disabled: !idle, onTap: idle ? () => openReassign(job) : null }),
       !job.allDay && !WD.closed[job.status] && ui.row({ title: 'Customer canceled or rescheduled…', icon: 'phone', iconPlain: true, tint: true, disabled: !idle, onTap: idle ? () => callOff(job) : null })),
     canEdit && ui.section({ fold: false }, ui.row({ title: 'Delete job', icon: 'trash', iconPlain: true, iconColor: 'var(--red)', destructive: true, disabled: !idle, onTap: idle ? () => deleteJob(job, p) : null })));
@@ -161,6 +163,15 @@ function copyTo(job, day, routeId) {
   const { id, seq, status, events, invoice, arrivedAt, departedAt, pending, attachments, recurring, version, rescheduledTo, skipNote, ...rest } = job;
   return WD.makeJob({ ...rest, items: WD.copyItems(job.items), routeId: routeId || job.routeId, day, events: [{ at: +WD.now(), actor: S.me.name, text: 'Rescheduled from ' + fmt.day(job.day) }] });
 }
+/** The job a returning customer's next one is copied from: their latest real visit up to today, or else the soonest one coming up.
+    Day notes and canceled visits don't count. */
+function lastJob(customerId) {
+  const jobs = q.jobsForCustomer(customerId).filter(j => !j.allDay && j.status !== 'canceled'), today = D.today(), past = jobs.filter(j => j.day <= today);
+  return past[past.length - 1] || jobs[0] || null;
+}
+/** Duplicate: a new job with all of this one's details, dated today, opened in the editor to set the date (6.8). */
+function duplicate(jobId) { const job = q.job(jobId); if (job) openEditor({ copyOf: job.id }); }
+const canDuplicate = job => !!job && !job.allDay && WD.can('jobs.edit') && q.routes().some(r => r.writable);
 async function pickDay(title, from) {
   let d = D.add(from, 1); while (D.parse(d).getDay() === 0) d = D.add(d, 1);
   const r = await ui.alert({ title, message: 'It goes to the end of that day’s list on the same route. Move it on the board afterwards if needed.', input: { type: 'date', value: d }, buttons: [{ label: 'Cancel', value: null }, { label: 'Reschedule', value: 'ok', bold: true }] });
@@ -281,11 +292,15 @@ function addressSuggestions(text) {
 const hddDefault = () => !!(data.settings && data.settings.barcodes && data.settings.barcodes.hddDefault), hddRate = () => (data.priceBook.find(x => x.id === 'hdd') || { rate: 10 }).rate;
 function openEditor(o = {}) {
   const job = o.jobId ? q.job(o.jobId) : null, isNew = !job;
-  const f = job ? { title: job.title, address: job.address, notes: job.notes, routeId: job.routeId, day: job.day, allDay: job.allDay, pos: (p => p.n < p.of ? p.n : 0)(q.position(job)), dur: job.dur, type: job.type, items: WD.copyItems(job.items), bizOpen: job.bizOpen, bizClose: job.bizClose, custFrom: job.custFrom, custUntil: job.custUntil, custStrict: !!job.custStrict, customerId: job.customerId, located: job.located, x: job.x, y: job.y, po: job.po || '', contract: job.contract || '', contact: job.contactName || '', phone: job.phone ? fmt.phone(job.phone) : '', ext: job.ext || '', email: job.email || '', billingEmail: '', custType: job.custType || 'business', cityZip: job.cityZip || '', sig: WD.sigPolicy(q.customer(job.customerId)), windowBy: job.windowBy || 'customer', lunchFrom: job.lunchFrom || '', lunchUntil: job.lunchUntil || '', closedDays: (job.closedDays || []).slice(), callAhead: job.callAhead || 0, needsWindow: !!job.needsWindow, purge: job.purge ? { ...job.purge } : null, flags: { ...(job.flags || {}) }, hdd: ((job.items || []).find(i => i.id === 'hdd') || {}).qty || 0, hddScan: job.hddScan != null ? job.hddScan : hddDefault(), ...parseRule(job.recurring && job.recurring.rule) }
+  /* Duplicate (6.8): o.copyOf is a job whose details start a new job. Everything about the work is copied; the date is today, it is one visit
+     (not a series), and nothing about what happened on the old visit (status, invoice, photos, history) comes along. */
+  const src = isNew && o.copyOf ? q.job(o.copyOf) : null;
+  const fromJob = b => ({ title: b.title, address: b.address, notes: b.notes, routeId: b.routeId, day: b.day, allDay: b.allDay, pos: (p => p.n < p.of ? p.n : 0)(q.position(b)), dur: b.dur, type: b.type, items: WD.copyItems(b.items), bizOpen: b.bizOpen, bizClose: b.bizClose, custFrom: b.custFrom, custUntil: b.custUntil, custStrict: !!b.custStrict, customerId: b.customerId, located: b.located, x: b.x, y: b.y, po: b.po || '', contract: b.contract || '', contact: b.contactName || '', phone: b.phone ? fmt.phone(b.phone) : '', ext: b.ext || '', email: b.email || '', billingEmail: '', custType: b.custType || 'business', cityZip: b.cityZip || '', sig: WD.sigPolicy(q.customer(b.customerId)), windowBy: b.windowBy || 'customer', lunchFrom: b.lunchFrom || '', lunchUntil: b.lunchUntil || '', closedDays: (b.closedDays || []).slice(), callAhead: b.callAhead || 0, needsWindow: !!b.needsWindow, purge: b.purge ? { ...b.purge } : null, flags: { ...(b.flags || {}) }, hdd: ((b.items || []).find(i => i.id === 'hdd') || {}).qty || 0, hddScan: b.hddScan != null ? b.hddScan : hddDefault(), ...parseRule(b.recurring && b.recurring.rule) });
+  const f = job ? fromJob(job) : src ? { ...fromJob(src), day: o.day || D.today(), pos: 0, repeat: 'none', interval: 1 }
     : { title: '', address: '', notes: '', routeId: o.routeId || (q.visibleRoutes()[0] || q.routes()[0]).id, day: o.day || S.board.day, allDay: false, pos: o.pos || 0, dur: 30, type: o.type || 'purge', items: (o.type || 'purge') === 'purge' ? [{ id: 'box', qty: 0, rate: 8 }] : [], bizOpen: '', bizClose: '', custFrom: '', custUntil: '', custStrict: false, customerId: null, located: false, x: null, y: null, po: '', contract: '', contact: '', phone: '', ext: '', email: '', billingEmail: '', custType: (o.type || 'purge') === 'government' ? 'government' : 'business', cityZip: '', sig: 'optional', windowBy: 'customer', lunchFrom: '', lunchUntil: '', closedDays: [], callAhead: 0, needsWindow: false, purge: null, flags: {}, repeat: 'none', interval: 1 };
   Object.assign(f, { ends: 'never', count: 10, until: D.add(f.day, 90), attachments: [], poSchedule: [] }); if (f.hdd == null) Object.assign(f, { hdd: 0, hddScan: hddDefault() });
-  if (WD.r11) WD.r11.editorInit(f, job);
-  f.products = job && job.products ? job.products.map(x => ({ ...x })) : [];
+  if (WD.r11) WD.r11.editorInit(f, job || src);
+  f.products = (job || src) && (job || src).products ? (job || src).products.map(x => ({ ...x })) : [];
   const poSt = { multi: false }, linked = () => q.customer(f.customerId), custTypeOf = () => (linked() ? linked().custType : f.custType) || 'business';
   /** The PO list being edited: the linked customer's schedule, or one kept in the form for a customer that doesn't exist yet. */
   const poList = () => linked() ? linked().poSchedule : f.poSchedule;
@@ -295,7 +310,19 @@ function openEditor(o = {}) {
   const was0 = { repeat: f.repeat, interval: f.interval };
   let page = null, matchBox = null, suggestBox = null, recBox = null, timer = null, dirty = false;
   const fill = c => { const l = c.locations[0], p = c.contacts[0] || {}; Object.assign(f, { customerId: c.id, title: c.name, address: l.address, notes: l.notes, type: WD.jobTypeFor(c), items: WD.copyItems(l.items), bizOpen: l.bizOpen, bizClose: l.bizClose, located: l.located !== false, x: l.x, y: l.y, po: WD.workflow.poFor(c, f.day).po, contract: c.contract || '', sig: WD.sigPolicy(c), lunchFrom: l.lunchFrom || '', lunchUntil: l.lunchUntil || '', closedDays: (l.closedDays || []).slice(), callAhead: l.callAhead || 0, contact: p.name || '', phone: p.phone ? fmt.phone(p.phone) : '', ext: p.ext || '', email: p.email || '', billingEmail: c.billingEmail || '', custType: c.custType || 'business' }); dirty = true; };
-  if (isNew && o.customerId && q.customer(o.customerId)) fill(q.customer(o.customerId));
+  /** “Nov 12, 2025”: the year is said when it is not this year, since a purge can be a year or two back. */
+  const dayLabel = d => fmt.day(d) + (d.slice(0, 4) !== D.today().slice(0, 4) ? ', ' + d.slice(0, 4) : '');
+  let copiedFrom = null, offerSkip = null;
+  /** After details are copied from job b: the customer's PO for the new date, the purge details, and the note above the form. */
+  const copied = b => { copiedFrom = b; const c = linked(); if (c && c.poSchedule && c.poSchedule.length) f.po = WD.workflow.poFor(c, f.day).po || '';
+    if (f.type === 'purge' && !f.purge) f.purge = { std: (f.items.find(i => i.id === 'box') || {}).qty || 0, stairs: 'none', haul: false };
+    f.banner = 'Copied from the ' + dayLabel(b.day) + ' job. Set the date, check the details, then tap Add.'; dirty = true; };
+  /** Copy job b's details into the form being filled in. The date already chosen is kept. */
+  const copyInto = b => { const keep = { day: f.day, attachments: f.attachments, poSchedule: f.poSchedule, ends: f.ends, count: f.count, until: f.until };
+    Object.assign(f, fromJob(b), keep, { pos: 0, repeat: 'none', interval: 1 }); if (WD.r11) WD.r11.editorInit(f, b);
+    f.products = (b.products || []).map(x => ({ ...x })); f.startAt = b.startAt || b.exactAt || ''; customCall = ![0, 15, 30, 60].includes(f.callAhead); copied(b); };
+  if (src) copied(src);
+  if (isNew && !src && o.customerId && q.customer(o.customerId)) fill(q.customer(o.customerId));
   /* Prefill for a new job from another screen (Price Calc, the planning map, a call): applied after the defaults and the customer, so it wins.
      o: {address, x, y, title, contactName, phone, email, notes, purge: {std: 20}, items: [...], price, banner, startAt}. Route and day stay editable. */
   if (isNew) {
@@ -316,7 +343,7 @@ function openEditor(o = {}) {
   }
   /* Calendar scheduling (Settings → Scheduling style): every job has a start time. An exact-time job starts at its exact time. */
   const cal = () => !!(WD.r14 && WD.r14.calendar && WD.r14.calendar()), ops2 = () => WD.ops2 || {};
-  f.startAt = job ? job.startAt || job.exactAt || '' : o.startAt || '';
+  f.startAt = job || src ? (job || src).startAt || (job || src).exactAt || '' : o.startAt || '';
   const planMin = () => f.type === 'purge' && f.purge ? WD.purgeEstimate(f.purge).minutes || f.dur : f.durOverride || f.dur;
   /* Hard drive crusher: switched on by itself when drives are added and that day's truck can't shred them (WD.ops2.crusher). Once a person
      changes the switch, their choice is kept; an existing job that already has drives is treated as decided. */
@@ -436,7 +463,7 @@ function openEditor(o = {}) {
           if (!recurring) rebuilt = { gone: gone.length, made: 0 };
         }
       } else {
-        const make = (day, pos) => { const j = WD.makeJob({ ...fields, items: WD.copyItems(fields.items), day, recurring, seq: fields.allDay ? 0 : null, attachments: f.attachments.slice(), events: [{ at: +WD.now(), actor: me, text: 'Created' + (noAddr ? ' · saved without ' + (noAddr === 'No address' ? 'an address' : 'a city or ZIP') : '') }] }); firstMade = firstMade || j; if (pos && !j.allDay) WD.placeJob(j, j.routeId, day, pos - 1); byTime(j.routeId, day); }; make(f.day, f.pos);
+        const make = (day, pos) => { const j = WD.makeJob({ ...fields, items: WD.copyItems(fields.items), day, recurring, seq: fields.allDay ? 0 : null, attachments: f.attachments.slice(), events: [{ at: +WD.now(), actor: me, text: 'Created' + (copiedFrom ? ' · copied from the ' + dayLabel(copiedFrom.day) + ' job' : '') + (noAddr ? ' · saved without ' + (noAddr === 'No address' ? 'an address' : 'a city or ZIP') : '') }] }); firstMade = firstMade || j; if (pos && !j.allDay) WD.placeJob(j, j.routeId, day, pos - 1); byTime(j.routeId, day); }; make(f.day, f.pos);
         if (recurring) { const stepDays = { daily: 1, weekly: 7, monthly: 28 }[f.repeat] * f.interval, max = f.ends === 'count' ? f.count : 60; for (let i = 1; i < max && i * stepDays <= 548; i++) { const day = D.add(f.day, i * stepDays); if (f.ends === 'until' && day > f.until) break; make(day); } }
       }
     } });
@@ -497,6 +524,19 @@ function openEditor(o = {}) {
       customCall && ui.inputRow({ label: 'Minutes', type: 'text', inputmode: 'numeric', placeholder: 'How many minutes ahead they want a call', value: f.callAhead ? String(f.callAhead) : '', autofocus: !f.callAhead, onInput: v => { f.callAhead = Math.min(600, parseInt(v.replace(/\D/g, ''), 10) || 0); dirty = true; } }),
       f.type !== 'setup' && flag('setup', 'New setup'), flag('extraBin', 'Bring an extra container'), flag('extraShred', 'Has extra to shred'), flag('early', 'Called in for early service'));
   }
+  /** New job for a customer who has been served before: offer to start from their last job (6.8). Older jobs are on the server, so the
+      customer's history is asked for once (quietly) when they are linked. */
+  let histAsked = null;
+  function lastOffer(p, cust) {
+    if (!isNew || !cust || f.allDay || (copiedFrom && copiedFrom.customerId === cust.id) || offerSkip === cust.id) return null;
+    if (histAsked !== cust.id && !cust.historyLoaded && cust.stats && cust.stats.firstInvoice && !S.offline) { histAsked = cust.id;
+      WD.delay(350, 700).then(() => { if (f.customerId !== cust.id) return; WD.x.fetchHistory(cust.name); if (page && !page.body.contains(document.activeElement)) page.refresh(); }); }
+    const b = lastJob(cust.id); if (!b) return null;
+    const what = [q.jobType(b.type).title, WD.itemsLabel(b.items, b.type === 'purge'), q.routeName(b.routeId)].filter(Boolean).join(' · ');
+    return ui.section({ header: 'Last job · ' + dayLabel(b.day), footer: 'Copies everything from that job except its date, photos and billing. You can still change anything before adding it.', showFooter: true, fold: false },
+      ui.row({ icon: 'square.on.square', iconPlain: true, title: 'Use the last job’s details', subtitle: what, tint: true, onTap: () => { copyInto(b); blurAndRefresh(); page.body.scrollTop = 0; ui.toast('Copied from the ' + dayLabel(b.day) + ' job', 'checkmark'); } }),
+      ui.row({ title: 'Start with the customer’s defaults', iconPlain: true, icon: 'xmark', iconColor: 'var(--label2)', onTap: () => { offerSkip = cust.id; p.refresh(); } }));
+  }
   const timeRows = () => [ui.quarterRow({ title: 'From', value: f.custFrom, onChange: v => { f.custFrom = v; dirty = true; } }), ui.quarterRow({ title: 'Until', value: f.custUntil, onChange: v => { f.custUntil = v; dirty = true; } })];
 
   ui.sheet({ title: isNew ? 'New job' : 'Edit job',
@@ -526,6 +566,7 @@ function openEditor(o = {}) {
           !f.allDay && ui.pickerRow({ title: 'Customer type', value: custTypeOf(), icon: 'building', iconColor: 'var(--indigo)', disabled: !!cust, subtitle: cust ? 'From the customer record' : null, options: WD.custTypes.map(t => ({ value: t.id, label: t.title })), onChange: v => set('custType', v, true) }),
           ui.inputRow({ placeholder: f.type === 'meet' ? 'Customer name' : 'Customer or job title', value: f.title, caps: 'words', autofocus: isNew && !f.title, onInput: v => { f.title = v; dirty = true; syncSave(); lookup(v); } }),
           cust && ui.row({ leading: ui.avatar(cust.name, { size: 34 }), title: cust.name, subtitle: 'Linked customer' + (cust.contacts[0] ? ' · ' + cust.contacts[0].name + ' · ' + fmt.phone(cust.contacts[0].phone, cust.contacts[0].ext) : ''), trailing: h('button', { style: 'border:0;background:none;color:var(--tint);font-size:15px;cursor:pointer', onclick: e => { e.stopPropagation(); f.customerId = null; dirty = true; p.refresh(); } }, 'Unlink') })),
+        lastOffer(p, cust),
         matchBox,
         !cust && (asks('contact') || asks('phone') || asks('email') || asks('billingEmail') || req('email') || req('contact')) && ui.section({ header: f.type === 'meet' ? 'Contact' : 'New customer', footer: 'Fields in red are required for ' + WD.custType(custTypeOf()).title.toLowerCase() + ' customers on ' + q.jobType(f.type).title.toLowerCase() + ' jobs.' + (isNew && f.type !== 'meet' ? ' Saving creates the customer with these details.' : '') },
           (asks('contact') || req('contact')) && inp('Contact', 'contact', { placeholder: 'Name', caps: 'words', required: req('contact') }),
@@ -586,7 +627,7 @@ function openEditor(o = {}) {
 function openSearch() {
   let text = '', scope = WD.can('crm.view') ? 'all' : 'jobs', when = 'all', loading = false, timer = null, box = null, server = null;   // server: null | 'loading' | {n} once the server was asked for this text
   const routeIds = () => q.visibleRoutes().map(r => r.id);
-  const jobRow = j => ui.row({ leading: ui.dot(q.routeColor(j.routeId)), title: j.title, subtitle: fmt.day(j.day) + (j.day.slice(0, 4) !== D.today().slice(0, 4) ? ', ' + j.day.slice(0, 4) : '') + (j.allDay ? ' · note' : WD.calledOff(j) ? '' : ' · stop ' + q.position(j).n) + ' · ' + q.routeName(j.routeId) + (j.fromServer ? ' · from the server' : ''), trailing: icon(WD.jobStatuses[j.status].icon, 18, WD.jobStatuses[j.status].color), onTap: () => openDetails(j.id) });
+  const jobRow = j => ui.row({ leading: ui.dot(q.routeColor(j.routeId)), title: j.title, subtitle: fmt.day(j.day) + (j.day.slice(0, 4) !== D.today().slice(0, 4) ? ', ' + j.day.slice(0, 4) : '') + (j.allDay ? ' · note' : WD.calledOff(j) ? '' : ' · stop ' + q.position(j).n) + ' · ' + q.routeName(j.routeId) + (j.fromServer ? ' · from the server' : ''), trailing: h('span.row-acts', icon(WD.jobStatuses[j.status].icon, 18, WD.jobStatuses[j.status].color), canDuplicate(j) && ui.iconBtn('square.on.square', 'Duplicate ' + j.title + ', ' + fmt.day(j.day) + ', ' + j.day.slice(0, 4), () => duplicate(j.id))), onTap: () => openDetails(j.id) });
   async function askServer(p) {
     if (S.offline) return ui.toast('Offline — older history needs a connection', 'wifi.slash', 2600);
     const asked = text; server = 'loading'; fill(p); await WD.delay(900, 1500); if (asked !== text) return;
@@ -828,7 +869,7 @@ async function openAutoRoute(routeId, o = {}) {
 }
 
 WD.addressSuggestions = addressSuggestions;
-WD.screens.jobs = { recommend, openDetails, openEditor, openReassign, openSearch, openAutoRoute, skipFlow, callOff, copyTo, pickDay, moveStyle, setMoveStyle, MOVE_STYLES };
+WD.screens.jobs = { recommend, openDetails, openEditor, duplicate, lastJob, canDuplicate, openReassign, openSearch, openAutoRoute, skipFlow, callOff, copyTo, pickDay, moveStyle, setMoveStyle, MOVE_STYLES };
 const firstToday = pred => data.jobs.filter(j => j.day === D.today() && !j.allDay && pred(j)).sort(q.order)[0];
 WD.panel.addJump('Job details', () => { WD.nav.switchTab('board'); const j = firstToday(x => x.status === 'arrived') || firstToday(() => true); if (j) openDetails(j.id); });
 WD.panel.addJump('New job', () => { WD.nav.switchTab('board'); openEditor({ day: D.today(), routeId: 'r1' }); });

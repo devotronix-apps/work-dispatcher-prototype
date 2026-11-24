@@ -524,8 +524,11 @@ const jobRow = j => ui.row({ title: fmt.day(j.day, 'rel') + ' · ' + (j.allDay ?
 function jobsSections(c) {
   const jobs = q.jobsForCustomer(c.id), up = jobs.filter(isUpcoming), past = jobs.filter(j => !isUpcoming(j)).reverse();
   if (!jobs.length) return ui.section('Jobs', ui.row({ title: 'No jobs yet' }), WD.can('jobs.edit') && ui.row({ title: 'New job', tint: true, onTap: () => newJob(c.id) }));
+  /* 6.8: one tap starts a new job from the customer's last one (a purge or shred event that comes back every year or two). */
+  const J = WD.screens.jobs, last = J && J.lastJob && J.lastJob(c.id), dup = last && J.canDuplicate(last);
   return [up.length ? ui.section('Upcoming jobs', up.slice(0, 3).map(jobRow)) : null,
-    ui.section('Recent jobs', past.slice(0, 3).map(jobRow), !past.length && ui.row({ title: 'No completed jobs yet' }), ui.row({ title: 'All jobs', detail: String(jobs.length), chevron: true, onTap: () => WD.nav.push(allJobsPage(c.id)) })),
+    ui.section('Recent jobs', past.slice(0, 3).map(jobRow), !past.length && ui.row({ title: 'No completed jobs yet' }),
+      dup && ui.row({ title: 'Duplicate the last job', subtitle: fmt.day(last.day) + (last.day.slice(0, 4) !== D.today().slice(0, 4) ? ', ' + last.day.slice(0, 4) : '') + ' · ' + q.jobType(last.type).title + ' · a new job with the same details, dated today', icon: 'square.on.square', iconPlain: true, tint: true, onTap: () => J.duplicate(last.id) }), ui.row({ title: 'All jobs', detail: String(jobs.length), chevron: true, onTap: () => WD.nav.push(allJobsPage(c.id)) })),
     WD.eta && WD.eta.custSection(c)];
 }
 const allJobsPage = cid => ({ title: 'All jobs', render: () => { const jobs = q.jobsForCustomer(cid);

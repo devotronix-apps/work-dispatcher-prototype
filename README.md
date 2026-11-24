@@ -30,6 +30,13 @@ Board and map colors: a job card is neutral (white, dark gray in dark mode) with
 
 Jobs have no scheduled times: each route's day is an ordered list, and stop 1 is done first. Cards leave the address off and show the key facts (containers or boxes, window, time on site); pinch on the board (or ⌘/ctrl-scroll, or Card detail in the board’s ⋯ menu) to switch between less and more detail. Every card carries all three levels and the board’s `lvl0`–`lvl2` class picks one, so pinching never rebuilds the list. AutoRoute recommends when to leave the truck's parking place for a day that hasn't started, which you can accept or replace with your own time, and gives a window to each stop marked **Needs a window**. On the board, drag a job up or down to reorder it or into another column to reassign it, and tap a column's empty space (or **Add stop**) to add a job at the end. Notes for the day sit above the list. The prototype clock starts at 10:24 AM; other drivers' trucks move and complete their stops on their own, faster than real life, so the board and map change while you watch.
 
+## What changed in 6.8
+
+- **Duplicate a job** (`duplicate`, `openEditor({ copyOf })` in `jobs.js`): for a purge or shred event that comes back every year or two. A new job opens in the editor with everything from the old one (title, customer, address, notes, route, services and purge details, rates, requested window, call-ahead, heads-up, PO and contract) and **today's date**; set the date and tap Add. It is one visit even when the old job was part of a series. The old visit's status, arrival times, invoice, photos and history are not copied; the new job's history says which job it was copied from. A customer with a PO list gets the PO that covers the new date.
+- **Where it is**: a copy button on every job row in Search, **Duplicate job** in Job details → Change this job, and **Duplicate the last job** under Recent jobs on a customer's page. Needs `jobs.edit`; day notes cannot be duplicated.
+- **New job for a returning customer** (`lastOffer`, `copyInto` in `jobs.js`): once a customer is linked in the New job editor (picked from the matches, or opened from the customer), a **Last job** group offers **Use the last job's details** or **Start with the customer's defaults**. The date already chosen is kept. The last job is `WD.screens.jobs.lastJob(customerId)`: the latest visit up to today, or the soonest upcoming one, leaving out day notes and canceled visits. Jobs older than the phone keeps are asked for from the server when the customer is linked.
+- **Demo data**: Whitmore Tax & Accounting (`c40`) is a yearly purge customer with visits one and two years back; search “Whitmore” to try it.
+
 ## What changed in 6.7
 
 - **Home on every Dispatch view** (`topBar` in `board.js`): the Home button is always in the bar right of the date (Routes, Days, Month and the map), not only when the board differs from its default. A tap runs `boardHome.reset()`: today on the Routes board (a driver's own route for today).
@@ -318,7 +325,7 @@ A page is a spec object:
 | Call | Owner |
 |---|---|
 | `WD.screens.auth.show()` | auth.js |
-| `WD.screens.jobs.openDetails(jobId)`, `WD.screens.jobs.openEditor({jobId} \| {day, routeId, pos, customerId})` | jobs.js |
+| `WD.screens.jobs.openDetails(jobId)`, `WD.screens.jobs.openEditor({jobId} \| {day, routeId, pos, customerId} \| {copyOf: jobId})`, `.duplicate(jobId)`, `.lastJob(customerId)`, `.canDuplicate(job)` | jobs.js |
 | `WD.screens.customers.openDetail(customerId)` | customers.js |
 | `WD.screens.settings.openPending()` | settings.js |
 | `WD.screens.billing.openEditor(jobId, {pay, lines, note})`, `.openInvoice(jobId)`, `.signaturePad(o)` | billing.js |
